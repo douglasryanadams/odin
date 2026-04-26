@@ -39,9 +39,21 @@ def _odin_only_at_debug(record: Record) -> bool:
     return True
 
 
+class HealthCheckFilter(logging.Filter):
+    """Drop uvicorn access log entries for the /health endpoint."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Return False for /health access log records, True otherwise."""
+        return "/health" not in record.getMessage()
+
+
 def setup() -> None:
     """Configure loguru and intercept stdlib logging."""
     level = os.getenv("LOG_LEVEL", "INFO")
     logger.remove()
     logger.add(sys.stderr, level=level, colorize=True, filter=_odin_only_at_debug)
     logging.basicConfig(handlers=[_InterceptHandler()], level=0, force=True)
+
+    access_logger = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, HealthCheckFilter) for f in access_logger.filters):
+        access_logger.addFilter(HealthCheckFilter())

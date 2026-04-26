@@ -10,6 +10,8 @@ from loguru import logger
 
 from odin import claude, fetch, searxng
 
+SEARXNG_MAX_CONCURRENCY = 2
+
 
 @dataclass
 class StageEvent:
@@ -35,7 +37,13 @@ async def build_profile(
     logger.debug("queries generated count={}", len(queries))
     yield StageEvent(stage="queries", data={"queries": queries})
 
-    results_per_query = await asyncio.gather(*[searxng.search(q, searxng_url) for q in queries])
+    semaphore = asyncio.Semaphore(SEARXNG_MAX_CONCURRENCY)
+
+    async def _throttled_search(q: str) -> list[searxng.SearchResult]:
+        async with semaphore:
+            return await searxng.search(q, searxng_url)
+
+    results_per_query = await asyncio.gather(*[_throttled_search(q) for q in queries])
     seen: set[str] = set()
     unique_results: list[searxng.SearchResult] = []
     for batch in results_per_query:
