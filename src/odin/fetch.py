@@ -4,6 +4,7 @@ import asyncio
 
 import httpx
 import trafilatura
+from loguru import logger
 
 CONTENT_LIMIT = 10_000
 
@@ -13,10 +14,12 @@ async def _fetch_one(client: httpx.AsyncClient, url: str) -> tuple[str, str]:
         response = await client.get(url, follow_redirects=True, timeout=10.0)
         response.raise_for_status()
         extracted = trafilatura.extract(response.text)
-        if extracted:
-            return url, extracted[:CONTENT_LIMIT]
-        return url, response.text[:CONTENT_LIMIT]
+        text = extracted or response.text
+        chars = min(len(text), CONTENT_LIMIT)
+        logger.debug("fetch ok url={!r} chars={}", url, chars)
+        return url, text[:CONTENT_LIMIT]
     except httpx.HTTPError as exc:
+        logger.debug("fetch error url={!r} error={}", url, exc)
         return url, f"Error fetching URL: {exc}"
 
 

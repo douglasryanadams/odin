@@ -3,6 +3,7 @@
 from typing import Any, cast
 
 from anthropic import AsyncAnthropic
+from loguru import logger
 
 from odin.models import Category, Profile
 from odin.searxng import SearchResult
@@ -156,6 +157,7 @@ def _find_tool_block(content: list[Any], name: str) -> Any | None:  # noqa: ANN4
 
 async def categorize(client: AsyncAnthropic, query: str) -> Category:
     """Classify the query as person, place, event, or other."""
+    logger.debug("categorize query={!r}", query)
     response = await client.messages.create(
         model=_HAIKU,
         max_tokens=100,
@@ -173,6 +175,7 @@ async def categorize(client: AsyncAnthropic, query: str) -> Category:
 
 async def generate_queries(client: AsyncAnthropic, query: str, category: Category) -> list[str]:
     """Generate 3-5 targeted search queries for the given subject."""
+    logger.debug("generate_queries query={!r} category={}", query, category)
     response = await client.messages.create(
         model=_HAIKU,
         max_tokens=300,
@@ -202,6 +205,7 @@ async def select_urls(
     results: list[SearchResult],
 ) -> list[str]:
     """Select the most relevant URLs from search results."""
+    logger.debug("select_urls query={!r} candidates={}", query, len(results))
     formatted = "\n".join(_format_result(r) for r in results)
     response = await client.messages.create(
         model=_HAIKU,
@@ -231,6 +235,7 @@ async def synthesize(
     content: dict[str, str],
 ) -> Profile:
     """Synthesize a structured profile from pre-fetched page content."""
+    logger.debug("synthesize query={!r} category={} sources={}", query, category, len(content))
     sections = "\n\n".join(f"--- {url} ---\n{text}" for url, text in content.items())
     user_message = f"Build a {category} profile for: {query}\n\nSource content:\n{sections}"
     response = await client.messages.create(

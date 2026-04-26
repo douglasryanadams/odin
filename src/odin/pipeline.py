@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from anthropic import AsyncAnthropic
+from loguru import logger
 
 from odin import claude, fetch, searxng
 
@@ -24,10 +25,14 @@ async def build_profile(
     anthropic_client: AsyncAnthropic,
 ) -> AsyncGenerator[StageEvent, None]:
     """Run the profile pipeline, yielding a StageEvent at each step."""
+    logger.debug("pipeline start query={!r}", query)
+
     category = await claude.categorize(anthropic_client, query)
+    logger.debug("categorized category={}", category)
     yield StageEvent(stage="categorized", data={"category": category})
 
     queries = await claude.generate_queries(anthropic_client, query, category)
+    logger.debug("queries generated count={}", len(queries))
     yield StageEvent(stage="queries", data={"queries": queries})
 
     results_per_query = await asyncio.gather(*[searxng.search(q, searxng_url) for q in queries])
@@ -38,11 +43,15 @@ async def build_profile(
             if r.url not in seen:
                 seen.add(r.url)
                 unique_results.append(r)
+    logger.debug("search complete unique_results={}", len(unique_results))
     yield StageEvent(stage="searching", data={"result_count": len(unique_results)})
 
     selected_urls = await claude.select_urls(anthropic_client, query, unique_results)
+    logger.debug("urls selected count={}", len(selected_urls))
     yield StageEvent(stage="fetching", data={"url_count": len(selected_urls)})
 
     content = await fetch.fetch_pages(selected_urls)
+    logger.debug("pages fetched count={}", len(content))
     profile = await claude.synthesize(anthropic_client, query, category, content)
+    logger.debug("profile synthesized name={!r}", profile.name)
     yield StageEvent(stage="profile", data=profile.model_dump())

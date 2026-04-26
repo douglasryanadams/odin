@@ -1,10 +1,16 @@
 """Logging configuration."""
 
+from __future__ import annotations
+
 import logging
 import os
 import sys
+from typing import TYPE_CHECKING
 
 from loguru import logger
+
+if TYPE_CHECKING:
+    from loguru import Record
 
 
 class _InterceptHandler(logging.Handler):
@@ -25,9 +31,17 @@ class _InterceptHandler(logging.Handler):
         logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
 
 
+def _odin_only_at_debug(record: Record) -> bool:
+    """Pass DEBUG/TRACE only for odin modules; WARNING+ always passes."""
+    if record["level"].no < logging.WARNING:
+        name = record["name"] or ""
+        return name.startswith(("odin", "__main__"))
+    return True
+
+
 def setup() -> None:
     """Configure loguru and intercept stdlib logging."""
     level = os.getenv("LOG_LEVEL", "INFO")
     logger.remove()
-    logger.add(sys.stderr, level=level, colorize=True)
+    logger.add(sys.stderr, level=level, colorize=True, filter=_odin_only_at_debug)
     logging.basicConfig(handlers=[_InterceptHandler()], level=0, force=True)
