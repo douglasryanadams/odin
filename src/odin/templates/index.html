@@ -12,22 +12,17 @@
   <body>
     <main class="container">
       <h1>Odin</h1>
-      <form method="get" action="/">
+      <form method="get" action="/profile">
         <fieldset role="group">
           <input
             type="search"
             name="q"
-            value="{{ query or '' }}"
-            placeholder="Search…"
+            placeholder="Enter a name…"
             autofocus
           />
-          <button type="submit">Search</button>
-          <button type="submit" formaction="/profile">Profile</button>
+          <button type="submit">Profile</button>
         </fieldset>
       </form>
-      {% if results is not none %}
-      <pre><code>{{ results }}</code></pre>
-      {% endif %}
     </main>
   </body>
 </html>

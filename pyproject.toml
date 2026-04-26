@@ -44,6 +44,9 @@ ignore = [
     "D213",    # conflicts with D212
 ]
 
+[tool.ruff.lint.isort]
+known-first-party = ["helpers"]
+
 [tool.ruff.lint.mccabe]
 max-complexity = 8
 
@@ -56,6 +59,7 @@ typeCheckingMode = "strict"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["tests"]
 addopts = "--cov --cov-report=term-missing --durations=0 -m 'not integration'"
 asyncio_mode = "auto"
 markers = ["integration: requires a running SearXNG instance"]
