@@ -1,5 +1,6 @@
 # IMPORTANT REQUIREMENTS
 
+- Before you make a change to the code, write a test for the change you plan. Confirm this test with me before implementing the feature.
 - Run linters and ensure they pass before considering a task done
 - Run automated tests and ensure they pass before considering a task done
 

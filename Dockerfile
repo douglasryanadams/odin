@@ -6,6 +6,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
 
 COPY pyproject.toml uv.lock ./
 
@@ -14,7 +15,8 @@ FROM base AS production
 
 RUN uv sync --frozen --no-dev
 
-COPY main.py gunicorn.conf.py ./
+COPY gunicorn.conf.py log.py main.py searxng.py ./
+COPY templates/ templates/
 
 EXPOSE 8000
 

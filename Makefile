@@ -1,4 +1,4 @@
-.PHONY: dev prod lint format metrics test test-integration
+.PHONY: dev prod lint format metrics test test-smoke test-unit test-integration
 
 dev:
 	docker-compose up --build
@@ -20,12 +20,29 @@ lint: format
 metrics:
 	docker-compose run --rm web uv run radon raw -s .
 
-test: test-unit test-integration
+test: test-unit test-smoke test-integration
+
+test-smoke:
+	docker-compose -f docker-compose.yml -f docker-compose.prod.yml build web
+	docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --wait web; \
+	EXIT=$$?; \
+	docker-compose -f docker-compose.yml -f docker-compose.prod.yml stop web; \
+	exit $$EXIT
 
 test-unit:
 	docker-compose run --rm web uv run pytest
 
 test-integration:
-	docker-compose up -d --wait searxng searxng-valkey
+	START=$$(date -u +"%Y-%m-%dT%H:%M:%SZ"); \
+	docker-compose up -d --wait searxng searxng-valkey; \
 	docker-compose run --rm web uv run pytest -m integration; \
-	EXIT=$$?; docker-compose stop searxng searxng-valkey; exit $$EXIT
+	TEST_EXIT=$$?; \
+	docker-compose stop searxng searxng-valkey; \
+	ERROR_LOGS=$$(docker-compose logs --no-color --since "$$START" 2>&1 | grep -E "ERROR|CRITICAL" | grep -v "searx.botdetection" || true); \
+	if [ -n "$$ERROR_LOGS" ]; then \
+		echo ""; \
+		echo "Errors detected in service logs during integration tests:"; \
+		echo "$$ERROR_LOGS"; \
+		exit 1; \
+	fi; \
+	exit $$TEST_EXIT

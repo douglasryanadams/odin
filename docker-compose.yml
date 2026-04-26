@@ -2,6 +2,14 @@ services:
   web:
     ports:
       - "8000:8000"
+    environment:
+      - LOG_LEVEL=DEBUG
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   searxng:
     image: docker.io/searxng/searxng:latest
