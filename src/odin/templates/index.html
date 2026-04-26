@@ -1,28 +1,34 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Odin</title>
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"
-    />
-  </head>
-  <body>
-    <main class="container">
-      <h1>Odin</h1>
-      <form method="get" action="/profile">
-        <fieldset role="group">
-          <input
-            type="search"
-            name="q"
-            placeholder="Enter a name…"
-            autofocus
-          />
-          <button type="submit">Profile</button>
-        </fieldset>
-      </form>
-    </main>
-  </body>
-</html>
+{% extends "_base.html" %}
+
+{% block title %}Odin{% endblock %}
+
+{% block body_class %}page-hero{% endblock %}
+
+{% block header %}{% endblock %}
+
+{% block content %}
+  <section class="hero">
+    <h1 class="wordmark wordmark--hero">ODIN</h1>
+    <p class="hero__tagline">Profiles synthesized from the web.</p>
+    <form id="search-form" class="search-form" method="get" action="/profile" role="search">
+      <label class="search-form__field">
+        <span class="search-form__icon" aria-hidden="true">
+          <i class="fa-solid fa-magnifying-glass"></i>
+        </span>
+        <input
+          class="search-form__input"
+          type="search"
+          name="q"
+          placeholder="Enter a name, place, or event…"
+          autocomplete="off"
+          autofocus
+          required
+        />
+      </label>
+      <button class="btn btn--primary search-form__submit" type="submit">
+        <span class="search-form__submit-label">Search</span>
+        <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+      </button>
+    </form>
+  </section>
+{% endblock %}

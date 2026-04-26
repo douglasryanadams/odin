@@ -1,97 +1,122 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{{ query }} — Odin</title>
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"
-    />
-  </head>
-  <body>
-    <main class="container">
-      <nav>
-        <ul>
-          <li><a href="/">← Home</a></li>
-        </ul>
-      </nav>
-      <h1>{{ query }}</h1>
-      <p id="status" aria-busy="true">Researching…</p>
-      <div id="profile"></div>
-    </main>
+{% extends "_base.html" %}
 
-    <script>
-      const query = {{ query | tojson }};
-      const statusEl = document.getElementById("status");
-      const profileEl = document.getElementById("profile");
+{% block title %}{{ query }} — Odin{% endblock %}
 
-      const es = new EventSource("/profile/stream?q=" + encodeURIComponent(query));
+{% block body_class %}page-profile{% endblock %}
 
-      es.onmessage = (e) => {
-        const data = JSON.parse(e.data);
+{% block header_actions %}
+  <form class="header-search" method="get" action="/profile" role="search">
+    <label class="header-search__field">
+      <span class="header-search__icon" aria-hidden="true">
+        <i class="fa-solid fa-magnifying-glass"></i>
+      </span>
+      <input
+        class="header-search__input"
+        type="search"
+        name="q"
+        placeholder="New search…"
+        autocomplete="off"
+      />
+    </label>
+  </form>
+{% endblock %}
 
-        if (data.type === "categorized") {
-          statusEl.textContent = "Category: " + data.category;
-        } else if (data.type === "queries") {
-          statusEl.textContent = "Searching with " + data.queries.length + " queries…";
-        } else if (data.type === "searching") {
-          statusEl.textContent = "Analysing " + data.result_count + " results…";
-        } else if (data.type === "profile") {
-          renderProfile(data);
-          statusEl.hidden = true;
-        } else if (data.type === "done") {
-          es.close();
-        }
-      };
+{% block content %}
+  <article class="subject">
+    <header class="subject__top">
+      <h1 class="subject__title">{{ query }}</h1>
+      <div class="subject__meta">
+        <span class="badge badge--category" id="category-badge">
+          <i class="fa-solid fa-circle-nodes" aria-hidden="true"></i>
+          <span class="badge__label">Pending…</span>
+        </span>
+        <span class="subject__synth mono muted">
+          synthesized <time id="synth-time">—</time>
+        </span>
+      </div>
+    </header>
+    <p class="subject__summary" id="summary">
+      <span class="muted">Researching…</span>
+    </p>
+  </article>
 
-      es.onerror = () => {
-        statusEl.removeAttribute("aria-busy");
-        statusEl.textContent = "Something went wrong. Please try again.";
-        es.close();
-      };
+  <ol class="progress-strip" id="progress-strip" aria-label="Pipeline progress">
+    <li class="progress-step is-active" data-stage="categorized">
+      <span class="progress-step__dot" aria-hidden="true"></span>
+      <span class="progress-step__label">Categorize</span>
+    </li>
+    <li class="progress-step" data-stage="queries">
+      <span class="progress-step__dot" aria-hidden="true"></span>
+      <span class="progress-step__label">Plan queries</span>
+    </li>
+    <li class="progress-step" data-stage="searching">
+      <span class="progress-step__dot" aria-hidden="true"></span>
+      <span class="progress-step__label">Search</span>
+    </li>
+    <li class="progress-step" data-stage="fetching">
+      <span class="progress-step__dot" aria-hidden="true"></span>
+      <span class="progress-step__label">Fetch</span>
+    </li>
+    <li class="progress-step" data-stage="profile">
+      <span class="progress-step__dot" aria-hidden="true"></span>
+      <span class="progress-step__label">Synthesize</span>
+    </li>
+  </ol>
 
-      function text(tag, content) {
-        const el = document.createElement(tag);
-        el.textContent = content;
-        return el;
-      }
+  <section id="card-grid" class="card-grid">
+    <article class="card card--span-6" id="card-highlights">
+      <header class="card__header">
+        <h2><i class="fa-solid fa-star" aria-hidden="true"></i> Highlights</h2>
+        <span class="badge badge--live">live</span>
+      </header>
+      <ul class="hl-list hl-list--up" data-empty="No highlights identified."></ul>
+    </article>
 
-      function renderItem(title, description) {
-        const li = document.createElement("li");
-        li.appendChild(text("strong", title));
-        li.appendChild(document.createTextNode(" — " + description));
-        return li;
-      }
+    <article class="card card--span-6" id="card-lowlights">
+      <header class="card__header">
+        <h2><i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> Lowlights</h2>
+        <span class="badge badge--live">live</span>
+      </header>
+      <ul class="hl-list hl-list--down" data-empty="No lowlights identified."></ul>
+    </article>
 
-      function renderSection(heading, items, itemFn) {
-        if (!items.length) return null;
-        const section = document.createElement("section");
-        section.appendChild(text("h2", heading));
-        const ul = document.createElement("ul");
-        items.forEach((item) => ul.appendChild(itemFn(item)));
-        section.appendChild(ul);
-        return section;
-      }
+    <article class="card card--span-12" id="card-timeline">
+      <header class="card__header">
+        <h2><i class="fa-solid fa-timeline" aria-hidden="true"></i> Timeline</h2>
+        <span class="badge badge--live">live</span>
+      </header>
+      <ol class="timeline" data-empty="No timeline data available."></ol>
+    </article>
 
-      function renderProfile(data) {
-        profileEl.appendChild(text("p", data.summary));
+    <article class="card card--span-6 card--stub" id="card-sources">
+      <header class="card__header">
+        <h2><i class="fa-solid fa-link" aria-hidden="true"></i> Sources &amp; Citations</h2>
+        <span class="badge badge--soon">coming soon</span>
+      </header>
+      <ul class="sources-list"></ul>
+    </article>
 
-        const highlights = renderSection("Highlights", data.highlights, (h) =>
-          renderItem(h.title, h.description)
-        );
-        if (highlights) profileEl.appendChild(highlights);
+    <article class="card card--span-6 card--stub" id="card-sentiment">
+      <header class="card__header">
+        <h2><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Confidence &amp; Sentiment</h2>
+        <span class="badge badge--soon">coming soon</span>
+      </header>
+      <div class="gauges"></div>
+    </article>
 
-        const lowlights = renderSection("Lowlights", data.lowlights, (l) =>
-          renderItem(l.title, l.description)
-        );
-        if (lowlights) profileEl.appendChild(lowlights);
+    <article class="card card--span-12 card--stub" id="card-mentions">
+      <header class="card__header">
+        <h2><i class="fa-solid fa-tower-broadcast" aria-hidden="true"></i> Recent Mentions</h2>
+        <span class="badge badge--soon">coming soon</span>
+      </header>
+      <ul class="mentions-list"></ul>
+    </article>
+  </section>
+{% endblock %}
 
-        const timeline = renderSection("Timeline", data.timeline, (t) =>
-          renderItem(t.date, t.event)
-        );
-        if (timeline) profileEl.appendChild(timeline);
-      }
-    </script>
-  </body>
-</html>
+{% block scripts %}
+  <script>
+    window.ODIN_QUERY = {{ query | tojson }};
+  </script>
+  <script src="/static/js/profile.js" defer></script>
+{% endblock %}

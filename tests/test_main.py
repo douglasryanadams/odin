@@ -53,11 +53,19 @@ def test_health(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_index_loads(client: TestClient) -> None:
-    """Index page renders the profile search form."""
+def test_index_renders_wordmark_and_form(client: TestClient) -> None:
+    """Index renders the Odin wordmark and search form."""
     response = client.get("/")
     assert response.status_code == 200
-    assert "<form" in response.text
+    assert ">ODIN<" in response.text
+    assert 'id="search-form"' in response.text
+
+
+def test_static_assets_mounted(client: TestClient) -> None:
+    """The /static mount serves the local stylesheet."""
+    response = client.get("/static/css/odin.css")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/css")
 
 
 # ---------------------------------------------------------------------------
@@ -94,11 +102,12 @@ def mock_anthropic() -> Iterator[MagicMock]:
     app.dependency_overrides.pop(get_anthropic_client, None)
 
 
-def test_profile_page_loads(client: TestClient) -> None:
-    """Profile page renders HTML for a given query."""
+def test_profile_page_renders_grid_skeleton(client: TestClient) -> None:
+    """Profile page renders the card grid skeleton and references the static JS."""
     response = client.get("/profile?q=foo")
     assert response.status_code == 200
-    assert "<body>" in response.text
+    assert 'id="card-grid"' in response.text
+    assert "/static/js/profile.js" in response.text
 
 
 @respx.mock

@@ -9,12 +9,18 @@ from typing import Annotated
 from anthropic import AsyncAnthropic
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from odin import log, pipeline
 
 log.setup()
 app = FastAPI()
+app.mount(
+    "/static",
+    StaticFiles(directory=Path(__file__).parent / "static"),
+    name="static",
+)
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 
