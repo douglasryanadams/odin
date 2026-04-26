@@ -4,9 +4,12 @@ import os
 from typing import Annotated
 
 from fastapi import Depends, FastAPI
+from loguru import logger
 
+import log
 import searxng
 
+log.setup()
 app = FastAPI()
 
 
@@ -27,4 +30,7 @@ async def search(
     base_url: Annotated[str, Depends(get_searxng_url)],
 ) -> list[searxng.SearchResult]:
     """Search SearXNG and return results."""
-    return await searxng.search(q, base_url)
+    logger.debug("search request query={!r}", q)
+    results = await searxng.search(q, base_url)
+    logger.debug("search complete query={!r} results={}", q, len(results))
+    return results
