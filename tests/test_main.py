@@ -108,10 +108,11 @@ def test_profile_stream_returns_sse(client: TestClient, mock_anthropic: MagicMoc
     respx.get(f"{MOCK_BASE_URL}/search").mock(
         return_value=httpx.Response(200, json=_MOCK_SEARXNG_RESULTS)
     )
+    respx.get("https://example.com").mock(return_value=httpx.Response(200, text="<p>Content</p>"))
 
     response = client.get("/profile/stream?q=foo")
 
     assert response.status_code == 200
     assert "text/event-stream" in response.headers["content-type"]
-    assert "data:" in response.text
+    assert 'data: {"type": "fetching"' in response.text
     mock_anthropic.messages.create.assert_called()

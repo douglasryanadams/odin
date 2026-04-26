@@ -7,7 +7,7 @@ from typing import Any
 
 from anthropic import AsyncAnthropic
 
-from odin import claude, searxng
+from odin import claude, fetch, searxng
 
 
 @dataclass
@@ -41,6 +41,8 @@ async def build_profile(
     yield StageEvent(stage="searching", data={"result_count": len(unique_results)})
 
     selected_urls = await claude.select_urls(anthropic_client, query, unique_results)
+    yield StageEvent(stage="fetching", data={"url_count": len(selected_urls)})
 
-    profile = await claude.synthesize(anthropic_client, query, category, selected_urls)
+    content = await fetch.fetch_pages(selected_urls)
+    profile = await claude.synthesize(anthropic_client, query, category, content)
     yield StageEvent(stage="profile", data=profile.model_dump())

@@ -11,6 +11,7 @@ class SearchResult(BaseModel):
     url: str
     title: str
     content: str = ""
+    engines: list[str] = []
 
 
 async def search(query: str, base_url: str) -> list[SearchResult]:
