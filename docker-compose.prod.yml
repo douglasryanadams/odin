@@ -4,5 +4,9 @@ services:
     build:
       context: .
       target: production
-    ports:
-      - "8000:8000"
+
+  searxng:
+    restart: always
+
+  searxng-valkey:
+    restart: always

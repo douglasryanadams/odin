@@ -1,0 +1,9 @@
+services:
+  web:
+    image: odin-dev
+    build:
+      context: .
+      target: development
+    volumes:
+      - .:/app
+

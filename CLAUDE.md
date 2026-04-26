@@ -1,10 +1,15 @@
+# IMPORTANT REQUIREMENTS
+
+- Run linters and ensure they pass before considering a task done
+- Run automated tests and ensure they pass before considering a task done
+
 # Expectations
 
 - Define the validation criteria for each goal before pursuing each task
 - Execute that validation criteria before considering the task complete
 - Try to identify the smallest increment of work for each task; prefer iteration over complete solutions
-- After each task that updates our codebase, run all tests and linters to validate correctness of the changes
 - Think through work thoroughly, keep output concise and clear
+- When writing git commits, include a useful subject line that makes the history easy to read
 
 
 # Software Development Philosophical Goals

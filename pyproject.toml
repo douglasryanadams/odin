@@ -15,6 +15,7 @@ dev = [
     "bandit>=1.9.4",
     "detect-secrets>=1.5.0",
     "httpx>=0.28.1",
+    "respx>=0.22.0",
     "pyright>=1.1.409",
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
@@ -47,11 +48,12 @@ typeCheckingMode = "strict"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov --cov-report=term-missing --durations=0"
+addopts = "--cov --cov-report=term-missing --durations=0 -m 'not integration'"
+markers = ["integration: requires a running SearXNG instance"]
 
 [tool.coverage.run]
 source = ["."]
-omit = ["tests/*", "gunicorn.conf.py"]
+omit = ["tests/*", "tests/integration/*", "gunicorn.conf.py"]
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]

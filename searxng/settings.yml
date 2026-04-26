@@ -1,0 +1,14 @@
+use_default_settings: true
+
+server:
+  secret_key: "dev-secret-key-not-for-production"
+  limiter: false
+  image_proxy: true
+
+search:
+  formats:
+    - html
+    - json
+
+redis:
+  url: redis://searxng-valkey:6379/0
