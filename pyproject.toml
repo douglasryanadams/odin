@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "odin"
 version = "0.1.0"
@@ -57,8 +61,8 @@ asyncio_mode = "auto"
 markers = ["integration: requires a running SearXNG instance"]
 
 [tool.coverage.run]
-source = ["."]
-omit = ["tests/*", "tests/integration/*", "gunicorn.conf.py"]
+source = ["src/odin"]
+omit = []
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]

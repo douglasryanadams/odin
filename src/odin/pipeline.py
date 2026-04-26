@@ -7,8 +7,7 @@ from typing import Any
 
 from anthropic import AsyncAnthropic
 
-import claude
-import searxng
+from odin import claude, searxng
 
 
 @dataclass

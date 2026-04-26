@@ -8,7 +8,7 @@ import pytest
 import respx
 from fastapi.testclient import TestClient
 
-from main import app, get_anthropic_client, get_searxng_url
+from odin.main import app, get_anthropic_client, get_searxng_url
 
 MOCK_BASE_URL = "http://test-searxng:8080"
 MOCK_RESULTS = {

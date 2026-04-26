@@ -26,3 +26,6 @@ htmlcov/
 
 # ENV Vars
 .env
+
+# IDEA IDEs
+.idea/

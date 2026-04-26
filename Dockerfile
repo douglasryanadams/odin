@@ -8,19 +8,18 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
-COPY pyproject.toml uv.lock ./
-
+COPY pyproject.toml uv.lock README.md ./
 
 FROM base AS production
 
-RUN uv sync --frozen --no-dev
+COPY gunicorn.conf.py ./
+COPY src/ src/
 
-COPY claude.py gunicorn.conf.py log.py main.py models.py pipeline.py searxng.py ./
-COPY templates/ templates/
+RUN uv sync --frozen --no-dev
 
 EXPOSE 8000
 
-CMD ["gunicorn", "-c", "gunicorn.conf.py", "main:app"]
+CMD ["gunicorn", "-c", "gunicorn.conf.py", "odin.main:app"]
 
 
 FROM production AS development
@@ -32,4 +31,4 @@ RUN uv sync --frozen
 
 COPY . .
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "odin.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

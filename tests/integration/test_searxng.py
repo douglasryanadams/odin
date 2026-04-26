@@ -9,7 +9,7 @@ from collections.abc import Iterator
 import pytest
 from fastapi.testclient import TestClient
 
-from main import app, get_searxng_url
+from odin.main import app, get_searxng_url
 
 SEARXNG_URL = "http://searxng:8080"
 

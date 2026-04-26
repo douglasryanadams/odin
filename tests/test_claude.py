@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import claude
-from models import Profile
-from searxng import SearchResult
+from odin import claude
+from odin.models import Profile
+from odin.searxng import SearchResult
 
 
 def _tool_block(name: str, input_data: Mapping[str, object]) -> MagicMock:

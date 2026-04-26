@@ -5,8 +5,8 @@ from typing import Any, cast
 import httpx
 from anthropic import AsyncAnthropic
 
-from models import Category, Profile
-from searxng import SearchResult
+from odin.models import Category, Profile
+from odin.searxng import SearchResult
 
 _HAIKU = "claude-haiku-4-5-20251001"
 _SONNET = "claude-sonnet-4-6"

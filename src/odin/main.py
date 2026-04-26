@@ -3,6 +3,7 @@
 import json
 import os
 from collections.abc import AsyncGenerator
+from pathlib import Path
 from typing import Annotated
 
 from anthropic import AsyncAnthropic
@@ -11,13 +12,11 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
-import log
-import pipeline
-import searxng
+from odin import log, pipeline, searxng
 
 log.setup()
 app = FastAPI()
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 
 def get_searxng_url() -> str:

@@ -13,8 +13,8 @@ lint: format
 	docker-compose run --rm web uv run ruff check .
 	docker-compose run --rm web uv run ruff format --check .
 	docker-compose run --rm web uv run pyright
-	docker-compose run --rm web uv run xenon --max-absolute B --max-modules A --max-average A .
-	docker-compose run --rm web uv run bandit -r . -c pyproject.toml
+	docker-compose run --rm web uv run xenon --max-absolute B --max-modules A --max-average A src/
+	docker-compose run --rm web uv run bandit -r src/ -c pyproject.toml
 	docker-compose run --rm web uv run detect-secrets scan --baseline .secrets.baseline
 
 metrics:

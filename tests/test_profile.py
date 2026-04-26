@@ -7,7 +7,7 @@ import httpx
 import pytest
 import respx
 
-import pipeline as pipeline_module
+from odin import pipeline as pipeline_module
 
 _SEARXNG_BASE = "http://searxng:8080"
 _SEARXNG_RESULTS = {
