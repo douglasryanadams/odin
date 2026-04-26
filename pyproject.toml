@@ -1,0 +1,59 @@
+[project]
+name = "odin"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.136.1",
+    "gunicorn>=25.3.0",
+    "uvicorn[standard]>=0.46.0",
+]
+
+[dependency-groups]
+dev = [
+    "bandit>=1.9.4",
+    "detect-secrets>=1.5.0",
+    "httpx>=0.28.1",
+    "pyright>=1.1.409",
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
+    "radon>=6.0.1",
+    "ruff>=0.15.12",
+    "xenon>=0.9.3",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "COM812",  # conflicts with ruff formatter
+    "ISC001",  # conflicts with ruff formatter
+    "D203",    # conflicts with D211
+    "D213",    # conflicts with D212
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 8
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "PLR2004"]  # assert and magic values are idiomatic in tests
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov --cov-report=term-missing --durations=0"
+
+[tool.coverage.run]
+source = ["."]
+omit = ["tests/*", "gunicorn.conf.py"]
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]
+severity = "low"
+confidence = "low"

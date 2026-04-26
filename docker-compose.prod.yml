@@ -1,0 +1,8 @@
+services:
+  web:
+    image: odin-prod
+    build:
+      context: .
+      target: production
+    ports:
+      - "8000:8000"
