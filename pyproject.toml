@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "anthropic>=0.52.0",
     "fastapi>=0.136.1",
     "gunicorn>=25.3.0",
     "httpx>=0.28.1",
@@ -20,6 +21,7 @@ dev = [
     "respx>=0.22.0",
     "pyright>=1.1.409",
     "pytest>=9.0.3",
+    "pytest-asyncio>=0.26.0",
     "pytest-cov>=7.1.0",
     "radon>=6.0.1",
     "ruff>=0.15.12",
@@ -51,6 +53,7 @@ typeCheckingMode = "strict"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov --cov-report=term-missing --durations=0 -m 'not integration'"
+asyncio_mode = "auto"
 markers = ["integration: requires a running SearXNG instance"]
 
 [tool.coverage.run]

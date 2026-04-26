@@ -4,6 +4,7 @@ services:
       - "8000:8000"
     environment:
       - LOG_LEVEL=DEBUG
+      - ANTHROPIC_API_KEY
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 5s

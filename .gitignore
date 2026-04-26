@@ -23,3 +23,6 @@ htmlcov/
 
 # macOS
 .DS_Store
+
+# ENV Vars
+.env

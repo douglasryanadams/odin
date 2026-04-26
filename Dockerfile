@@ -15,7 +15,7 @@ FROM base AS production
 
 RUN uv sync --frozen --no-dev
 
-COPY gunicorn.conf.py log.py main.py searxng.py ./
+COPY claude.py gunicorn.conf.py log.py main.py models.py pipeline.py searxng.py ./
 COPY templates/ templates/
 
 EXPOSE 8000

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ query }} — Odin</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"
+    />
+  </head>
+  <body>
+    <main class="container">
+      <nav>
+        <ul>
+          <li><a href="/">← Search</a></li>
+        </ul>
+      </nav>
+      <h1>{{ query }}</h1>
+      <p id="status" aria-busy="true">Researching…</p>
+      <div id="profile"></div>
+    </main>
+
+    <script>
+      const query = {{ query | tojson }};
+      const statusEl = document.getElementById("status");
+      const profileEl = document.getElementById("profile");
+
+      const es = new EventSource("/profile/stream?q=" + encodeURIComponent(query));
+
+      es.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+
+        if (data.type === "categorized") {
+          statusEl.textContent = "Category: " + data.category;
+        } else if (data.type === "queries") {
+          statusEl.textContent = "Searching with " + data.queries.length + " queries…";
+        } else if (data.type === "searching") {
+          statusEl.textContent = "Analysing " + data.result_count + " results…";
+        } else if (data.type === "profile") {
+          renderProfile(data);
+          statusEl.hidden = true;
+        } else if (data.type === "done") {
+          es.close();
+        }
+      };
+
+      es.onerror = () => {
+        statusEl.removeAttribute("aria-busy");
+        statusEl.textContent = "Something went wrong. Please try again.";
+        es.close();
+      };
+
+      function text(tag, content) {
+        const el = document.createElement(tag);
+        el.textContent = content;
+        return el;
+      }
+
+      function renderItem(title, description) {
+        const li = document.createElement("li");
+        li.appendChild(text("strong", title));
+        li.appendChild(document.createTextNode(" — " + description));
+        return li;
+      }
+
+      function renderSection(heading, items, itemFn) {
+        if (!items.length) return null;
+        const section = document.createElement("section");
+        section.appendChild(text("h2", heading));
+        const ul = document.createElement("ul");
+        items.forEach((item) => ul.appendChild(itemFn(item)));
+        section.appendChild(ul);
+        return section;
+      }
+
+      function renderProfile(data) {
+        profileEl.appendChild(text("p", data.summary));
+
+        const highlights = renderSection("Highlights", data.highlights, (h) =>
+          renderItem(h.title, h.description)
+        );
+        if (highlights) profileEl.appendChild(highlights);
+
+        const lowlights = renderSection("Lowlights", data.lowlights, (l) =>
+          renderItem(l.title, l.description)
+        );
+        if (lowlights) profileEl.appendChild(lowlights);
+
+        const timeline = renderSection("Timeline", data.timeline, (t) =>
+          renderItem(t.date, t.event)
+        );
+        if (timeline) profileEl.appendChild(timeline);
+      }
+    </script>
+  </body>
+</html>

@@ -1,8 +1,8 @@
 # IMPORTANT REQUIREMENTS
 
 - Before you make a change to the code, write a test for the change you plan. Confirm this test with me before implementing the feature.
-- Run linters and ensure they pass before considering a task done
-- Run automated tests and ensure they pass before considering a task done
+- Run linters using `make lint` and ensure they pass before considering a task done
+- Run automated tests using `make test` and ensure they pass before considering a task done
 
 # Expectations
 
@@ -20,6 +20,7 @@
 - Prefer functional programming to object oriented programming 
 - Prioritize readibility over performance
 - Prioritize clarity of code over commented code
+- Only mock 3rd party dependencies, not our own code; it's okay for unit tests to depend on our own dependencies
 - Review computational and memory complexity when designing solutions
 - Adhere to SOLID principles:
     - Single responsibility
