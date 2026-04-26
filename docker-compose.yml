@@ -21,7 +21,7 @@ services:
     depends_on:
       - searxng-valkey
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/"]
+      test: ["CMD", "wget", "--header=X-Forwarded-For:127.0.0.1", "-q", "--spider", "http://localhost:8080/"]
       interval: 5s
       timeout: 5s
       retries: 12

@@ -1,10 +1,9 @@
 use_default_settings:
   engines:
-    keep_only:
-      - duckduckgo
-      - bing
-      - google
-      - wikipedia
+    remove:
+      - ahmia
+      - torch
+      - wikidata
 
 server:
   secret_key: "dev-secret-key-not-for-production"
@@ -15,6 +14,45 @@ search:
   formats:
     - html
     - json
+  ban_time_on_fail: 10
+  max_ban_time_on_fail: 600
 
-redis:
+outgoing:
+  request_timeout: 6.0
+  max_request_timeout: 30.0
+  pool_connections: 100
+  pool_maxsize: 20
+  enable_http2: true
+  retries: 1
+  # Uncomment source_ips if your host has multiple IPs (e.g., IPv4 + IPv6).
+  # SearXNG rotates outbound requests across these addresses, reducing per-IP request rates:
+  # source_ips:
+  #   - 0.0.0.0
+  #   - "::"
+  #
+  # For a proxy pool, add:
+  # proxies:
+  #   all://:
+  #     - http://proxy1:port
+  #     - http://proxy2:port
+  # extra_proxy_timeout: 10.0
+
+engines:
+  - name: brave
+    engine: brave
+    disabled: false
+
+  - name: startpage
+    engine: startpage
+    disabled: false
+
+  - name: qwant
+    engine: qwant
+    disabled: false
+
+  - name: mojeek
+    engine: mojeek
+    disabled: false
+
+valkey:
   url: redis://searxng-valkey:6379/0

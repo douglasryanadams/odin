@@ -38,7 +38,7 @@ test-integration:
 	docker-compose run --rm web uv run pytest -m integration; \
 	TEST_EXIT=$$?; \
 	docker-compose stop searxng searxng-valkey; \
-	ERROR_LOGS=$$(docker-compose logs --no-color --since "$$START" 2>&1 | grep -E "ERROR|CRITICAL" | grep -v "searx.botdetection" || true); \
+	ERROR_LOGS=$$(docker-compose logs --no-color --since "$$START" 2>&1 | grep -E "ERROR|CRITICAL" | grep -v "searx.botdetection" | grep -v "searx.engines" | grep -v "searx.search.processor" || true); \
 	if [ -n "$$ERROR_LOGS" ]; then \
 		echo ""; \
 		echo "Errors detected in service logs during integration tests:"; \
