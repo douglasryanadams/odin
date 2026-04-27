@@ -58,9 +58,9 @@ The browser consumes the SSE stream and renders each card progressively.
 |---|---|
 | `make dev` | Start the development server with hot reload. |
 | `make prod` | Start a production-like server using gunicorn. |
-| `make format` | Apply ruff formatting. |
-| `make lint` | Format then run the full linting suite. |
-| `make test` | Run unit, smoke, and integration tests with coverage. |
+| `make format` | Apply ruff and djlint formatting. |
+| `make lint` | Format then run the full linting suite (Python + frontend). |
+| `make test` | Run unit (pytest + vitest), smoke, and integration tests with coverage. |
 | `make metrics` | Print lines-of-code statistics (informational). |
 
 All commands run inside Docker. See [`docs/configuration.md`](./docs/configuration.md) for what each linter and test target enforces.
@@ -85,7 +85,9 @@ All commands run inside Docker. See [`docs/configuration.md`](./docs/configurati
 | Front-end | Vanilla CSS + JS · Jinja2 · EventSource — Orbitron / Inter / JetBrains Mono |
 | Search | SearXNG · Valkey |
 | Models | Anthropic Claude — Haiku 4.5 · Sonnet 4.6 |
-| Container | Multi-stage Dockerfile · docker-compose |
+| Container | Multi-stage Dockerfile · docker-compose (Node sidecar for JS/CSS tooling) |
+| Python QA | ruff · pyright · xenon · bandit · detect-secrets · djlint · pytest |
+| JS / CSS QA | eslint · stylelint · vitest (happy-dom) |
 
 ---
 

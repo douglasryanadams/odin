@@ -6,7 +6,7 @@ The repo-root [`README.md`](../README.md) summarizes Make commands and env vars.
 
 - **Python:** `>= 3.12`. Built with `hatchling`.
 - **Runtime deps:** `anthropic`, `fastapi`, `gunicorn`, `httpx`, `jinja2`, `loguru`, `trafilatura`, `uvicorn[standard]`.
-- **Dev deps:** `bandit`, `detect-secrets`, `respx`, `pyright`, `pytest` (`-asyncio`, `-cov`), `radon`, `ruff`, `xenon`.
+- **Dev deps:** `bandit`, `detect-secrets`, `djlint`, `respx`, `pyright`, `pytest` (`-asyncio`, `-cov`), `radon`, `ruff`, `xenon`.
 
 | Tool | Configured to enforce |
 |---|---|
@@ -16,7 +16,21 @@ The repo-root [`README.md`](../README.md) summarizes Make commands and env vars.
 | `xenon` | Cyclomatic complexity: absolute ≤ B, per-module avg ≤ A, project avg ≤ A. |
 | `bandit` | Scans `src/`. Severity and confidence both `low`. Excludes `tests/`, `.venv/`. |
 | `detect-secrets` | Scans against `.secrets.baseline`. New unflagged secrets fail. |
+| `djlint` | Jinja profile, 2-space indent, 100-char lines. Lints + reformats `src/odin/templates/`. |
 | `pytest` | Coverage on `src/odin`. `--durations=0`. Default filter `-m 'not integration'`. `asyncio_mode = "auto"`. |
+
+## Frontend tooling (Node sidecar)
+
+Eslint, stylelint, and vitest run inside a `node:20-slim` container that lives in the `tools` Docker Compose profile, so the default `make dev` never starts it. `package.json` and `package-lock.json` are committed for reproducible `npm ci` installs; the `node_modules` Make target is a sentinel that re-runs `npm ci` only when `package.json` / `package-lock.json` change.
+
+| File | Purpose |
+|---|---|
+| `package.json` | Pins eslint, stylelint, stylelint-config-standard, vitest, happy-dom, globals. |
+| `package-lock.json` | Locked install graph for `npm ci`. |
+| `eslint.config.js` | Flat config. Targets `src/odin/static/js/**/*.js` as `script` source type with browser globals + `ODIN_QUERY` readonly; `no-undef` error, `no-unused-vars` warn. |
+| `.stylelintrc.json` | Extends `stylelint-config-standard`. BEM-friendly `selector-class-pattern` (`block`, `block__element`, `block--modifier`). Disables a handful of opinionated rules (color/alpha notation, vendor prefixes, media-feature range, shorthand reductions, value keyword case) to match existing CSS. |
+| `vitest.config.js` | `happy-dom` environment; collects `tests/js/**/*.test.js`. |
+| `tests/js/loadProfile.js` | Test harness that reads `profile.js` and runs it inside a `node:vm` context whose globals come from happy-dom — lets the script-global file expose helpers to tests without an `export` keyword. |
 
 ## `Makefile`
 
@@ -26,11 +40,14 @@ Every target runs through `docker-compose` — host needs only Docker + `make`.
 |---|---|
 | `make dev` | `docker-compose up --build` (override applies; uvicorn `--reload`). |
 | `make prod` | Adds `docker-compose.prod.yml`; gunicorn. |
-| `make format` | `ruff format .`. |
-| `make lint` | `format`, then `ruff check`, `ruff format --check`, `pyright`, `xenon`, `bandit`, `detect-secrets scan`. |
+| `make format` | `ruff format .` plus `djlint --reformat` on the templates. |
+| `make lint` | `format`, `lint-frontend`, then `ruff check`, `ruff format --check`, `pyright`, `xenon`, `bandit`, `detect-secrets scan`. |
+| `make lint-frontend` | Depends on `node_modules`. Runs `djlint --check` on templates, `stylelint` on CSS, and `eslint` on JS. |
+| `make node_modules` | Sentinel target; runs `npm ci` in the `node` sidecar when `package.json` / `package-lock.json` change. |
 | `make metrics` | `radon raw -s .` (informational). |
 | `make test` | `test-unit` → `test-smoke` → `test-integration`. |
-| `make test-unit` | `pytest` with the default `not integration` filter. |
+| `make test-unit` | `pytest` (with the default `not integration` filter), then `make test-js`. |
+| `make test-js` | `npx vitest run` in the `node` sidecar; covers `profile.js` helpers. |
 | `make test-smoke` | Builds the prod image; passes if its `/health` healthcheck reaches healthy. |
 | `make test-integration` | Brings up `searxng` + `searxng-valkey`, runs `pytest -m integration`, then fails the run if service logs contain `ERROR` / `CRITICAL` (a few SearXNG-internal lines are filtered out). |
 
@@ -44,7 +61,7 @@ One multi-stage Dockerfile; two images (`odin-prod`, `odin-dev`).
 
 ## Compose
 
-- **`docker-compose.yml`** — `web` (`8000:8000`, `LOG_LEVEL=DEBUG`, `ANTHROPIC_API_KEY` passthrough, `/health` healthcheck), `searxng` (`8080:8080`, mounts `./searxng/`), `searxng-valkey` (named volume).
+- **`docker-compose.yml`** — `web` (`8000:8000`, `LOG_LEVEL=DEBUG`, `ANTHROPIC_API_KEY` passthrough, `/health` healthcheck), `searxng` (`8080:8080`, mounts `./searxng/`), `searxng-valkey` (named volume), `node` (`node:20-slim`, mounts `.:/workspace`, gated by the `tools` profile so it stays out of `make dev`).
 - **`docker-compose.override.yml`** — auto-applied. Uses `odin-dev`, builds `development`, bind-mounts `.:/app`.
 - **`docker-compose.prod.yml`** — opt-in via `-f`. Uses `odin-prod`, builds `production`, `restart: always` on the SearXNG services.
 

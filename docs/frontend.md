@@ -1,6 +1,6 @@
 # Frontend
 
-Three Jinja2 templates, one CSS file, one JavaScript file, no build step. Served by FastAPI directly from `src/odin/`.
+Three Jinja2 templates, one CSS file, one JavaScript file, no build step. Served by FastAPI directly from `src/odin/`. Style rules for JS / CSS / Jinja live in [`coding-standards.md`](./coding-standards.md); tooling configuration lives in [`configuration.md`](./configuration.md).
 
 ## Files
 
@@ -41,3 +41,16 @@ Vanilla CSS with custom properties; no framework, no preprocessor.
 - **Vanilla over framework.** ~250 lines of JS doesn't need React. Build pipeline = "copy the file."
 - **Untrusted by default.** AI output reaches the DOM only through `textContent`.
 - **Progressive rendering.** Stages light up as the pipeline progresses; the page is never blank.
+
+## Linting and tests
+
+All four front-end gates run via `make lint` / `make test` inside Docker:
+
+| Tool | Scope | Config |
+|---|---|---|
+| `djlint` | `src/odin/templates/` | `[tool.djlint]` in `pyproject.toml` (jinja profile, 2-space indent, 100-char lines). |
+| `stylelint` | `src/odin/static/css/**/*.css` | `.stylelintrc.json` — `stylelint-config-standard` plus a BEM `selector-class-pattern`. |
+| `eslint` | `src/odin/static/js/**/*.js` | `eslint.config.js` — flat config, browser globals, `ODIN_QUERY` readonly, `no-undef` error. |
+| `vitest` | `tests/js/**/*.test.js` (happy-dom env) | `vitest.config.js`. Helpers reach the test scope via `tests/js/loadProfile.js`, which runs `profile.js` in a `node:vm` context. |
+
+`stylelint`, `eslint`, and `vitest` run in the `node:20-slim` sidecar (compose `tools` profile). `djlint` runs in the existing `web` container alongside ruff. The `node_modules` Make target is a sentinel that re-runs `npm ci` only when `package.json` / `package-lock.json` change.

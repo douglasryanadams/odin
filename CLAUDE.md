@@ -9,7 +9,8 @@
 - Define the validation criteria for each goal before pursuing each task, and execute that criteria before considering it complete.
 - Identify the smallest increment of work; prefer iteration over complete solutions.
 - Think through work thoroughly, keep output concise and clear.
-- When writing git commits, include a useful subject line that makes the history easy to read.
+- When writing git commits, include a useful subject line that makes the history easy to read, do NOT use dashes to create lines around the commit messages
+- When we add new components, dependencies, or tools to the project, review existing documentation and make updates if necessary, when unsure about what to add: ask
 
 # Coding standards & project orientation
 
