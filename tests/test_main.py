@@ -1,5 +1,6 @@
 """Tests for the main application routes."""
 
+import json
 from collections.abc import Iterator, Mapping
 from unittest.mock import AsyncMock, MagicMock
 
@@ -79,6 +80,7 @@ _MOCK_PROFILE_INPUT: Mapping[str, object] = {
     "highlights": [],
     "lowlights": [],
     "timeline": [],
+    "citations": ["https://example.com"],
 }
 
 
@@ -110,6 +112,11 @@ def test_profile_page_renders_grid_skeleton(client: TestClient) -> None:
     assert "/static/js/profile.js" in response.text
 
 
+def _parse_sse_events(body: str) -> list[dict[str, object]]:
+    """Parse the body of an SSE response into a list of decoded JSON events."""
+    return [json.loads(line[5:]) for line in body.splitlines() if line.startswith("data:")]
+
+
 @respx.mock
 def test_profile_stream_returns_sse(client: TestClient, mock_anthropic: MagicMock) -> None:
     """Profile stream returns text/event-stream with SSE data lines covering all stages."""
@@ -125,3 +132,82 @@ def test_profile_stream_returns_sse(client: TestClient, mock_anthropic: MagicMoc
     assert "text/event-stream" in response.headers["content-type"]
     assert 'data: {"type": "fetching"' in response.text
     mock_anthropic.messages.create.assert_called()
+
+    events = _parse_sse_events(response.text)
+    profile_event = next(e for e in events if e["type"] == "profile")
+    assert profile_event["citations"] == [
+        {"url": "https://example.com", "title": "Example", "snippet": "Example content"},
+    ]
+
+
+@respx.mock
+def test_profile_stream_citations_only_include_urls_synthesizer_cited(
+    client: TestClient, mock_anthropic: MagicMock
+) -> None:
+    """Citations come from synthesizer output, not the broader pool of fetched URLs."""
+    searxng_results = {
+        "results": [
+            {"url": "https://a.example", "title": "A", "content": "A snippet"},
+            {"url": "https://b.example", "title": "B", "content": "B snippet"},
+            {"url": "https://c.example", "title": "C", "content": "C snippet"},
+        ]
+    }
+    profile_input = {
+        **_MOCK_PROFILE_INPUT,
+        "citations": ["https://b.example", "https://a.example"],
+    }
+    mock_anthropic.messages.create.side_effect = [
+        api_response([tool_block("categorize_result", {"category": "other"})]),
+        api_response([tool_block("generate_queries_result", {"queries": ["q1"]})]),
+        api_response(
+            [
+                tool_block(
+                    "select_urls_result",
+                    {"urls": ["https://a.example", "https://b.example", "https://c.example"]},
+                )
+            ]
+        ),
+        api_response([tool_block("create_profile", profile_input)]),
+    ]
+    respx.get(f"{MOCK_BASE_URL}/search").mock(
+        return_value=httpx.Response(200, json=searxng_results)
+    )
+    respx.get("https://a.example").mock(return_value=httpx.Response(200, text="<p>A</p>"))
+    respx.get("https://b.example").mock(return_value=httpx.Response(200, text="<p>B</p>"))
+    respx.get("https://c.example").mock(return_value=httpx.Response(200, text="<p>C</p>"))
+
+    response = client.get("/profile/stream?q=foo")
+
+    profile_event = next(e for e in _parse_sse_events(response.text) if e["type"] == "profile")
+    assert profile_event["citations"] == [
+        {"url": "https://b.example", "title": "B", "snippet": "B snippet"},
+        {"url": "https://a.example", "title": "A", "snippet": "A snippet"},
+    ]
+
+
+@respx.mock
+def test_profile_stream_omits_citations_for_urls_not_in_search_results(
+    client: TestClient, mock_anthropic: MagicMock
+) -> None:
+    """A URL the synthesizer cites that's missing from search results is silently dropped."""
+    profile_input = {
+        **_MOCK_PROFILE_INPUT,
+        "citations": ["https://example.com", "https://hallucinated.example/"],
+    }
+    mock_anthropic.messages.create.side_effect = [
+        api_response([tool_block("categorize_result", {"category": "other"})]),
+        api_response([tool_block("generate_queries_result", {"queries": ["q1"]})]),
+        api_response([tool_block("select_urls_result", {"urls": ["https://example.com"]})]),
+        api_response([tool_block("create_profile", profile_input)]),
+    ]
+    respx.get(f"{MOCK_BASE_URL}/search").mock(
+        return_value=httpx.Response(200, json=_MOCK_SEARXNG_RESULTS)
+    )
+    respx.get("https://example.com").mock(return_value=httpx.Response(200, text="<p>C</p>"))
+
+    response = client.get("/profile/stream?q=foo")
+
+    profile_event = next(e for e in _parse_sse_events(response.text) if e["type"] == "profile")
+    assert profile_event["citations"] == [
+        {"url": "https://example.com", "title": "Example", "snippet": "Example content"},
+    ]

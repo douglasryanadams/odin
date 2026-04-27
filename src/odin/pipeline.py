@@ -60,6 +60,6 @@ async def build_profile(
 
     content = await fetch.fetch_pages(selected_urls)
     logger.debug("pages fetched count={}", len(content))
-    profile = await claude.synthesize(anthropic_client, query, category, content)
-    logger.debug("profile synthesized name={!r}", profile.name)
+    profile = await claude.synthesize(anthropic_client, query, category, content, unique_results)
+    logger.debug("profile synthesized name={!r} citations={}", profile.name, len(profile.citations))
     yield StageEvent(stage="profile", data=profile.model_dump())

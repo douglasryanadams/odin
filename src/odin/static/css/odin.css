@@ -834,24 +834,12 @@ p {
   color: var(--text);
 }
 
-@media (min-width: 720px) {
-  .timeline__date {
-    grid-column: 1 / 2;
-  }
-  .timeline__event {
-    grid-column: 2 / 3;
-  }
-  .timeline__item {
-    grid-template-columns: 110px 1fr;
-  }
-}
-
 .timeline__empty {
   font-size: 0.875rem;
   font-style: italic;
 }
 
-/* ----- Sources list (stub) ------------------------------------------- */
+/* ----- Sources list -------------------------------------------------- */
 
 .sources-list {
   list-style: none;
@@ -863,14 +851,26 @@ p {
 }
 
 .source-item {
-  display: grid;
-  grid-template-columns: 32px 1fr auto;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-3);
   background: var(--surface-2);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
+}
+
+.source-item__link {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  align-items: start;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  text-decoration: none;
+  color: inherit;
+  border-radius: var(--radius-sm);
+}
+
+.source-item__link:hover,
+.source-item__link:focus-visible {
+  background: rgba(74, 240, 255, 0.06);
+  outline: none;
 }
 
 .source-item__favicon {
@@ -890,7 +890,7 @@ p {
 .source-item__body {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -900,18 +900,21 @@ p {
   word-break: break-all;
 }
 
+.source-item__title {
+  font-size: 0.9375rem;
+  color: var(--text);
+  line-height: 1.3;
+}
+
 .source-item__snippet {
   font-size: 0.875rem;
   line-height: 1.45;
+  margin: 0;
 }
 
-.source-item__confidence {
-  font-size: 0.8125rem;
-  padding: 2px var(--sp-2);
-  border-radius: 999px;
-  border: 1px solid rgba(74, 240, 255, 0.35);
-  color: var(--accent);
-  background: rgba(74, 240, 255, 0.08);
+.source-item__empty {
+  padding: var(--sp-3);
+  font-size: 0.875rem;
 }
 
 /* ----- Gauges (stub) ------------------------------------------------- */

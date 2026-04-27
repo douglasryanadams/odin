@@ -18,6 +18,7 @@ The rubric for *how* we write code in this repo. The hard process requirements (
 - Prioritize clarity over comments.
 - Only mock third-party dependencies — not our own code.
 - Review computational and memory complexity at design time.
+- Only rely on Pydantic models for HTTP interfaces, use `dataclass` with `frozen=True` for other cases
 
 ## SOLID
 

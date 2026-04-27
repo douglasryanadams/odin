@@ -23,6 +23,7 @@ _MOCK_PROFILE_DATA: Mapping[str, object] = {
     "highlights": [],
     "lowlights": [],
     "timeline": [],
+    "citations": ["https://python.org"],
 }
 
 
@@ -86,3 +87,22 @@ def test_profile_stream_searching_stage_has_results(
     ]
     searching = next(e for e in events if e["type"] == "searching")
     assert searching["result_count"] > 0
+
+
+@pytest.mark.integration
+def test_profile_stream_includes_citations(client: TestClient, mock_anthropic: MagicMock) -> None:
+    """The profile event carries a citations list with url/title/snippet entries."""
+    mock_anthropic.messages.create.side_effect = _pipeline_responses(["python language"])
+
+    response = client.get("/profile/stream?q=python")
+
+    events = [
+        json.loads(line[5:]) for line in response.text.splitlines() if line.startswith("data:")
+    ]
+    profile_event = next(e for e in events if e["type"] == "profile")
+    assert isinstance(profile_event["citations"], list)
+    for citation in profile_event["citations"]:
+        assert isinstance(citation["url"], str)
+        assert citation["url"]
+        assert isinstance(citation["title"], str)
+        assert isinstance(citation["snippet"], str)

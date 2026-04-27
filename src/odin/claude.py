@@ -1,12 +1,40 @@
 """Claude API client functions for the profile pipeline."""
 
-from typing import Any, cast
+from dataclasses import dataclass
+from typing import Any
 
 from anthropic import AsyncAnthropic
 from loguru import logger
 
-from odin.models import Category, Profile
+from odin.models import Category, Citation, Profile, ProfileHighlight, TimelineEntry
 from odin.searxng import SearchResult
+
+
+@dataclass(frozen=True)
+class _CategorizeOutput:
+    category: Category
+
+
+@dataclass(frozen=True)
+class _GenerateQueriesOutput:
+    queries: list[str]
+
+
+@dataclass(frozen=True)
+class _SelectUrlsOutput:
+    urls: list[str]
+
+
+@dataclass(frozen=True)
+class _SynthesizeOutput:
+    name: str
+    category: Category
+    summary: str
+    highlights: list[ProfileHighlight]
+    lowlights: list[ProfileHighlight]
+    timeline: list[TimelineEntry]
+    citations: list[str]
+
 
 _HAIKU = "claude-haiku-4-5-20251001"
 _SONNET = "claude-sonnet-4-6"
@@ -47,6 +75,8 @@ _SYNTHESIZE_SYSTEM = (
     "- 3-5 highlights (notable achievements, positive aspects, key facts)\n"
     "- 0-3 lowlights (controversies, failures, criticisms — only if well-documented)\n"
     "- A chronological timeline of key events\n"
+    "- citations: the URLs of source pages whose content materially informed the profile.\n"
+    "  Only list URLs you actually drew from; skip sources you ignored.\n"
     "Be factual and cite specific details from the provided content.\n"
     "Respond using the create_profile tool."
 )
@@ -142,8 +172,23 @@ _CREATE_PROFILE_TOOL: dict[str, Any] = {
                     "required": ["date", "event"],
                 },
             },
+            "citations": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "URLs of source pages whose content materially informed this profile."
+                ),
+            },
         },
-        "required": ["name", "category", "summary", "highlights", "lowlights", "timeline"],
+        "required": [
+            "name",
+            "category",
+            "summary",
+            "highlights",
+            "lowlights",
+            "timeline",
+            "citations",
+        ],
     },
 }
 
@@ -170,7 +215,7 @@ async def categorize(client: AsyncAnthropic, query: str) -> Category:
     if block is None:
         msg = "categorize: no tool_use block in response"
         raise RuntimeError(msg)
-    return cast("Category", block.input["category"])
+    return _CategorizeOutput(**block.input).category
 
 
 async def generate_queries(client: AsyncAnthropic, query: str, category: Category) -> list[str]:
@@ -188,7 +233,7 @@ async def generate_queries(client: AsyncAnthropic, query: str, category: Categor
     if block is None:
         msg = "generate_queries: no tool_use block in response"
         raise RuntimeError(msg)
-    return cast("list[str]", block.input["queries"])
+    return _GenerateQueriesOutput(**block.input).queries
 
 
 def _format_result(r: SearchResult) -> str:
@@ -225,7 +270,7 @@ async def select_urls(
     if block is None:
         msg = "select_urls: no tool_use block in response"
         raise RuntimeError(msg)
-    return cast("list[str]", block.input["urls"])
+    return _SelectUrlsOutput(**block.input).urls
 
 
 async def synthesize(
@@ -233,6 +278,7 @@ async def synthesize(
     query: str,
     category: Category,
     content: dict[str, str],
+    sources: list[SearchResult],
 ) -> Profile:
     """Synthesize a structured profile from pre-fetched page content."""
     logger.debug("synthesize query={!r} category={} sources={}", query, category, len(content))
@@ -256,4 +302,19 @@ async def synthesize(
     if block is None:
         msg = "synthesize: no create_profile tool block in response"
         raise RuntimeError(msg)
-    return Profile(**block.input)
+    parsed = _SynthesizeOutput(**block.input)
+    lookup = {s.url: s for s in sources}
+    citations = [
+        Citation(url=lookup[u].url, title=lookup[u].title, snippet=lookup[u].content)
+        for u in parsed.citations
+        if u in lookup
+    ]
+    return Profile(
+        name=parsed.name,
+        category=parsed.category,
+        summary=parsed.summary,
+        highlights=parsed.highlights,
+        lowlights=parsed.lowlights,
+        timeline=parsed.timeline,
+        citations=citations,
+    )

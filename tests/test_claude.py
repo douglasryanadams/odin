@@ -16,6 +16,7 @@ _PROFILE_DATA = {
     "highlights": [{"title": "Nobel Prize", "description": "Won twice."}],
     "lowlights": [],
     "timeline": [{"date": "1903", "event": "First Nobel Prize in Physics"}],
+    "citations": ["https://example.com"],
 }
 
 
@@ -37,8 +38,12 @@ async def test_synthesize_makes_single_call_with_content(mock_client: MagicMock)
         "https://example.com": "Marie Curie was a physicist.",
         "https://other.com": "She won two Nobel Prizes.",
     }
+    sources = [
+        SearchResult(url="https://example.com", title="Example", content="snippet"),
+        SearchResult(url="https://other.com", title="Other", content="snippet"),
+    ]
 
-    result = await claude.synthesize(mock_client, "Marie Curie", "person", content)
+    result = await claude.synthesize(mock_client, "Marie Curie", "person", content, sources)
 
     assert isinstance(result, Profile)
     assert result.name == "Marie Curie"

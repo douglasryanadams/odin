@@ -11,12 +11,6 @@ const CATEGORY_ICONS = {
   other: "fa-circle-nodes",
 };
 
-const STUB_SOURCES = [
-  { domain: "wikipedia.org", snippet: "Encyclopedic biography and career overview.", confidence: 92 },
-  { domain: "britannica.com", snippet: "Curated biographical entry with citations.", confidence: 88 },
-  { domain: "github.com", snippet: "Public repositories and contribution graph.", confidence: 74 },
-];
-
 const STUB_MENTIONS = [
   { time: "2026-04-25 14:02", domain: "techcrunch.com", headline: "Profile cited in announcement coverage." },
   { time: "2026-04-23 09:11", domain: "nytimes.com", headline: "Mentioned in feature piece on the topic." },
@@ -115,6 +109,38 @@ function renderTimeline(listEl, items) {
   });
 }
 
+function domainOf(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+function renderCitations(listEl, items) {
+  listEl.replaceChildren();
+  if (!items || !items.length) {
+    listEl.appendChild(el("li", "source-item__empty muted", listEl.dataset.empty || ""));
+    return;
+  }
+  items.forEach((item) => {
+    const domain = domainOf(item.url);
+    const li = el("li", "source-item");
+    const link = el("a", "source-item__link");
+    link.href = item.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.appendChild(el("span", "source-item__favicon", domain.charAt(0).toUpperCase()));
+    const body = el("div", "source-item__body");
+    body.appendChild(el("span", "source-item__domain mono", domain));
+    body.appendChild(el("strong", "source-item__title", item.title || domain));
+    body.appendChild(el("p", "source-item__snippet muted", item.snippet));
+    link.appendChild(body);
+    li.appendChild(link);
+    listEl.appendChild(li);
+  });
+}
+
 function renderProfile(data) {
   const summary = $("summary");
   if (summary) {
@@ -125,28 +151,14 @@ function renderProfile(data) {
   const hl = document.querySelector("#card-highlights .hl-list");
   const ll = document.querySelector("#card-lowlights .hl-list");
   const tl = document.querySelector("#card-timeline .timeline");
+  const sources = document.querySelector("#card-sources .sources-list");
   if (hl) renderHighlights(hl, data.highlights);
   if (ll) renderHighlights(ll, data.lowlights);
   if (tl) renderTimeline(tl, data.timeline);
+  if (sources) renderCitations(sources, data.citations || []);
   completeProgress();
   const strip = $("progress-strip");
   if (strip) strip.hidden = true;
-}
-
-function renderStubSources() {
-  const list = document.querySelector("#card-sources .sources-list");
-  if (!list) return;
-  list.replaceChildren();
-  STUB_SOURCES.forEach((src) => {
-    const li = el("li", "source-item");
-    li.appendChild(el("span", "source-item__favicon", src.domain.charAt(0).toUpperCase()));
-    const body = el("div", "source-item__body");
-    body.appendChild(el("span", "source-item__domain mono", src.domain));
-    body.appendChild(el("p", "source-item__snippet muted", src.snippet));
-    li.appendChild(body);
-    li.appendChild(el("span", "source-item__confidence mono", `${src.confidence}%`));
-    list.appendChild(li);
-  });
 }
 
 function renderStubGauges() {
@@ -201,7 +213,6 @@ function renderStubMentions() {
 
 function renderStubs() {
   if (!STUB_DATA) return;
-  renderStubSources();
   renderStubGauges();
   renderStubMentions();
 }
