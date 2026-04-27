@@ -31,7 +31,7 @@ A first profile takes ~15–30 seconds end-to-end; SearXNG and Anthropic each do
 
 `/profile/stream` runs an async pipeline and emits SSE progress at each stage:
 
-1. **Categorise** the term (person / place / event / other) — Haiku
+1. **Categorize** the term (person / place / event / other) — Haiku
 2. **Plan queries** — generate 3–5 targeted search queries — Haiku
 3. **Search** SearXNG in parallel and deduplicate — capped at 2 concurrent
 4. **Fetch** the best pages — URL selection by Haiku

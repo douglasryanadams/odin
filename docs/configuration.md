@@ -1,6 +1,6 @@
 # Configuration & Tooling
 
-The repo-root [`README.md`](../README.md) summarises Make commands and env vars. This doc is the contributor view: what each linter enforces and how the build pieces fit.
+The repo-root [`README.md`](../README.md) summarizes Make commands and env vars. This doc is the contributor view: what each linter enforces and how the build pieces fit.
 
 ## `pyproject.toml`
 

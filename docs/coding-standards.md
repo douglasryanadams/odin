@@ -14,8 +14,8 @@ The rubric for *how* we write code in this repo. The hard process requirements (
 - Prefer composition over inheritance.
 - Prefer dependency injection over tight coupling.
 - Prefer functional programming over OOP — plain functions and pydantic/dataclass models beat classes with hidden state.
-- Prioritise readability over performance.
-- Prioritise clarity over comments.
+- Prioritize readability over performance.
+- Prioritize clarity over comments.
 - Only mock third-party dependencies — not our own code.
 - Review computational and memory complexity at design time.
 
