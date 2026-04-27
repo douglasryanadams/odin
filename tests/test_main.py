@@ -83,6 +83,16 @@ _MOCK_PROFILE_INPUT: Mapping[str, object] = {
     "citations": ["https://example.com"],
 }
 
+_MOCK_ASSESSMENT_INPUT: Mapping[str, object] = {
+    "confidence": 0.5,
+    "public_sentiment": 0.0,
+    "subject_political_bias": 0.0,
+    "source_political_bias": 0.0,
+    "law_chaos": 0.0,
+    "good_evil": 0.0,
+    "caveats": ["Limited sources."],
+}
+
 
 def _pipeline_side_effects() -> list[MagicMock]:
     """Return messages.create responses for a minimal end-to-end pipeline run."""
@@ -91,6 +101,7 @@ def _pipeline_side_effects() -> list[MagicMock]:
         api_response([tool_block("generate_queries_result", {"queries": ["q1"]})]),
         api_response([tool_block("select_urls_result", {"urls": ["https://example.com"]})]),
         api_response([tool_block("create_profile", _MOCK_PROFILE_INPUT)]),
+        api_response([tool_block("assess_profile", _MOCK_ASSESSMENT_INPUT)]),
     ]
 
 
@@ -168,6 +179,7 @@ def test_profile_stream_citations_only_include_urls_synthesizer_cited(
             ]
         ),
         api_response([tool_block("create_profile", profile_input)]),
+        api_response([tool_block("assess_profile", _MOCK_ASSESSMENT_INPUT)]),
     ]
     respx.get(f"{MOCK_BASE_URL}/search").mock(
         return_value=httpx.Response(200, json=searxng_results)
@@ -199,6 +211,7 @@ def test_profile_stream_omits_citations_for_urls_not_in_search_results(
         api_response([tool_block("generate_queries_result", {"queries": ["q1"]})]),
         api_response([tool_block("select_urls_result", {"urls": ["https://example.com"]})]),
         api_response([tool_block("create_profile", profile_input)]),
+        api_response([tool_block("assess_profile", _MOCK_ASSESSMENT_INPUT)]),
     ]
     respx.get(f"{MOCK_BASE_URL}/search").mock(
         return_value=httpx.Response(200, json=_MOCK_SEARXNG_RESULTS)
@@ -211,3 +224,76 @@ def test_profile_stream_omits_citations_for_urls_not_in_search_results(
     assert profile_event["citations"] == [
         {"url": "https://example.com", "title": "Example", "snippet": "Example content"},
     ]
+
+
+# ---------------------------------------------------------------------------
+# Assessment SSE event
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_profile_stream_emits_assessment_after_profile(
+    client: TestClient, mock_anthropic: MagicMock
+) -> None:
+    """An 'assessment' SSE event follows the 'profile' event with the tool payload."""
+    mock_anthropic.messages.create.side_effect = _pipeline_side_effects()
+    respx.get(f"{MOCK_BASE_URL}/search").mock(
+        return_value=httpx.Response(200, json=_MOCK_SEARXNG_RESULTS)
+    )
+    respx.get("https://example.com").mock(return_value=httpx.Response(200, text="<p>Content</p>"))
+
+    response = client.get("/profile/stream?q=foo")
+    events = _parse_sse_events(response.text)
+    types = [e["type"] for e in events]
+
+    assert types.index("assessment") > types.index("profile")
+    assess_event = next(e for e in events if e["type"] == "assessment")
+    assert assess_event["confidence"] == 0.5
+    assert assess_event["caveats"] == ["Limited sources."]
+
+
+@respx.mock
+def test_profile_stream_assessment_preserves_boundary_values(
+    client: TestClient, mock_anthropic: MagicMock
+) -> None:
+    """Extreme values (-1.0/1.0) and an empty caveats list survive through to the SSE event."""
+    boundary: Mapping[str, object] = {
+        "confidence": 1.0,
+        "public_sentiment": -1.0,
+        "subject_political_bias": 1.0,
+        "source_political_bias": -1.0,
+        "law_chaos": 1.0,
+        "good_evil": -1.0,
+        "caveats": [],
+    }
+    side_effects = _pipeline_side_effects()
+    side_effects[-1] = api_response([tool_block("assess_profile", boundary)])
+    mock_anthropic.messages.create.side_effect = side_effects
+    respx.get(f"{MOCK_BASE_URL}/search").mock(
+        return_value=httpx.Response(200, json=_MOCK_SEARXNG_RESULTS)
+    )
+    respx.get("https://example.com").mock(return_value=httpx.Response(200, text="<p>Content</p>"))
+
+    response = client.get("/profile/stream?q=foo")
+    assess_event = next(e for e in _parse_sse_events(response.text) if e["type"] == "assessment")
+    assert assess_event == {"type": "assessment", **boundary}
+
+
+@respx.mock
+def test_profile_stream_emits_profile_when_assess_fails(
+    client: TestClient, mock_anthropic: MagicMock
+) -> None:
+    """If assess() raises, the profile event still arrives but no assessment event follows."""
+    side_effects = _pipeline_side_effects()
+    side_effects[-1] = api_response([])  # no assess_profile tool block — triggers RuntimeError
+    mock_anthropic.messages.create.side_effect = side_effects
+    respx.get(f"{MOCK_BASE_URL}/search").mock(
+        return_value=httpx.Response(200, json=_MOCK_SEARXNG_RESULTS)
+    )
+    respx.get("https://example.com").mock(return_value=httpx.Response(200, text="<p>Content</p>"))
+
+    response = client.get("/profile/stream?q=foo")
+    types = [e["type"] for e in _parse_sse_events(response.text)]
+
+    assert "profile" in types
+    assert "assessment" not in types

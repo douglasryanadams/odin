@@ -11,7 +11,7 @@ Python lives under `src/odin/` as one flat package — no subpackages. Front-end
 | `claude.py` | Anthropic API calls — one function per stage. |
 | `searxng.py` | Async SearXNG client; defines `SearchResult`. |
 | `fetch.py` | Parallel page fetch + `trafilatura` extraction. |
-| `models.py` | `Profile`, `ProfileHighlight`, `TimelineEntry`, the `Category` literal. |
+| `models.py` | `Profile`, `ProfileHighlight`, `TimelineEntry`, `Citation`, `Assessment`, the `Category` literal. |
 | `log.py` | `loguru` setup, stdlib bridging, `/health` access-log filter. |
 
 ## FastAPI app
@@ -39,6 +39,7 @@ Two dependency providers, used with `Annotated[..., Depends(...)]` and overridde
 3. **`searching`** — Run queries against SearXNG, gated by `asyncio.Semaphore(SEARXNG_MAX_CONCURRENCY=2)`. Dedupe by URL, preserving first-seen order.
 4. **`fetching`** — `claude.select_urls()` picks ≤ 5 URLs (Haiku); the event carries the count.
 5. **`profile`** — `fetch.fetch_pages()` retrieves pages in parallel; `claude.synthesize()` builds the `Profile` (Sonnet); yielded as `Profile.model_dump()`.
+6. **`assessment`** — `claude.assess()` scores the profile + sources on confidence, sentiment, subject/source political bias, D&D law-chaos / good-evil, and a short caveats list (Sonnet). If the call raises, the stage is skipped and a warning is logged so the profile still reaches the user.
 
 `profile_stream` emits a terminal `{"type": "done"}` SSE event after the generator is exhausted.
 
@@ -61,7 +62,7 @@ Each event is one JSON object on a single SSE `data:` line. The browser consumes
 ## Integrations
 
 - **SearXNG** — `searxng.search()` is one async function, ~30 lines. Concurrency and dedup live in `pipeline.py`. See [`searxng.md`](./searxng.md).
-- **Anthropic** — Four async functions in `claude.py`, each using tool-use to enforce structured output. Haiku for classify/queries/select-urls; Sonnet for synthesis. See [`claude-api.md`](./claude-api.md).
+- **Anthropic** — Five async functions in `claude.py`, each using tool-use to enforce structured output. Haiku for classify/queries/select-urls; Sonnet for synthesis and assessment. See [`claude-api.md`](./claude-api.md).
 
 ## Logging
 

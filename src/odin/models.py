@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 Category = Literal["person", "place", "event", "other"]
 
@@ -39,3 +39,15 @@ class Profile(BaseModel):
     lowlights: list[ProfileHighlight]
     timeline: list[TimelineEntry]
     citations: list[Citation] = []
+
+
+class Assessment(BaseModel):
+    """Confidence, sentiment, bias and alignment judgments about a profile."""
+
+    confidence: float = Field(ge=0, le=1)
+    public_sentiment: float = Field(ge=-1, le=1)
+    subject_political_bias: float = Field(ge=-1, le=1)
+    source_political_bias: float = Field(ge=-1, le=1)
+    law_chaos: float = Field(ge=-1, le=1)
+    good_evil: float = Field(ge=-1, le=1)
+    caveats: list[str]

@@ -1,6 +1,6 @@
 # Claude (Anthropic) API
 
-Odin uses the [Anthropic API](https://platform.claude.com/docs/en/home) for four pipeline stages, all in `src/odin/claude.py`.
+Odin uses the [Anthropic API](https://platform.claude.com/docs/en/home) for five pipeline stages, all in `src/odin/claude.py`.
 
 ## Stages and models
 
@@ -10,8 +10,9 @@ Odin uses the [Anthropic API](https://platform.claude.com/docs/en/home) for four
 | Generate 3–5 search queries | `generate_queries()` | `claude-haiku-4-5-20251001` |
 | Select up to 5 URLs from search results | `select_urls()` | `claude-haiku-4-5-20251001` |
 | Synthesize the structured `Profile` | `synthesize()` | `claude-sonnet-4-6` |
+| Assess confidence, sentiment, bias, alignment, caveats | `assess()` | `claude-sonnet-4-6` |
 
-Model IDs are pinned as `_HAIKU` and `_SONNET` constants. Sonnet is reserved for synthesis — long input, structured output, multi-source reasoning.
+Model IDs are pinned as `_HAIKU` and `_SONNET` constants. Sonnet is used for tasks that need long input or nuanced judgment — synthesis (multi-source reasoning) and assessment (bias / alignment / caveats).
 
 ## Structured output via tool-use
 
@@ -30,10 +31,11 @@ Missing tool block → `RuntimeError`. Errors don't pass silently.
 | `generate_queries` | `_GENERATE_QUERIES_SYSTEM` | `_GENERATE_QUERIES_TOOL` | `generate_queries_result` |
 | `select_urls` | `_SELECT_URLS_SYSTEM` | `_SELECT_URLS_TOOL` | `select_urls_result` |
 | `synthesize` | `_SYNTHESIZE_SYSTEM` | `_CREATE_PROFILE_TOOL` | `create_profile` |
+| `assess` | `_ASSESS_SYSTEM` | `_ASSESS_TOOL` | `assess_profile` |
 
 ## Prompt caching
 
-`select_urls` and `synthesize` pass their system prompt as a structured block with `cache_control: {"type": "ephemeral"}`. The shorter prompts pass system as a plain string and skip caching.
+`select_urls`, `synthesize`, and `assess` pass their system prompt as a structured block with `cache_control: {"type": "ephemeral"}`. The shorter prompts pass system as a plain string and skip caching.
 
 ## Auth
 
@@ -42,6 +44,7 @@ Missing tool block → `RuntimeError`. Errors don't pass silently.
 ## Failure modes handled
 
 - Missing `tool_use` block → `RuntimeError(f"<stage>: no tool_use block in response")`.
+- A failing `assess()` call is caught by `pipeline.build_profile`: the profile event still streams, the assessment event is skipped, and the warning is logged. The UI degrades gracefully (gauges stay in their default state).
 - Failed page fetch → `fetch._fetch_one` substitutes `f"Error fetching URL: {exc}"` so synthesis sees a deterministic string instead of propagating `httpx.HTTPError`.
 - `trafilatura` returns nothing → fall back to raw `response.text`, capped at `CONTENT_LIMIT = 10_000` chars.
 

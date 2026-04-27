@@ -6,7 +6,14 @@ from typing import Any
 from anthropic import AsyncAnthropic
 from loguru import logger
 
-from odin.models import Category, Citation, Profile, ProfileHighlight, TimelineEntry
+from odin.models import (
+    Assessment,
+    Category,
+    Citation,
+    Profile,
+    ProfileHighlight,
+    TimelineEntry,
+)
 from odin.searxng import SearchResult
 
 
@@ -34,6 +41,17 @@ class _SynthesizeOutput:
     lowlights: list[ProfileHighlight]
     timeline: list[TimelineEntry]
     citations: list[str]
+
+
+@dataclass(frozen=True)
+class _AssessOutput:
+    confidence: float
+    public_sentiment: float
+    subject_political_bias: float
+    source_political_bias: float
+    law_chaos: float
+    good_evil: float
+    caveats: list[str]
 
 
 _HAIKU = "claude-haiku-4-5-20251001"
@@ -80,6 +98,25 @@ _SYNTHESIZE_SYSTEM = (
     "Be factual and cite specific details from the provided content.\n"
     "Respond using the create_profile tool."
 )
+
+_ASSESS_SYSTEM = (
+    "You are an analyst auditing a freshly synthesized profile and the source pages it drew from.\n"
+    "Score the following on the listed scales, then list short caveats:\n"
+    "- confidence (0..1): how confident you are in the profile's accuracy and completeness,\n"
+    "  given the quantity and quality of the sources.\n"
+    "- public_sentiment (-1..+1): aggregate public sentiment toward the subject (-1 negative,\n"
+    "  +1 positive, 0 neutral or mixed).\n"
+    "- subject_political_bias (-1..+1): the subject's own political lean (-1 left, +1 right,\n"
+    "  0 centrist or apolitical).\n"
+    "- source_political_bias (-1..+1): aggregate political lean of the cited sources as a set.\n"
+    "- law_chaos (-1..+1): D&D alignment axis (-1 lawful, +1 chaotic).\n"
+    "- good_evil (-1..+1): D&D alignment axis (-1 evil, +1 good).\n"
+    "- caveats: 1-4 short, specific limitations or biases that apply to THIS page's data\n"
+    "  (e.g. 'Sources skew Anglo-American', 'Coverage thin before 1990'). Avoid generic\n"
+    "  disclaimers. If you cannot find anything noteworthy, return one item explaining why.\n"
+    "Respond using the assess_profile tool."
+)
+
 
 _CATEGORIZE_TOOL: dict[str, Any] = {
     "name": "categorize_result",
@@ -188,6 +225,50 @@ _CREATE_PROFILE_TOOL: dict[str, Any] = {
             "lowlights",
             "timeline",
             "citations",
+        ],
+    },
+}
+
+
+_ASSESS_TOOL: dict[str, Any] = {
+    "name": "assess_profile",
+    "description": (
+        "Score the profile and source set on confidence, sentiment, bias, and alignment."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "public_sentiment": {"type": "number", "minimum": -1, "maximum": 1},
+            "subject_political_bias": {"type": "number", "minimum": -1, "maximum": 1},
+            "source_political_bias": {"type": "number", "minimum": -1, "maximum": 1},
+            "law_chaos": {
+                "type": "number",
+                "minimum": -1,
+                "maximum": 1,
+                "description": "D&D law-chaos axis: -1 lawful, +1 chaotic.",
+            },
+            "good_evil": {
+                "type": "number",
+                "minimum": -1,
+                "maximum": 1,
+                "description": "D&D good-evil axis: -1 evil, +1 good.",
+            },
+            "caveats": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 1,
+                "maxItems": 4,
+            },
+        },
+        "required": [
+            "confidence",
+            "public_sentiment",
+            "subject_political_bias",
+            "source_political_bias",
+            "law_chaos",
+            "good_evil",
+            "caveats",
         ],
     },
 }
@@ -317,4 +398,63 @@ async def synthesize(
         lowlights=parsed.lowlights,
         timeline=parsed.timeline,
         citations=citations,
+    )
+
+
+def _format_profile_for_assess(profile: Profile) -> str:
+    lines = [
+        f"Name: {profile.name}",
+        f"Category: {profile.category}",
+        f"Summary: {profile.summary}",
+    ]
+    if profile.highlights:
+        lines.append("Highlights:")
+        lines.extend(f"  - {entry.title}: {entry.description}" for entry in profile.highlights)
+    if profile.lowlights:
+        lines.append("Lowlights:")
+        lines.extend(f"  - {entry.title}: {entry.description}" for entry in profile.lowlights)
+    if profile.timeline:
+        lines.append("Timeline:")
+        lines.extend(f"  - {entry.date}: {entry.event}" for entry in profile.timeline)
+    return "\n".join(lines)
+
+
+async def assess(
+    client: AsyncAnthropic,
+    query: str,
+    profile: Profile,
+    content: dict[str, str],
+) -> Assessment:
+    """Score the profile and source set on confidence, sentiment, bias, and alignment."""
+    logger.debug("assess query={!r} sources={}", query, len(content))
+    profile_block = _format_profile_for_assess(profile)
+    sections = "\n\n".join(f"--- {url} ---\n{text}" for url, text in content.items())
+    user_message = f"Subject: {query}\n\nProfile:\n{profile_block}\n\nSource content:\n{sections}"
+    response = await client.messages.create(
+        model=_SONNET,
+        max_tokens=1024,
+        system=[  # type: ignore[arg-type]
+            {
+                "type": "text",
+                "text": _ASSESS_SYSTEM,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
+        tools=[_ASSESS_TOOL],  # type: ignore[arg-type]
+        tool_choice={"type": "tool", "name": "assess_profile"},  # type: ignore[arg-type]
+        messages=[{"role": "user", "content": user_message}],  # type: ignore[arg-type]
+    )
+    block = _find_tool_block(list(response.content), "assess_profile")
+    if block is None:
+        msg = "assess: no assess_profile tool block in response"
+        raise RuntimeError(msg)
+    parsed = _AssessOutput(**block.input)
+    return Assessment(
+        confidence=parsed.confidence,
+        public_sentiment=parsed.public_sentiment,
+        subject_political_bias=parsed.subject_political_bias,
+        source_political_bias=parsed.source_political_bias,
+        law_chaos=parsed.law_chaos,
+        good_evil=parsed.good_evil,
+        caveats=parsed.caveats,
     )

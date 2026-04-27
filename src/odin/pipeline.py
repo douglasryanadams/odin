@@ -63,3 +63,13 @@ async def build_profile(
     profile = await claude.synthesize(anthropic_client, query, category, content, unique_results)
     logger.debug("profile synthesized name={!r} citations={}", profile.name, len(profile.citations))
     yield StageEvent(stage="profile", data=profile.model_dump())
+
+    try:
+        assessment = await claude.assess(anthropic_client, query, profile, content)
+    except Exception as exc:  # noqa: BLE001 — assess is non-essential; degrade gracefully
+        logger.warning("assess failed; skipping assessment event: {}", exc)
+        return
+    logger.debug(
+        "assessment ready confidence={} caveats={}", assessment.confidence, len(assessment.caveats)
+    )
+    yield StageEvent(stage="assessment", data=assessment.model_dump())

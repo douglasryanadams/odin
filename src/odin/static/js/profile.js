@@ -161,12 +161,73 @@ function renderProfile(data) {
   if (strip) strip.hidden = true;
 }
 
-function renderStubGauges() {
-  const wrap = document.querySelector("#card-sentiment .gauges");
-  if (!wrap) return;
-  wrap.replaceChildren();
-  wrap.appendChild(buildGauge("Profile confidence", 78, "gauge--confidence"));
-  wrap.appendChild(buildSentimentGauge("Public sentiment", 0.32));
+function renderAssessment(data) {
+  const subjectGauges = document.querySelector("#card-subject-compass .assessment-gauges");
+  if (subjectGauges) {
+    subjectGauges.replaceChildren();
+    subjectGauges.appendChild(
+      buildSentimentGauge({
+        label: "Public sentiment",
+        leftLabel: "Negative",
+        rightLabel: "Positive",
+        value: data.public_sentiment,
+      }),
+    );
+    subjectGauges.appendChild(
+      buildSentimentGauge({
+        label: "Political lean",
+        leftLabel: "Left",
+        rightLabel: "Right",
+        value: data.subject_political_bias,
+        neutral: true,
+      }),
+    );
+    subjectGauges.appendChild(
+      buildSentimentGauge({
+        label: "Order",
+        leftLabel: "Lawful",
+        rightLabel: "Chaotic",
+        value: data.law_chaos,
+        neutral: true,
+      }),
+    );
+    subjectGauges.appendChild(
+      buildSentimentGauge({
+        label: "Morality",
+        leftLabel: "Evil",
+        rightLabel: "Good",
+        value: data.good_evil,
+        neutral: true,
+      }),
+    );
+  }
+  const sourceGauges = document.querySelector("#card-source-audit .assessment-gauges");
+  if (sourceGauges) {
+    sourceGauges.replaceChildren();
+    sourceGauges.appendChild(
+      buildGauge("Profile confidence", Math.round(data.confidence * 100), "gauge--confidence"),
+    );
+    sourceGauges.appendChild(
+      buildSentimentGauge({
+        label: "Source political lean",
+        leftLabel: "Left",
+        rightLabel: "Right",
+        value: data.source_political_bias,
+        neutral: true,
+      }),
+    );
+  }
+  const caveatsList = document.querySelector("#card-source-audit .caveats-list");
+  if (caveatsList) {
+    caveatsList.replaceChildren();
+    if (!data.caveats || !data.caveats.length) {
+      caveatsList.appendChild(
+        el("li", "caveats-list__empty muted", caveatsList.dataset.empty || ""),
+      );
+    } else {
+      data.caveats.forEach((c) => caveatsList.appendChild(el("li", "caveats-list__item", c)));
+    }
+  }
 }
 
 function buildGauge(label, percent, modifier) {
@@ -183,18 +244,24 @@ function buildGauge(label, percent, modifier) {
   return wrap;
 }
 
-function buildSentimentGauge(label, position) {
+function buildSentimentGauge({ label, leftLabel, rightLabel, value, neutral = false }) {
   const wrap = el("div", "gauge gauge--sentiment");
-  const top = el("div", "gauge__head");
-  top.appendChild(el("span", "gauge__label", label));
-  const value = position > 0 ? `+${(position * 100).toFixed(0)}` : `${(position * 100).toFixed(0)}`;
-  top.appendChild(el("span", "gauge__value mono", value));
-  wrap.appendChild(top);
-  const track = el("div", "gauge__track gauge__track--diverging");
+  wrap.appendChild(el("span", "gauge__label", label));
+  const display =
+    value > 0 ? `+${(value * 100).toFixed(0)}` : `${(value * 100).toFixed(0)}`;
+  wrap.appendChild(el("span", "gauge__value mono", display));
+  const barRow = el("div", "gauge__bar-row");
+  barRow.appendChild(el("span", "gauge__end gauge__end--left", leftLabel));
+  const trackClasses = neutral
+    ? "gauge__track gauge__track--diverging gauge__track--neutral"
+    : "gauge__track gauge__track--diverging";
+  const track = el("div", trackClasses);
   const marker = el("span", "gauge__marker");
-  marker.style.left = `${50 + position * 50}%`;
+  marker.style.left = `${50 + value * 50}%`;
   track.appendChild(marker);
-  wrap.appendChild(track);
+  barRow.appendChild(track);
+  barRow.appendChild(el("span", "gauge__end gauge__end--right", rightLabel));
+  wrap.appendChild(barRow);
   return wrap;
 }
 
@@ -213,7 +280,6 @@ function renderStubMentions() {
 
 function renderStubs() {
   if (!STUB_DATA) return;
-  renderStubGauges();
   renderStubMentions();
 }
 
@@ -233,6 +299,8 @@ function startStream(query) {
       advanceProgress("profile");
     } else if (data.type === "profile") {
       renderProfile(data);
+    } else if (data.type === "assessment") {
+      renderAssessment(data);
     } else if (data.type === "done") {
       es.close();
     }

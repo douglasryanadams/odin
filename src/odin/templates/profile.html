@@ -58,6 +58,27 @@
     </li>
   </ol>
   <section id="card-grid" class="card-grid">
+    <article class="card card--span-6" id="card-subject-compass">
+      <header class="card__header">
+        <h2>
+          <i class="fa-solid fa-compass" aria-hidden="true"></i> Subject Compass
+        </h2>
+        <span class="badge badge--live">live</span>
+      </header>
+      <div class="assessment-gauges"></div>
+    </article>
+    <article class="card card--span-6" id="card-source-audit">
+      <header class="card__header">
+        <h2>
+          <i class="fa-solid fa-magnifying-glass-chart" aria-hidden="true"></i> Source Audit
+        </h2>
+        <span class="badge badge--live">live</span>
+      </header>
+      <div class="assessment-gauges"></div>
+      <h3 class="assessment-caveats__title">Caveats</h3>
+      <ul class="caveats-list" data-empty="No caveats reported.">
+      </ul>
+    </article>
     <article class="card card--span-6" id="card-highlights">
       <header class="card__header">
         <h2>
@@ -88,7 +109,7 @@
       <ol class="timeline" data-empty="No timeline data available.">
       </ol>
     </article>
-    <article class="card card--span-6" id="card-sources">
+    <article class="card card--span-12" id="card-sources">
       <header class="card__header">
         <h2>
           <i class="fa-solid fa-link" aria-hidden="true"></i> Sources &amp; Citations
@@ -97,15 +118,6 @@
       </header>
       <ul class="sources-list" data-empty="No sources cited.">
       </ul>
-    </article>
-    <article class="card card--span-6 card--stub" id="card-sentiment">
-      <header class="card__header">
-        <h2>
-          <i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Confidence &amp; Sentiment
-        </h2>
-        <span class="badge badge--soon">coming soon</span>
-      </header>
-      <div class="gauges"></div>
     </article>
   </section>
 {% endblock %}

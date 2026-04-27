@@ -8,7 +8,7 @@ Three Jinja2 templates, one CSS file, one JavaScript file, no build step. Served
 |---|---|
 | `templates/_base.html` | Layout shell: head, fonts, header (`ODIN` wordmark + actions slot), `<main>`, footer, scripts slot. |
 | `templates/index.html` | Landing page with the search form. |
-| `templates/profile.html` | Result page: title, category badge, summary, 5-step progress strip, 6-card grid. Bootstraps `window.ODIN_QUERY`. |
+| `templates/profile.html` | Result page: title, category badge, summary, 5-step progress strip, 6-card grid (subject compass + source audit on top, then highlights + lowlights, then full-width timeline, then full-width sources). Bootstraps `window.ODIN_QUERY`. |
 | `static/css/odin.css` | Theme tokens, layout, components, animations. ~1000 lines. |
 | `static/js/profile.js` | SSE consumer for `/profile/stream` and DOM renderer. No dependencies. |
 
@@ -18,9 +18,11 @@ Three Jinja2 templates, one CSS file, one JavaScript file, no build step. Served
 
 ## SSE consumer (`profile.js`)
 
-On `DOMContentLoaded`: set the synthesis date, render stub cards (Sources, Sentiment, Mentions — gated by `STUB_DATA = true`), and if `window.ODIN_QUERY` is set, open an `EventSource` against `/profile/stream?q=...`.
+On `DOMContentLoaded`: set the synthesis date, render the Mentions stub (gated by `STUB_DATA = true`), and if `window.ODIN_QUERY` is set, open an `EventSource` against `/profile/stream?q=...`.
 
-Each event advances the progress strip. The `profile` event calls `renderProfile(data)` to populate the live cards. `{"type": "done"}` closes the connection. `es.onerror` flips the strip to `is-failed` and replaces the summary with a "Return to search" link.
+Each event advances the progress strip. The `profile` event calls `renderProfile(data)` to populate the live cards. The `assessment` event (which arrives after `profile`) calls `renderAssessment(data)` to fill two cards: **Subject Compass** (four diverging gauges — public sentiment, political lean, and the two D&D alignment axes) and **Source Audit** (a confidence percent gauge, a source political-lean gauge, and a caveats list). `{"type": "done"}` closes the connection. `es.onerror` flips the strip to `is-failed` and replaces the summary with a "Return to search" link.
+
+If the backend `assess()` call fails, the SSE stream skips the `assessment` event and ends with `done`. The Subject Compass and Source Audit cards stay in their default empty state — no error UI for this secondary data.
 
 **XSS hardening:** AI content reaches the DOM only through `textContent` and `document.createTextNode()`. The `el(tag, className, content)` helper uses `createElement` + `textContent`. There is no `innerHTML` anywhere in `profile.js`.
 

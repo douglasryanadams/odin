@@ -917,12 +917,45 @@ p {
   font-size: 0.875rem;
 }
 
-/* ----- Gauges (stub) ------------------------------------------------- */
+/* ----- Gauges -------------------------------------------------------- */
 
 .gauges {
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
+}
+
+.assessment-gauges {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.assessment-caveats__title {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: var(--sp-5) 0 var(--sp-3) 0;
+}
+
+.caveats-list {
+  list-style: disc;
+  padding-left: var(--sp-5);
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.caveats-list__item {
+  font-size: 0.9375rem;
+  color: var(--text);
+}
+
+.caveats-list__empty {
+  list-style: none;
+  margin-left: calc(-1 * var(--sp-5));
 }
 
 .gauge__head {
@@ -969,6 +1002,10 @@ p {
   overflow: visible;
 }
 
+.gauge__track--neutral {
+  background: var(--surface-2);
+}
+
 .gauge__marker {
   position: absolute;
   top: -3px;
@@ -978,6 +1015,43 @@ p {
   background: var(--text);
   box-shadow: 0 0 10px var(--text);
   transform: translateX(-50%);
+}
+
+.gauge--sentiment {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.gauge--sentiment .gauge__value {
+  text-align: center;
+}
+
+.gauge__bar-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+
+.gauge__bar-row .gauge__track {
+  flex: 1;
+}
+
+.gauge__end {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.gauge__end--left {
+  text-align: right;
+}
+
+.gauge__end--right {
+  text-align: left;
 }
 
 /* ----- Mentions list (stub) ------------------------------------------ */

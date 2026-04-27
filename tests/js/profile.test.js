@@ -28,21 +28,35 @@ describe("buildGauge", () => {
 });
 
 describe("buildSentimentGauge", () => {
-  test("positive position prefixes value with +", () => {
-    const wrap = profile.buildSentimentGauge("S", 0.32);
+  const baseOpts = { label: "S", leftLabel: "L", rightLabel: "R" };
+
+  test("positive value prefixes with + and renders end labels", () => {
+    const wrap = profile.buildSentimentGauge({ ...baseOpts, value: 0.32 });
     expect(wrap.querySelector(".gauge__value").textContent).toBe("+32");
     expect(wrap.querySelector(".gauge__marker").style.left).toBe("66%");
+    expect(wrap.querySelector(".gauge__end--left").textContent).toBe("L");
+    expect(wrap.querySelector(".gauge__end--right").textContent).toBe("R");
   });
 
-  test("negative position keeps native sign", () => {
-    const wrap = profile.buildSentimentGauge("S", -0.5);
+  test("negative value keeps native sign", () => {
+    const wrap = profile.buildSentimentGauge({ ...baseOpts, value: -0.5 });
     expect(wrap.querySelector(".gauge__value").textContent).toBe("-50");
     expect(wrap.querySelector(".gauge__marker").style.left).toBe("25%");
   });
 
-  test("zero falls into else branch with no sign prefix", () => {
-    const wrap = profile.buildSentimentGauge("S", 0);
+  test("zero renders no sign prefix", () => {
+    const wrap = profile.buildSentimentGauge({ ...baseOpts, value: 0 });
     expect(wrap.querySelector(".gauge__value").textContent).toBe("0");
+  });
+
+  test("neutral=true adds the gauge__track--neutral class", () => {
+    const wrap = profile.buildSentimentGauge({ ...baseOpts, value: 0, neutral: true });
+    expect(wrap.querySelector(".gauge__track--neutral")).not.toBeNull();
+  });
+
+  test("neutral defaults to false (no neutral class)", () => {
+    const wrap = profile.buildSentimentGauge({ ...baseOpts, value: 0 });
+    expect(wrap.querySelector(".gauge__track--neutral")).toBeNull();
   });
 });
 
@@ -94,5 +108,83 @@ describe("advanceProgress", () => {
     profile.advanceProgress("invalid");
     const after = [...document.querySelectorAll(".progress-step")].map((s) => s.className);
     expect(after).toEqual(before);
+  });
+});
+
+describe("renderAssessment", () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <article id="card-subject-compass">
+        <div class="assessment-gauges"></div>
+      </article>
+      <article id="card-source-audit">
+        <div class="assessment-gauges"></div>
+        <ul class="caveats-list" data-empty="No caveats."></ul>
+      </article>
+    `;
+  });
+
+  const sample = {
+    confidence: 0.78,
+    public_sentiment: 0.32,
+    subject_political_bias: -0.2,
+    source_political_bias: 0.1,
+    law_chaos: -0.6,
+    good_evil: 0.7,
+    caveats: ["c1", "c2"],
+  };
+
+  test("Subject Compass renders the four subject gauges with expected labels and end labels", () => {
+    profile.renderAssessment(sample);
+    const labels = [
+      ...document.querySelectorAll("#card-subject-compass .gauge__label"),
+    ].map((n) => n.textContent);
+    expect(labels).toEqual(["Public sentiment", "Political lean", "Order", "Morality"]);
+    const endLeft = [
+      ...document.querySelectorAll("#card-subject-compass .gauge__end--left"),
+    ].map((n) => n.textContent);
+    const endRight = [
+      ...document.querySelectorAll("#card-subject-compass .gauge__end--right"),
+    ].map((n) => n.textContent);
+    expect(endLeft).toEqual(["Negative", "Left", "Lawful", "Evil"]);
+    expect(endRight).toEqual(["Positive", "Right", "Chaotic", "Good"]);
+  });
+
+  test("political/alignment gauges use the neutral track; sentiment does not", () => {
+    profile.renderAssessment(sample);
+    const tracks = [
+      ...document.querySelectorAll("#card-subject-compass .gauge__track"),
+    ];
+    // Order: sentiment, political, order, morality
+    expect(tracks[0].classList.contains("gauge__track--neutral")).toBe(false);
+    expect(tracks[1].classList.contains("gauge__track--neutral")).toBe(true);
+    expect(tracks[2].classList.contains("gauge__track--neutral")).toBe(true);
+    expect(tracks[3].classList.contains("gauge__track--neutral")).toBe(true);
+  });
+
+  test("Source Audit renders confidence + source lean with expected values", () => {
+    profile.renderAssessment(sample);
+    const labels = [
+      ...document.querySelectorAll("#card-source-audit .gauge__label"),
+    ].map((n) => n.textContent);
+    expect(labels).toEqual(["Profile confidence", "Source political lean"]);
+    const confidenceValue = document.querySelector(
+      "#card-source-audit .gauge--confidence .gauge__value",
+    );
+    expect(confidenceValue.textContent).toBe("78%");
+  });
+
+  test("renders one li per caveat in the Source Audit card", () => {
+    profile.renderAssessment({ ...sample, caveats: ["one", "two", "three"] });
+    const items = document.querySelectorAll("#card-source-audit .caveats-list li");
+    expect(items.length).toBe(3);
+    expect(items[0].textContent).toBe("one");
+  });
+
+  test("empty caveats shows the data-empty fallback", () => {
+    profile.renderAssessment({ ...sample, caveats: [] });
+    const items = document.querySelectorAll("#card-source-audit .caveats-list li");
+    expect(items.length).toBe(1);
+    expect(items[0].textContent).toBe("No caveats.");
   });
 });

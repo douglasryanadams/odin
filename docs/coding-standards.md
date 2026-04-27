@@ -17,6 +17,7 @@ The rubric for *how* we write code in this repo. The hard process requirements (
 - Prioritize readability over performance.
 - Prioritize clarity over comments.
 - Only mock third-party dependencies — not our own code.
+- Test through the highest reasonable public interface (the API route, the SSE stream, the rendered DOM). Add a narrower unit test only when it asserts something the integration test cannot easily verify (e.g., prompt construction details).
 - Review computational and memory complexity at design time.
 - Only rely on Pydantic models for HTTP interfaces, use `dataclass` with `frozen=True` for other cases
 
