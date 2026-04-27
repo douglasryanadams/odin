@@ -1,4 +1,4 @@
-.PHONY: dev prod lint lint-frontend format metrics test test-smoke test-unit test-integration
+.PHONY: dev prod lint lint-frontend format metrics test test-smoke test-unit test-integration test-js
 
 dev:
 	docker-compose up --build
@@ -41,6 +41,10 @@ test-smoke:
 
 test-unit:
 	docker-compose run --rm web uv run pytest
+	$(MAKE) test-js
+
+test-js: node_modules
+	docker-compose run --rm node npx vitest run
 
 test-integration:
 	START=$$(date -u +"%Y-%m-%dT%H:%M:%SZ"); \
