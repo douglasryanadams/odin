@@ -18,8 +18,14 @@ lint: format lint-frontend
 	docker-compose run --rm web uv run bandit -r src/ -c pyproject.toml
 	docker-compose run --rm web uv run detect-secrets scan --baseline .secrets.baseline
 
-lint-frontend:
+node_modules: package.json package-lock.json
+	docker-compose run --rm node npm ci
+	@touch node_modules
+
+lint-frontend: node_modules
 	docker-compose run --rm web uv run djlint src/odin/templates --check
+	docker-compose run --rm node npx stylelint "src/odin/static/css/**/*.css"
+	docker-compose run --rm node npx eslint "src/odin/static/js/**/*.js"
 
 metrics:
 	docker-compose run --rm web uv run radon raw -s .

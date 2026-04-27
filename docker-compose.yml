@@ -33,5 +33,12 @@ services:
     volumes:
       - searxng-valkey-data:/data/
 
+  node:
+    image: node:20-slim
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    profiles: ["tools"]
+
 volumes:
   searxng-valkey-data:

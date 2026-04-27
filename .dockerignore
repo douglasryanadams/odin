@@ -1,0 +1,17 @@
+.git
+.gitignore
+.dockerignore
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.coverage
+htmlcov
+.ruff_cache
+.pyright
+node_modules
+.idea
+.DS_Store
+.env

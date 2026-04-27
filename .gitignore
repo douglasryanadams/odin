@@ -21,6 +21,9 @@ htmlcov/
 # Linting
 .ruff_cache/
 
+# Node
+node_modules/
+
 # macOS
 .DS_Store
 
