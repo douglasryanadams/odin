@@ -1,26 +1,20 @@
 {% extends "_base.html" %}
-
 {% block title %}{{ query }} — Odin{% endblock %}
-
 {% block body_class %}page-profile{% endblock %}
-
 {% block header_actions %}
   <form class="header-search" method="get" action="/profile" role="search">
     <label class="header-search__field">
       <span class="header-search__icon" aria-hidden="true">
         <i class="fa-solid fa-magnifying-glass"></i>
       </span>
-      <input
-        class="header-search__input"
-        type="search"
-        name="q"
-        placeholder="New search…"
-        autocomplete="off"
-      />
+      <input class="header-search__input"
+             type="search"
+             name="q"
+             placeholder="New search…"
+             autocomplete="off" />
     </label>
   </form>
 {% endblock %}
-
 {% block content %}
   <article class="subject">
     <header class="subject__top">
@@ -39,8 +33,9 @@
       <span class="muted">Researching…</span>
     </p>
   </article>
-
-  <ol class="progress-strip" id="progress-strip" aria-label="Pipeline progress">
+  <ol class="progress-strip"
+      id="progress-strip"
+      aria-label="Pipeline progress">
     <li class="progress-step is-active" data-stage="categorized">
       <span class="progress-step__dot" aria-hidden="true"></span>
       <span class="progress-step__label">Categorize</span>
@@ -62,61 +57,69 @@
       <span class="progress-step__label">Synthesize</span>
     </li>
   </ol>
-
   <section id="card-grid" class="card-grid">
     <article class="card card--span-6" id="card-highlights">
       <header class="card__header">
-        <h2><i class="fa-solid fa-star" aria-hidden="true"></i> Highlights</h2>
+        <h2>
+          <i class="fa-solid fa-star" aria-hidden="true"></i> Highlights
+        </h2>
         <span class="badge badge--live">live</span>
       </header>
-      <ul class="hl-list hl-list--up" data-empty="No highlights identified."></ul>
+      <ul class="hl-list hl-list--up" data-empty="No highlights identified.">
+      </ul>
     </article>
-
     <article class="card card--span-6" id="card-lowlights">
       <header class="card__header">
-        <h2><i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> Lowlights</h2>
+        <h2>
+          <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> Lowlights
+        </h2>
         <span class="badge badge--live">live</span>
       </header>
-      <ul class="hl-list hl-list--down" data-empty="No lowlights identified."></ul>
+      <ul class="hl-list hl-list--down" data-empty="No lowlights identified.">
+      </ul>
     </article>
-
     <article class="card card--span-12" id="card-timeline">
       <header class="card__header">
-        <h2><i class="fa-solid fa-timeline" aria-hidden="true"></i> Timeline</h2>
+        <h2>
+          <i class="fa-solid fa-timeline" aria-hidden="true"></i> Timeline
+        </h2>
         <span class="badge badge--live">live</span>
       </header>
-      <ol class="timeline" data-empty="No timeline data available."></ol>
+      <ol class="timeline" data-empty="No timeline data available.">
+      </ol>
     </article>
-
     <article class="card card--span-6 card--stub" id="card-sources">
       <header class="card__header">
-        <h2><i class="fa-solid fa-link" aria-hidden="true"></i> Sources &amp; Citations</h2>
+        <h2>
+          <i class="fa-solid fa-link" aria-hidden="true"></i> Sources &amp; Citations
+        </h2>
         <span class="badge badge--soon">coming soon</span>
       </header>
-      <ul class="sources-list"></ul>
+      <ul class="sources-list">
+      </ul>
     </article>
-
     <article class="card card--span-6 card--stub" id="card-sentiment">
       <header class="card__header">
-        <h2><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Confidence &amp; Sentiment</h2>
+        <h2>
+          <i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Confidence &amp; Sentiment
+        </h2>
         <span class="badge badge--soon">coming soon</span>
       </header>
       <div class="gauges"></div>
     </article>
-
     <article class="card card--span-12 card--stub" id="card-mentions">
       <header class="card__header">
-        <h2><i class="fa-solid fa-tower-broadcast" aria-hidden="true"></i> Recent Mentions</h2>
+        <h2>
+          <i class="fa-solid fa-tower-broadcast" aria-hidden="true"></i> Recent Mentions
+        </h2>
         <span class="badge badge--soon">coming soon</span>
       </header>
-      <ul class="mentions-list"></ul>
+      <ul class="mentions-list">
+      </ul>
     </article>
   </section>
 {% endblock %}
-
 {% block scripts %}
-  <script>
-    window.ODIN_QUERY = {{ query | tojson }};
-  </script>
+  <script>window.ODIN_QUERY = {{ query | tojson }};</script>
   <script src="/static/js/profile.js" defer></script>
 {% endblock %}

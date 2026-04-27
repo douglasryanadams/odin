@@ -1,4 +1,4 @@
-.PHONY: dev prod lint format metrics test test-smoke test-unit test-integration
+.PHONY: dev prod lint lint-frontend format metrics test test-smoke test-unit test-integration
 
 dev:
 	docker-compose up --build
@@ -8,14 +8,18 @@ prod:
 
 format:
 	docker-compose run --rm web uv run ruff format .
+	-docker-compose run --rm web uv run djlint src/odin/templates --reformat
 
-lint: format
+lint: format lint-frontend
 	docker-compose run --rm web uv run ruff check .
 	docker-compose run --rm web uv run ruff format --check .
 	docker-compose run --rm web uv run pyright
 	docker-compose run --rm web uv run xenon --max-absolute B --max-modules A --max-average A src/
 	docker-compose run --rm web uv run bandit -r src/ -c pyproject.toml
 	docker-compose run --rm web uv run detect-secrets scan --baseline .secrets.baseline
+
+lint-frontend:
+	docker-compose run --rm web uv run djlint src/odin/templates --check
 
 metrics:
 	docker-compose run --rm web uv run radon raw -s .

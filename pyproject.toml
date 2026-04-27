@@ -23,6 +23,7 @@ dependencies = [
 dev = [
     "bandit>=1.9.4",
     "detect-secrets>=1.5.0",
+    "djlint>=1.36.4",
     "respx>=0.22.0",
     "pyright>=1.1.409",
     "pytest>=9.0.3",
@@ -73,3 +74,8 @@ omit = []
 exclude_dirs = ["tests", ".venv"]
 severity = "low"
 confidence = "low"
+
+[tool.djlint]
+profile = "jinja"
+indent = 2
+max_line_length = 100
