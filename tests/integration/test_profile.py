@@ -49,9 +49,14 @@ def mock_anthropic() -> Iterator[MagicMock]:
 
 @pytest.fixture
 def client() -> Iterator[TestClient]:
-    """Return a TestClient pointed at the real SearXNG container."""
+    """Return a TestClient pointed at the real SearXNG container.
+
+    Used as a context manager so FastAPI's lifespan runs and launches the
+    Playwright Browser stored on ``app.state.browser``.
+    """
     app.dependency_overrides[get_searxng_url] = lambda: SEARXNG_URL
-    yield TestClient(app)
+    with TestClient(app) as test_client:
+        yield test_client
     app.dependency_overrides.pop(get_searxng_url, None)
 
 

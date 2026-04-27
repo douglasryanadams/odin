@@ -1,10 +1,19 @@
 """Tests for the profile pipeline."""
 
 import asyncio
+from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from odin import pipeline
 from odin.searxng import SearchResult
+
+
+@dataclass(frozen=True)
+class _FakeFetcher:
+    """Minimal PageFetcher stub used to exercise build_profile in isolation."""
+
+    async def fetch_pages(self, urls: list[str]) -> dict[str, str]:
+        return dict.fromkeys(urls, "")
 
 
 async def test_pipeline_bounds_searxng_concurrency() -> None:
@@ -30,10 +39,9 @@ async def test_pipeline_bounds_searxng_concurrency() -> None:
         patch.object(pipeline.claude, "generate_queries", AsyncMock(return_value=queries)),
         patch.object(pipeline.claude, "select_urls", AsyncMock(return_value=[])),
         patch.object(pipeline.claude, "synthesize", AsyncMock(return_value=profile)),
-        patch.object(pipeline.fetch, "fetch_pages", AsyncMock(return_value=[])),
         patch.object(pipeline.searxng, "search", side_effect=fake_search),
     ):
-        async for _ in pipeline.build_profile("foo", "http://test", anthropic):
+        async for _ in pipeline.build_profile("foo", "http://test", anthropic, _FakeFetcher()):
             pass
 
     assert max_inflight <= pipeline.SEARXNG_MAX_CONCURRENCY

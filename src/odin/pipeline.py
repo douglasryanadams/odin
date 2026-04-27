@@ -25,6 +25,7 @@ async def build_profile(
     query: str,
     searxng_url: str,
     anthropic_client: AsyncAnthropic,
+    fetcher: fetch.PageFetcher,
 ) -> AsyncGenerator[StageEvent, None]:
     """Run the profile pipeline, yielding a StageEvent at each step."""
     logger.debug("pipeline start query={!r}", query)
@@ -58,7 +59,7 @@ async def build_profile(
     logger.debug("urls selected count={}", len(selected_urls))
     yield StageEvent(stage="fetching", data={"url_count": len(selected_urls)})
 
-    content = await fetch.fetch_pages(selected_urls)
+    content = await fetcher.fetch_pages(selected_urls)
     logger.debug("pages fetched count={}", len(content))
     profile = await claude.synthesize(anthropic_client, query, category, content, unique_results)
     logger.debug("profile synthesized name={!r} citations={}", profile.name, len(profile.citations))

@@ -34,7 +34,7 @@ A first profile takes ~15–30 seconds end-to-end; SearXNG and Anthropic each do
 1. **Categorize** the term (person / place / event / other) — Haiku
 2. **Plan queries** — generate 3–5 targeted search queries — Haiku
 3. **Search** SearXNG in parallel and deduplicate — capped at 2 concurrent
-4. **Fetch** the best pages — URL selection by Haiku
+4. **Fetch** the best pages — URL selection by Haiku, rendering by Playwright (headless Chromium)
 5. **Synthesize** the structured profile — Sonnet
 
 The browser consumes the SSE stream and renders each card progressively.
@@ -74,6 +74,30 @@ All commands run inside Docker. See [`docs/configuration.md`](./docs/configurati
 | `ANTHROPIC_API_KEY` | Yes | Anthropic API key. |
 | `SEARXNG_URL` | No | SearXNG base URL (default: `http://searxng:8080`). |
 | `LOG_LEVEL` | No | Loguru level (default: `INFO`; compose sets `DEBUG`). |
+| `PLAYWRIGHT_HEADLESS` | No | `true` (default) launches headless Chromium; `false` opens a visible window — only useful on a host with a display server. |
+| `PLAYWRIGHT_TRACE_DIR` | No | When set, each fetch writes a Playwright trace `.zip` here. View with `uvx playwright show-trace <path>`. |
+| `WORKERS` | No | Override gunicorn worker count. Each worker holds ~200 MB Chromium; tune for box size. |
+
+---
+
+## Watching the browser in dev
+
+Headless is the default — and Trace Viewer is the recommended way to see what Playwright is doing inside the dev container, since Docker has no display:
+
+```sh
+PLAYWRIGHT_TRACE_DIR=traces make dev
+# trigger one /profile/stream request, then:
+uvx playwright show-trace traces/<file>.zip
+```
+
+If you really want a live, visible Chromium window, run uvicorn directly on the macOS host (SearXNG stays in Docker via `8080:8080`):
+
+```sh
+uv sync
+uv run playwright install chromium
+PLAYWRIGHT_HEADLESS=false SEARXNG_URL=http://localhost:8080 \
+  uv run uvicorn odin.main:app --reload --port 8000
+```
 
 ---
 
@@ -82,6 +106,7 @@ All commands run inside Docker. See [`docs/configuration.md`](./docs/configurati
 | Layer | Tools |
 |---|---|
 | Web | FastAPI · gunicorn (prod) · uvicorn (dev) · loguru |
+| Fetch | Playwright (Chromium, headless) · trafilatura |
 | Front-end | Vanilla CSS + JS · Jinja2 · EventSource — Orbitron / Inter / JetBrains Mono |
 | Search | SearXNG · Valkey |
 | Models | Anthropic Claude — Haiku 4.5 · Sonnet 4.6 |

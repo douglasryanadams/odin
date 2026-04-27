@@ -17,6 +17,9 @@ COPY src/ src/
 
 RUN uv sync --frozen --no-dev
 
+RUN uv run playwright install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
+
 EXPOSE 8000
 
 CMD ["gunicorn", "-c", "gunicorn.conf.py", "odin.main:app"]

@@ -5,8 +5,8 @@ The repo-root [`README.md`](../README.md) summarizes Make commands and env vars.
 ## `pyproject.toml`
 
 - **Python:** `>= 3.12`. Built with `hatchling`.
-- **Runtime deps:** `anthropic`, `fastapi`, `gunicorn`, `httpx`, `jinja2`, `loguru`, `trafilatura`, `uvicorn[standard]`.
-- **Dev deps:** `bandit`, `detect-secrets`, `djlint`, `respx`, `pyright`, `pytest` (`-asyncio`, `-cov`), `radon`, `ruff`, `xenon`.
+- **Runtime deps:** `anthropic`, `fastapi`, `gunicorn`, `httpx`, `jinja2`, `loguru`, `playwright`, `trafilatura`, `uvicorn[standard]`.
+- **Dev deps:** `bandit`, `detect-secrets`, `djlint`, `respx`, `pyright`, `pytest` (`-asyncio`, `-cov`, `-httpserver`), `radon`, `ruff`, `xenon`.
 
 | Tool | Configured to enforce |
 |---|---|
@@ -56,8 +56,8 @@ Every target runs through `docker-compose` — host needs only Docker + `make`.
 One multi-stage Dockerfile; two images (`odin-prod`, `odin-dev`).
 
 - **`base`**: `python:3.12-slim` + `uv`. `UV_PROJECT_ENVIRONMENT=/opt/venv`. Venv lives at `/opt/venv` (not `/app/.venv`) so the dev compose bind-mount onto `/app` doesn't shadow it.
-- **`production`** (extends `base`): copies `gunicorn.conf.py` + `src/`, `uv sync --frozen --no-dev`, `CMD gunicorn -c gunicorn.conf.py odin.main:app`.
-- **`development`** (extends `production`): adds `git`, `libatomic1`; `uv sync --frozen` (with dev deps); `CMD uvicorn ... --reload`.
+- **`production`** (extends `base`): copies `gunicorn.conf.py` + `src/`, `uv sync --frozen --no-dev`, then `playwright install --with-deps chromium` (~300 MB; brings the prod image to ~600 MB), `CMD gunicorn -c gunicorn.conf.py odin.main:app`.
+- **`development`** (extends `production`): adds `git`, `libatomic1`; `uv sync --frozen` (with dev deps); `CMD uvicorn ... --reload`. Chromium and its system libraries are inherited from the production stage.
 
 ## Compose
 
@@ -67,7 +67,7 @@ One multi-stage Dockerfile; two images (`odin-prod`, `odin-dev`).
 
 ## `gunicorn.conf.py`
 
-`bind = "0.0.0.0:8000"`, `workers = (cpu_count * 2) + 1`, `worker_class = "uvicorn.workers.UvicornWorker"`, access + error logs to stdout.
+`bind = "0.0.0.0:8000"`, `workers = WORKERS env || (cpu_count * 2) + 1`, `worker_class = "uvicorn.workers.UvicornWorker"`, access + error logs to stdout. Each worker holds its own Chromium (~200 MB resident) launched in the FastAPI lifespan, so on small boxes set `WORKERS` explicitly — rule of thumb: 1 worker per ~350 MB of headroom.
 
 ## `searxng/`
 
@@ -81,8 +81,11 @@ One multi-stage Dockerfile; two images (`odin-prod`, `odin-dev`).
 | `ANTHROPIC_API_KEY` | `AsyncAnthropic()` (via the SDK) | — (required) |
 | `SEARXNG_URL` | `get_searxng_url()` in `main.py` | `http://searxng:8080` |
 | `LOG_LEVEL` | `setup()` in `log.py` | `INFO` (compose sets `DEBUG`) |
+| `PLAYWRIGHT_HEADLESS` | `lifespan()` in `main.py` | `true` (set `false` to launch a visible Chromium — only useful on a host with a display server) |
+| `PLAYWRIGHT_TRACE_DIR` | `_fetch_pages_playwright()` in `fetch.py` | unset (when set, each `fetch_pages` call writes a `.zip` trace; view with `uvx playwright show-trace`) |
+| `WORKERS` | `gunicorn.conf.py` | `(cpu_count * 2) + 1` |
 
-`.env` is gitignored and is the conventional place for `ANTHROPIC_API_KEY`.
+`.env` is gitignored and is the conventional place for `ANTHROPIC_API_KEY`. `traces/` is gitignored for `PLAYWRIGHT_TRACE_DIR` output.
 
 ## Secrets baseline
 

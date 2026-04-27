@@ -10,7 +10,7 @@ import respx
 from fastapi.testclient import TestClient
 
 from helpers import api_response, tool_block
-from odin.main import app, get_anthropic_client, get_searxng_url
+from odin.main import app, get_anthropic_client, get_page_fetcher, get_searxng_url
 
 MOCK_BASE_URL = "http://test-searxng:8080"
 _MOCK_SEARXNG_RESULTS = {
@@ -29,6 +29,21 @@ def _override_searxng_url() -> Iterator[None]:  # pyright: ignore[reportUnusedFu
     app.dependency_overrides[get_searxng_url] = _mock_url
     yield
     app.dependency_overrides.pop(get_searxng_url, None)
+
+
+class _FakePageFetcher:
+    """Test PageFetcher that returns canned content for any URL."""
+
+    async def fetch_pages(self, urls: list[str]) -> dict[str, str]:
+        return {url: f"<p>Mock content for {url}</p>" for url in urls}
+
+
+@pytest.fixture
+def mock_page_fetcher() -> Iterator[None]:
+    """Override get_page_fetcher with a fake that returns canned per-URL content."""
+    app.dependency_overrides[get_page_fetcher] = _FakePageFetcher
+    yield
+    app.dependency_overrides.pop(get_page_fetcher, None)
 
 
 @pytest.fixture
@@ -129,13 +144,15 @@ def _parse_sse_events(body: str) -> list[dict[str, object]]:
 
 
 @respx.mock
-def test_profile_stream_returns_sse(client: TestClient, mock_anthropic: MagicMock) -> None:
+def test_profile_stream_returns_sse(
+    client: TestClient, mock_anthropic: MagicMock, mock_page_fetcher: None
+) -> None:
     """Profile stream returns text/event-stream with SSE data lines covering all stages."""
+    del mock_page_fetcher
     mock_anthropic.messages.create.side_effect = _pipeline_side_effects()
     respx.get(f"{MOCK_BASE_URL}/search").mock(
         return_value=httpx.Response(200, json=_MOCK_SEARXNG_RESULTS)
     )
-    respx.get("https://example.com").mock(return_value=httpx.Response(200, text="<p>Content</p>"))
 
     response = client.get("/profile/stream?q=foo")
 
@@ -153,9 +170,10 @@ def test_profile_stream_returns_sse(client: TestClient, mock_anthropic: MagicMoc
 
 @respx.mock
 def test_profile_stream_citations_only_include_urls_synthesizer_cited(
-    client: TestClient, mock_anthropic: MagicMock
+    client: TestClient, mock_anthropic: MagicMock, mock_page_fetcher: None
 ) -> None:
     """Citations come from synthesizer output, not the broader pool of fetched URLs."""
+    del mock_page_fetcher
     searxng_results = {
         "results": [
             {"url": "https://a.example", "title": "A", "content": "A snippet"},
@@ -184,9 +202,6 @@ def test_profile_stream_citations_only_include_urls_synthesizer_cited(
     respx.get(f"{MOCK_BASE_URL}/search").mock(
         return_value=httpx.Response(200, json=searxng_results)
     )
-    respx.get("https://a.example").mock(return_value=httpx.Response(200, text="<p>A</p>"))
-    respx.get("https://b.example").mock(return_value=httpx.Response(200, text="<p>B</p>"))
-    respx.get("https://c.example").mock(return_value=httpx.Response(200, text="<p>C</p>"))
 
     response = client.get("/profile/stream?q=foo")
 
@@ -199,9 +214,10 @@ def test_profile_stream_citations_only_include_urls_synthesizer_cited(
 
 @respx.mock
 def test_profile_stream_omits_citations_for_urls_not_in_search_results(
-    client: TestClient, mock_anthropic: MagicMock
+    client: TestClient, mock_anthropic: MagicMock, mock_page_fetcher: None
 ) -> None:
     """A URL the synthesizer cites that's missing from search results is silently dropped."""
+    del mock_page_fetcher
     profile_input = {
         **_MOCK_PROFILE_INPUT,
         "citations": ["https://example.com", "https://hallucinated.example/"],
@@ -216,7 +232,6 @@ def test_profile_stream_omits_citations_for_urls_not_in_search_results(
     respx.get(f"{MOCK_BASE_URL}/search").mock(
         return_value=httpx.Response(200, json=_MOCK_SEARXNG_RESULTS)
     )
-    respx.get("https://example.com").mock(return_value=httpx.Response(200, text="<p>C</p>"))
 
     response = client.get("/profile/stream?q=foo")
 
@@ -233,14 +248,14 @@ def test_profile_stream_omits_citations_for_urls_not_in_search_results(
 
 @respx.mock
 def test_profile_stream_emits_assessment_after_profile(
-    client: TestClient, mock_anthropic: MagicMock
+    client: TestClient, mock_anthropic: MagicMock, mock_page_fetcher: None
 ) -> None:
     """An 'assessment' SSE event follows the 'profile' event with the tool payload."""
+    del mock_page_fetcher
     mock_anthropic.messages.create.side_effect = _pipeline_side_effects()
     respx.get(f"{MOCK_BASE_URL}/search").mock(
         return_value=httpx.Response(200, json=_MOCK_SEARXNG_RESULTS)
     )
-    respx.get("https://example.com").mock(return_value=httpx.Response(200, text="<p>Content</p>"))
 
     response = client.get("/profile/stream?q=foo")
     events = _parse_sse_events(response.text)
@@ -254,9 +269,10 @@ def test_profile_stream_emits_assessment_after_profile(
 
 @respx.mock
 def test_profile_stream_assessment_preserves_boundary_values(
-    client: TestClient, mock_anthropic: MagicMock
+    client: TestClient, mock_anthropic: MagicMock, mock_page_fetcher: None
 ) -> None:
     """Extreme values (-1.0/1.0) and an empty caveats list survive through to the SSE event."""
+    del mock_page_fetcher
     boundary: Mapping[str, object] = {
         "confidence": 1.0,
         "public_sentiment": -1.0,
@@ -272,7 +288,6 @@ def test_profile_stream_assessment_preserves_boundary_values(
     respx.get(f"{MOCK_BASE_URL}/search").mock(
         return_value=httpx.Response(200, json=_MOCK_SEARXNG_RESULTS)
     )
-    respx.get("https://example.com").mock(return_value=httpx.Response(200, text="<p>Content</p>"))
 
     response = client.get("/profile/stream?q=foo")
     assess_event = next(e for e in _parse_sse_events(response.text) if e["type"] == "assessment")
@@ -281,16 +296,16 @@ def test_profile_stream_assessment_preserves_boundary_values(
 
 @respx.mock
 def test_profile_stream_emits_profile_when_assess_fails(
-    client: TestClient, mock_anthropic: MagicMock
+    client: TestClient, mock_anthropic: MagicMock, mock_page_fetcher: None
 ) -> None:
     """If assess() raises, the profile event still arrives but no assessment event follows."""
+    del mock_page_fetcher
     side_effects = _pipeline_side_effects()
     side_effects[-1] = api_response([])  # no assess_profile tool block — triggers RuntimeError
     mock_anthropic.messages.create.side_effect = side_effects
     respx.get(f"{MOCK_BASE_URL}/search").mock(
         return_value=httpx.Response(200, json=_MOCK_SEARXNG_RESULTS)
     )
-    respx.get("https://example.com").mock(return_value=httpx.Response(200, text="<p>Content</p>"))
 
     response = client.get("/profile/stream?q=foo")
     types = [e["type"] for e in _parse_sse_events(response.text)]
