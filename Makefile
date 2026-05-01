@@ -1,10 +1,13 @@
-.PHONY: dev prod lint lint-frontend format metrics test test-smoke test-unit test-integration test-js
+.PHONY: dev prod prod-logs lint lint-frontend format metrics test test-smoke test-unit test-integration test-js
 
 dev:
 	docker-compose up --build
 
 prod:
 	docker-compose -f docker-compose.yml -f docker-compose.prod.yml up --build
+
+prod-logs: ## Tail logs from the running prod compose stack
+	docker-compose -f docker-compose.yml -f docker-compose.prod.yml logs -f
 
 format:
 	docker-compose run --rm web uv run ruff format .

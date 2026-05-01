@@ -6,6 +6,7 @@ use_default_settings:
       - wikidata
 
 server:
+  # Override in production via SEARXNG_SECRET environment variable
   secret_key: "dev-secret-key-not-for-production"
   limiter: false
   image_proxy: true
