@@ -20,7 +20,7 @@ async def send_magic_link(to: str, link: str) -> None:
     if settings.smtp_host:
         await asyncio.to_thread(_send_smtp, to, link)
     else:
-        logger.info("magic link for {}: {}", to, link)
+        logger.debug("magic link for {}: {}", to, link)
 
 
 def _send_smtp(to: str, link: str) -> None:

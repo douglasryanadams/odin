@@ -14,6 +14,13 @@
              autocomplete="off" />
     </label>
   </form>
+  {% if user %}
+    <span class="header-quota">{{ limit - used }}/{{ limit }} today</span>
+  {% elif used >= 1 %}
+    <span class="header-quota">
+      {{ limit - used }}/{{ limit }} free · <a href="/login">sign in</a> for {{ auth_limit }}/day
+    </span>
+  {% endif %}
 {% endblock %}
 {% block content %}
   <article class="subject">

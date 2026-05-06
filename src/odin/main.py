@@ -79,11 +79,11 @@ def _ip(request: Request) -> str:
     return request.client.host if request.client else ""
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse, response_model=None)
 async def index(
     request: Request,
     valkey_client: Annotated[Valkey, Depends(get_valkey_client)],
-) -> HTMLResponse:
+) -> HTMLResponse | RedirectResponse:
     """Render the home page; assign anonymous cookie on first visit."""
     user = auth.get_current_user(request)
     cookie_id = _anon_cookie_id(request)
@@ -91,6 +91,8 @@ async def index(
         valkey_client, user_email=user, cookie_id=cookie_id, ip_address=_ip(request)
     )
     limit = settings.auth_daily_limit if user else settings.anon_daily_limit
+    if not user and used >= limit:
+        return RedirectResponse("/login?reason=limit", status_code=302)
     resp = templates.TemplateResponse(
         request,
         "index.html",
@@ -110,11 +112,29 @@ def health() -> dict[str, str]:
 
 
 @app.get("/profile", response_class=HTMLResponse)
-async def profile_page(request: Request, q: str) -> HTMLResponse:
+async def profile_page(
+    request: Request,
+    q: str,
+    valkey_client: Annotated[Valkey, Depends(get_valkey_client)],
+) -> HTMLResponse:
     """Render the profile page; assign anonymous cookie on first visit."""
     user = auth.get_current_user(request)
     cookie_id = _anon_cookie_id(request)
-    resp = templates.TemplateResponse(request, "profile.html", {"query": q, "user": user})
+    used = await store.get_daily_count(
+        valkey_client, user_email=user, cookie_id=cookie_id, ip_address=_ip(request)
+    )
+    limit = settings.auth_daily_limit if user else settings.anon_daily_limit
+    resp = templates.TemplateResponse(
+        request,
+        "profile.html",
+        {
+            "query": q,
+            "user": user,
+            "used": used,
+            "limit": limit,
+            "auth_limit": settings.auth_daily_limit,
+        },
+    )
     if not request.cookies.get(_ANON_COOKIE):
         resp.set_cookie(
             _ANON_COOKIE, cookie_id, httponly=True, samesite="lax", max_age=_ANON_COOKIE_MAX_AGE

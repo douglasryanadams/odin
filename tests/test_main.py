@@ -134,6 +134,16 @@ def test_index_hides_quota_on_first_visit(client: TestClient) -> None:
     assert "remaining" not in response.text
 
 
+def test_index_redirects_to_login_when_anon_rate_limited(
+    client: TestClient, mock_valkey: MagicMock
+) -> None:
+    """Anonymous user who has hit their daily limit is redirected to the login page."""
+    mock_valkey.get.return_value = b"5"
+    response = client.get("/", cookies={"odin_anon": "test-cookie"}, follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers["location"] == "/login?reason=limit"
+
+
 def test_static_assets_mounted(client: TestClient) -> None:
     """The /static mount serves the local stylesheet."""
     response = client.get("/static/css/odin.css")
@@ -193,6 +203,21 @@ def test_profile_page_renders_grid_skeleton(client: TestClient) -> None:
     assert response.status_code == 200
     assert 'id="card-grid"' in response.text
     assert "/static/js/profile.js" in response.text
+
+
+def test_profile_page_shows_quota_after_first_search(
+    client: TestClient, mock_valkey: MagicMock
+) -> None:
+    """Profile header shows remaining quota once the user has made at least one search."""
+    mock_valkey.get.return_value = b"1"
+    response = client.get("/profile?q=foo", cookies={"odin_anon": "test-cookie"})
+    assert "free" in response.text
+
+
+def test_profile_page_hides_quota_on_first_visit(client: TestClient) -> None:
+    """Profile header shows no quota on a brand-new visit."""
+    response = client.get("/profile?q=foo")
+    assert "free" not in response.text
 
 
 def test_profile_page_sets_anon_cookie_on_first_visit(client: TestClient) -> None:

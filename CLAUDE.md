@@ -4,6 +4,10 @@
 - Run `make lint`; it must pass before the task is done.
 - Run `make test`; it must pass before the task is done.
 
+# Absolute prohibitions
+
+- Never write display borders (e.g. `────────────`) anywhere in the project — not in source files, comments, CSS, templates, scripts, or documentation. They are terminal UI artifacts and have no place in committed code.
+
 # Process expectations
 
 - Define validation criteria before pursuing each task; execute it before marking complete.
