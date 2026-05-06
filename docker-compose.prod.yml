@@ -4,6 +4,12 @@ services:
     build:
       context: .
       target: production
+    restart: always
+    environment:
+      - WORKERS=1
+      - LOG_LEVEL=INFO
+      - ANTHROPIC_API_KEY
+      - SEARXNG_SECRET
 
   searxng:
     restart: always

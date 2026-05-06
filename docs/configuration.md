@@ -84,8 +84,9 @@ One multi-stage Dockerfile; two images (`odin-prod`, `odin-dev`).
 | `PLAYWRIGHT_HEADLESS` | `lifespan()` in `main.py` | `true` (set `false` to launch a visible Chromium — only useful on a host with a display server) |
 | `PLAYWRIGHT_TRACE_DIR` | `_fetch_pages_playwright()` in `fetch.py` | unset (when set, each `fetch_pages` call writes a `.zip` trace; view with `uvx playwright show-trace`) |
 | `WORKERS` | `gunicorn.conf.py` | `(cpu_count * 2) + 1` |
+| `SEARXNG_SECRET` | `searxng/settings.yml` via SearXNG env | unset (required in production — overrides `secret_key`) |
 
-`.env` is gitignored and is the conventional place for `ANTHROPIC_API_KEY`. `traces/` is gitignored for `PLAYWRIGHT_TRACE_DIR` output.
+`.env` is gitignored and is the conventional place for secrets. `.env.example` documents all variables. `traces/` is gitignored for `PLAYWRIGHT_TRACE_DIR` output.
 
 ## Secrets baseline
 
@@ -97,6 +98,15 @@ uv run detect-secrets audit .secrets.baseline
 
 Commit the updated baseline.
 
-## CI
+## CI/CD
 
-There is no CI workflow yet. Quality gates are `make lint` and `make test`, run locally. Adding CI means lifting Make targets into a workflow file — it shouldn't change what gets enforced.
+GitHub Actions workflows live in `.github/workflows/`:
+
+| File | Trigger | What it does |
+|---|---|---|
+| `ci.yml` | Pull request → `main` | Builds dev image, runs `make lint` + `make test-unit test-smoke` |
+| `deploy.yml` | Push → `main` | Builds prod image, pushes to ECR, deploys to EC2 via SSM |
+
+The deploy workflow uses OIDC — no long-lived AWS credentials stored in GitHub. Required repository secrets: `AWS_ACCOUNT_ID`, `EC2_INSTANCE_ID`. See [`docs/aws-setup.md`](./aws-setup.md) for full provisioning steps.
+
+Integration tests are excluded from CI — they require a live SearXNG instance hitting real search engines. Run them locally with `make test-integration`.
