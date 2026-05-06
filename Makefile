@@ -22,8 +22,7 @@ lint: format lint-frontend
 	docker compose run --rm web uv run detect-secrets scan --baseline .secrets.baseline
 
 node_modules: package.json package-lock.json
-	docker compose run --rm node npm ci
-	@touch node_modules
+	docker compose run --rm node sh -c "npm ci && touch node_modules"
 
 lint-frontend: node_modules
 	docker compose run --rm web uv run djlint src/odin/templates --check
