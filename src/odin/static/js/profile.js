@@ -301,6 +301,9 @@ function startStream(query) {
       renderProfile(data);
     } else if (data.type === "assessment") {
       renderAssessment(data);
+    } else if (data.type === "rate_limited") {
+      es.close();
+      window.location.href = data.redirect || "/login?reason=limit";
     } else if (data.type === "done") {
       es.close();
     }

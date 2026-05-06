@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import logging
-import os
 import sys
 from typing import TYPE_CHECKING
 
 from loguru import logger
+
+from odin.config import settings
 
 if TYPE_CHECKING:
     from loguru import Record
@@ -49,7 +50,7 @@ class HealthCheckFilter(logging.Filter):
 
 def setup() -> None:
     """Configure loguru and intercept stdlib logging."""
-    level = os.getenv("LOG_LEVEL", "INFO")
+    level = settings.log_level
     logger.remove()
     logger.add(sys.stderr, level=level, colorize=True, filter=_odin_only_at_debug)
     logging.basicConfig(handlers=[_InterceptHandler()], level=0, force=True)

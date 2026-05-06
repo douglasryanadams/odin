@@ -9,7 +9,10 @@ Browser → CloudFront (HTTPS, ACM cert) → EC2 t4g.small (HTTP:8000)
                └─ /static/* cached           └─ docker-compose
                └─ /* pass-through                 ├─ web:8000
                   (180s SSE timeout)              ├─ searxng:8080
-                                                  └─ searxng-valkey
+                                                  ├─ searxng-valkey
+                                                  └─ odin-valkey
+
+Magic link emails → Amazon SES (SMTP relay, port 587)
 ```
 
 Shield Standard (DDoS) is included free with CloudFront. EC2 port 8000 is locked to the CloudFront origin prefix list — not publicly reachable.
@@ -211,7 +214,7 @@ aws iam put-role-policy \
 
 ## 6. Secrets Manager
 
-Create the secret resources now; set real values in step 11 (after EC2 is running).
+Create the secret resources now; set real values in step 12 (after EC2 is running).
 
 ```bash
 aws secretsmanager create-secret \
@@ -223,11 +226,57 @@ aws secretsmanager create-secret \
   --region $REGION \
   --name odin/searxng-secret \
   --description "SearXNG secret_key — set real value before first deploy"
+
+aws secretsmanager create-secret \
+  --region $REGION \
+  --name odin/smtp \
+  --description "SES SMTP credentials for magic link delivery — set real values after step 7"
 ```
 
 ---
 
-## 7. EC2 Instance
+## 7. Amazon SES (email)
+
+Magic links are sent over SMTP. SES is the simplest relay; the app only needs standard SMTP credentials.
+
+### 7a. Verify your sender domain
+
+In the SES console → **Verified identities → Create identity**, choose **Domain**, enter `yourdomain.com`, and add the DKIM CNAME records it shows you to Route 53. Verification usually completes within a few minutes.
+
+Alternatively, verify a single address (**Email address** identity type) if you only need one sender and don't want to manage DKIM records.
+
+### 7b. Request production access
+
+New SES accounts start in sandbox mode — outbound email only reaches verified addresses. Submit a production-access request in the SES console (**Account dashboard → Request production access**) before go-live. Typical approval time is 24 hours.
+
+### 7c. Generate SMTP credentials
+
+In the SES console → **SMTP settings → Create SMTP credentials**. This creates a dedicated IAM user and immediately shows you the generated username and password — **copy both now**, they cannot be retrieved again.
+
+Note the SMTP endpoint shown on the same page:
+
+```
+Host:  email-smtp.<region>.amazonaws.com
+Port:  587  (STARTTLS)
+```
+
+### 7d. Store credentials in Secrets Manager
+
+```bash
+aws secretsmanager put-secret-value \
+  --region $REGION \
+  --secret-id odin/smtp \
+  --secret-string "{
+    \"host\": \"email-smtp.${REGION}.amazonaws.com\",
+    \"from\": \"noreply@yourdomain.com\",
+    \"user\": \"<smtp-username-from-console>\",
+    \"pass\": \"<smtp-password-from-console>\"
+  }"
+```
+
+---
+
+## 8. EC2 Instance
 
 ```bash
 # Get the CloudFront origin-facing prefix list for your region
@@ -309,7 +358,7 @@ aws ssm start-session --region $REGION --target $INSTANCE_ID
 
 ---
 
-## 8. CloudFront Distribution
+## 9. CloudFront Distribution
 
 ```bash
 aws cloudfront create-distribution --distribution-config "{
@@ -372,7 +421,7 @@ Note the `DomainName` from the output (e.g. `xxxx.cloudfront.net`).
 
 ---
 
-## 9. Route 53 Alias Record
+## 10. Route 53 Alias Record
 
 Get your hosted zone ID:
 
@@ -407,7 +456,7 @@ Note: `Z2FDTNDATAQYW2` is CloudFront's fixed hosted zone ID — it's the same fo
 
 ---
 
-## 10. GitHub Actions Secrets
+## 11. GitHub Actions Secrets
 
 In the GitHub repo settings → Secrets and variables → Actions, add:
 
@@ -418,7 +467,7 @@ In the GitHub repo settings → Secrets and variables → Actions, add:
 
 ---
 
-## 11. Set Real Secret Values
+## 12. Set Real Secret Values
 
 ```bash
 aws secretsmanager put-secret-value \
@@ -432,9 +481,11 @@ aws secretsmanager put-secret-value \
   --secret-string "$(openssl rand -hex 32)"
 ```
 
+The `odin/smtp` secret was already populated in step 7d.
+
 ---
 
-## 12. First Deploy
+## 13. First Deploy
 
 SSH into the EC2 instance via SSM and start the stack manually for the first time:
 
@@ -454,6 +505,16 @@ export ANTHROPIC_API_KEY=$(aws secretsmanager get-secret-value \
 export SEARXNG_SECRET=$(aws secretsmanager get-secret-value \
   --region us-east-1 --secret-id odin/searxng-secret \
   --query SecretString --output text)
+
+# Pull and unpack SMTP credentials
+_SMTP=$(aws secretsmanager get-secret-value \
+  --region us-east-1 --secret-id odin/smtp \
+  --query SecretString --output text)
+export SMTP_HOST=$(echo "$_SMTP" | python3 -c "import sys,json; print(json.load(sys.stdin)['host'])")
+export SMTP_FROM=$(echo "$_SMTP" | python3 -c "import sys,json; print(json.load(sys.stdin)['from'])")
+export SMTP_USER=$(echo "$_SMTP" | python3 -c "import sys,json; print(json.load(sys.stdin)['user'])")
+export SMTP_PASS=$(echo "$_SMTP" | python3 -c "import sys,json; print(json.load(sys.stdin)['pass'])")
+unset _SMTP
 
 # Login to ECR and pull the prod image
 ECR_URI="ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/odin"
@@ -493,8 +554,9 @@ curl --connect-timeout 5 http://<EC2_IP>:8000/health
 | ACM certificate | $0 |
 | Route 53 hosted zone | $0.50 |
 | ECR storage | ~$0.10 |
-| Secrets Manager (2 secrets) | ~$0.80 |
-| **Total** | **~$13/month** |
+| Secrets Manager (3 secrets) | ~$1.20 |
+| SES (first 62k emails/month) | $0 (free tier) |
+| **Total** | **~$14/month** |
 
-1-year Reserved Instance reduces EC2 to ~$6/month → **~$7/month total**.
+1-year Reserved Instance reduces EC2 to ~$6/month → **~$8/month total**.
 Optional AWS WAF: +~$5–8/month when needed.

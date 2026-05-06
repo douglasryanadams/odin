@@ -1,0 +1,44 @@
+{% extends "_base.html" %}
+{% block title %}Sign in · Odin{% endblock %}
+{% block body_class %}page-auth{% endblock %}
+{% block content %}
+  <section class="auth-section">
+    <h1 class="auth-section__heading">Sign in</h1>
+    {% if reason == "limit" %}
+      <p class="auth-section__notice">You've used your free searches for today. Sign in for more.</p>
+    {% endif %}
+    {% if sent %}
+      <p class="auth-section__confirm">
+        Check your inbox at <strong>{{ sent_email }}</strong> for a sign-in link.
+        It expires in 15 minutes.
+      </p>
+    {% elif error %}
+      <p class="auth-section__error">{{ error }}</p>
+      <form class="auth-form" method="post" action="/auth/send-link">
+        <label class="auth-form__label" for="email">Email address</label>
+        <input class="auth-form__input"
+               id="email"
+               type="email"
+               name="email"
+               placeholder="you@example.com"
+               autocomplete="email"
+               required
+               autofocus />
+        <button class="btn btn--primary auth-form__submit" type="submit">Send sign-in link</button>
+      </form>
+    {% else %}
+      <form class="auth-form" method="post" action="/auth/send-link">
+        <label class="auth-form__label" for="email">Email address</label>
+        <input class="auth-form__input"
+               id="email"
+               type="email"
+               name="email"
+               placeholder="you@example.com"
+               autocomplete="email"
+               required
+               autofocus />
+        <button class="btn btn--primary auth-form__submit" type="submit">Send sign-in link</button>
+      </form>
+    {% endif %}
+  </section>
+{% endblock %}

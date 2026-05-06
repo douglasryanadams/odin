@@ -24,7 +24,16 @@
         <a href="/" class="wordmark wordmark--small" aria-label="Odin home">
           <span>ODIN</span>
         </a>
-        {% block header_actions %}{% endblock %}
+        {% block header_actions %}
+          <nav class="header-nav">
+            {% if user %}
+              <a href="/dashboard" class="header-nav__link">Dashboard</a>
+              <a href="/auth/logout" class="header-nav__link">Sign out</a>
+            {% else %}
+              <a href="/login" class="header-nav__link">Sign in</a>
+            {% endif %}
+          </nav>
+        {% endblock %}
       </header>
     {% endblock %}
     <main class="site-main">

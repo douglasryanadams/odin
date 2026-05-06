@@ -28,5 +28,17 @@
         <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
       </button>
     </form>
+    {% if used >= 1 %}
+      <p class="hero__quota">
+        {% if user %}
+          {{ limit - used }} of {{ limit }} searches remaining today ·
+          <a href="/dashboard">dashboard</a> ·
+          <a href="/auth/logout">sign out</a>
+        {% else %}
+          {{ limit - used }} of {{ limit }} free searches remaining ·
+          <a href="/login">sign in</a> for {{ auth_limit }}/day
+        {% endif %}
+      </p>
+    {% endif %}
   </section>
 {% endblock %}

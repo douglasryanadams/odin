@@ -16,8 +16,11 @@ dependencies = [
     "jinja2>=3.1.6",
     "loguru>=0.7.0",
     "playwright>=1.50.0",
+    "python-multipart>=0.0.9",
+    "pydantic-settings>=2.0",
     "trafilatura>=2.0.0",
     "uvicorn[standard]>=0.46.0",
+    "valkey>=6.0",
 ]
 
 [dependency-groups]
@@ -55,12 +58,13 @@ known-first-party = ["helpers"]
 max-complexity = 8
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "PLR2004"]  # assert and magic values are idiomatic in tests
+"tests/**" = ["S101", "PLR2004", "D103"]  # assert, magic values, and missing docstrings are idiomatic in tests
 "scripts/**" = ["T201", "BLE001", "INP001"]  # print and broad except are idiomatic in prototype CLIs; scripts/ is not a package
 
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
+stubPath = "stubs"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

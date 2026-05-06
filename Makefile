@@ -19,7 +19,14 @@ lint: format lint-frontend
 	docker compose run --rm web uv run pyright
 	docker compose run --rm web uv run xenon --max-absolute B --max-modules A --max-average A src/
 	docker compose run --rm web uv run bandit -r src/ -c pyproject.toml
-	docker compose run --rm web uv run detect-secrets scan --baseline .secrets.baseline
+	docker compose run --rm web sh -c "\
+	  cp .secrets.baseline /tmp/.secrets.orig && \
+	  uv run detect-secrets scan --baseline .secrets.baseline && \
+	  python3 -c \"\
+	import json, shutil; \
+	a=json.load(open('/tmp/.secrets.orig')); b=json.load(open('.secrets.baseline')); \
+	a.pop('generated_at',None); b.pop('generated_at',None); \
+	(shutil.copy('/tmp/.secrets.orig', '.secrets.baseline') if a==b else None)\""
 
 node_modules: package.json package-lock.json
 	docker compose run --rm node sh -c "npm ci && touch node_modules"
@@ -50,10 +57,10 @@ test-js: node_modules
 
 test-integration:
 	START=$$(date -u +"%Y-%m-%dT%H:%M:%SZ"); \
-	docker compose up -d --wait searxng searxng-valkey; \
+	docker compose up -d --wait searxng searxng-valkey odin-valkey; \
 	docker compose run --rm web uv run pytest -m integration; \
 	TEST_EXIT=$$?; \
-	docker compose stop searxng searxng-valkey; \
+	docker compose stop searxng searxng-valkey odin-valkey; \
 	ERROR_LOGS=$$(docker compose logs --no-color --since "$$START" 2>&1 | grep -E "ERROR|CRITICAL" | grep -v "searx.botdetection" | grep -v "searx.engines" | grep -v "searx.search.processor" || true); \
 	if [ -n "$$ERROR_LOGS" ]; then \
 		echo ""; \
