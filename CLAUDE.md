@@ -12,6 +12,16 @@
 - Write git commit subjects that make history easy to read. Do not use dashes to decorate commit messages.
 - When adding new components, dependencies, or tools, review existing documentation and update it as needed. When unsure what to add, ask.
 
+# Testing standards
+
+- Never pass a fixture as a parameter purely for its side effects. The `del fixture_name` pattern is a symptom of this — avoid it.
+- For shared setup that applies to all tests in a module, use `autouse=True` fixtures.
+- For per-test setup, call helper functions explicitly in the test body.
+
+# Third-party type stubs
+
+When a library has no bundled types and no `types-*` package on PyPI, create a minimal `.pyi` stub in `stubs/<package>/` covering only the symbols we actually use. Configure pyright to find it with `stubPath = "stubs"` in `[tool.pyright]`. This is preferable to scattered `cast()` calls or `# pyright: ignore` suppressions.
+
 # Coding standards & project orientation
 
 The full rubric (composition, DI, FP, SOLID, Zen of Python) lives in [`docs/coding-standards.md`](./docs/coding-standards.md).

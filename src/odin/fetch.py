@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import time
 import uuid
 from dataclasses import dataclass
@@ -20,6 +19,8 @@ from playwright.async_api import (
     ViewportSize,
 )
 from playwright.async_api import Error as PlaywrightError
+
+from odin.config import settings
 
 CONTENT_LIMIT = 10_000
 GOTO_TIMEOUT_MS = 15_000
@@ -66,7 +67,7 @@ async def _fetch_one(context: BrowserContext, url: str) -> tuple[str, str]:
 async def _fetch_pages_playwright(urls: list[str], browser: Browser) -> dict[str, str]:
     context = await browser.new_context(user_agent=USER_AGENT, viewport=VIEWPORT)
     await context.route("**/*", _block_heavy)
-    trace_dir = os.getenv("PLAYWRIGHT_TRACE_DIR")
+    trace_dir = settings.playwright_trace_dir
     if trace_dir:
         await context.tracing.start(screenshots=True, snapshots=True, sources=True)
     try:

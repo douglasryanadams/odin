@@ -1,0 +1,41 @@
+{% extends "_base.html" %}
+{% block title %}Dashboard · Odin{% endblock %}
+{% block content %}
+  <section class="dashboard">
+    <h1 class="dashboard__heading">Dashboard</h1>
+    <p class="dashboard__user muted">{{ user }}</p>
+    <div class="dashboard-card">
+      <h2 class="dashboard-card__title">Usage today</h2>
+      <div class="quota">
+        <div class="quota__bar">
+          <div class="quota__fill"
+               style="width: {{ [((used / limit) * 100)|int, 100]|min }}%"></div>
+        </div>
+        <p class="quota__label">{{ used }} of {{ limit }} searches used today</p>
+      </div>
+    </div>
+    <div class="dashboard-card">
+      <h2 class="dashboard-card__title">Recent searches</h2>
+      {% if history %}
+        <ul class="history-list">
+          {% for entry in history %}
+            <li class="history-item">
+              <a class="history-item__query"
+                 href="/profile?q={{ entry.q | urlencode }}">{{ entry.q }}</a>
+              <span class="history-item__meta muted">
+                <span class="history-item__cat">{{ entry.cat }}</span>
+                <span class="history-item__time">{{ entry.t[:10] if entry.t else "" }}</span>
+              </span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">No searches yet.</p>
+      {% endif %}
+    </div>
+    <p class="dashboard__actions">
+      <a href="/" class="btn btn--secondary">New search</a>
+      <a href="/auth/logout" class="dashboard__logout muted">Sign out</a>
+    </p>
+  </section>
+{% endblock %}
