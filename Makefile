@@ -19,7 +19,14 @@ lint: format lint-frontend
 	docker compose run --rm web uv run pyright
 	docker compose run --rm web uv run xenon --max-absolute B --max-modules A --max-average A src/
 	docker compose run --rm web uv run bandit -r src/ -c pyproject.toml
-	docker compose run --rm web uv run detect-secrets scan --baseline .secrets.baseline
+	docker compose run --rm web sh -c "\
+	  cp .secrets.baseline /tmp/.secrets.orig && \
+	  uv run detect-secrets scan --baseline .secrets.baseline && \
+	  python3 -c \"\
+	import json, shutil; \
+	a=json.load(open('/tmp/.secrets.orig')); b=json.load(open('.secrets.baseline')); \
+	a.pop('generated_at',None); b.pop('generated_at',None); \
+	(shutil.copy('/tmp/.secrets.orig', '.secrets.baseline') if a==b else None)\""
 
 node_modules: package.json package-lock.json
 	docker compose run --rm node sh -c "npm ci && touch node_modules"
