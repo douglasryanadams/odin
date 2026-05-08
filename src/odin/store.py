@@ -26,6 +26,35 @@ def _hash_email(email: str) -> str:
     return hashlib.sha256(email.lower().encode()).hexdigest()[:16]
 
 
+async def consume_magic_jti(client: Valkey, jti: str, exp_ts: int) -> bool:
+    """Atomically claim a magic-link nonce; return False if already consumed."""
+    key = f"magic:used:{jti}"
+    return bool(await client.set(key, "1", nx=True, exat=exp_ts))
+
+
+_LINK_RATE_TTL = 3600  # 1 hour
+_LINK_RATE_EMAIL_CAP = 1
+_LINK_RATE_IP_CAP = 5
+
+
+async def claim_email_link_send(client: Valkey, email: str, ip_address: str) -> bool:
+    """Increment per-email and per-IP magic-link counters; return False if either is over its cap.
+
+    Both counters always increment, so a flooder stays locked out for the full hour window.
+    """
+    email_key = f"linkrate:email:{_hash_email(email)}"
+    email_count = await client.incr(email_key)
+    if email_count == 1:
+        await client.expire(email_key, _LINK_RATE_TTL)
+    ip_count = 0
+    if ip_address:
+        ip_key = f"linkrate:ip:{ip_address}"
+        ip_count = await client.incr(ip_key)
+        if ip_count == 1:
+            await client.expire(ip_key, _LINK_RATE_TTL)
+    return email_count <= _LINK_RATE_EMAIL_CAP and ip_count <= _LINK_RATE_IP_CAP
+
+
 async def get_query_count(client: Valkey, key: str) -> int:
     """Return the current value at key as an int (0 if unset)."""
     val = await client.get(key)

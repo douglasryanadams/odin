@@ -244,6 +244,19 @@ p {
   color: var(--text);
 }
 
+.header-nav__logout {
+  display: inline-flex;
+  margin: 0;
+}
+
+.header-nav__link--button {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
 @media (min-width: 720px) {
   .site-header {
     padding: var(--sp-4) var(--sp-6);

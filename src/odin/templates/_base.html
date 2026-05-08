@@ -28,7 +28,10 @@
           <nav class="header-nav">
             {% if user %}
               <a href="/dashboard" class="header-nav__link">Dashboard</a>
-              <a href="/auth/logout" class="header-nav__link">Sign out</a>
+              <form class="header-nav__logout" method="post" action="/auth/logout">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                <button type="submit" class="header-nav__link header-nav__link--button">Sign out</button>
+              </form>
             {% else %}
               <a href="/login" class="header-nav__link">Sign in</a>
             {% endif %}

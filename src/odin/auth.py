@@ -4,7 +4,9 @@ import base64
 import hashlib
 import hmac
 import json
+import secrets
 import time
+from dataclasses import dataclass
 from typing import Any, cast
 
 from fastapi import Request
@@ -12,6 +14,27 @@ from fastapi import Request
 _MAGIC_TOKEN_TTL = 900  # 15 minutes
 _SESSION_TTL = 60 * 60 * 24 * 30  # 30 days
 _SESSION_COOKIE = "odin_session"
+
+
+@dataclass(frozen=True)
+class MagicTokenClaims:
+    """Verified magic-link payload."""
+
+    email: str
+    jti: str
+    exp: int
+
+
+def generate_csrf_token() -> str:
+    """Return an unguessable CSRF token suitable for the double-submit pattern."""
+    return secrets.token_urlsafe(32)
+
+
+def csrf_matches(cookie_token: str | None, form_token: str | None) -> bool:
+    """Return True iff both values are present and equal under constant-time comparison."""
+    if not cookie_token or not form_token:
+        return False
+    return hmac.compare_digest(cookie_token, form_token)
 
 
 def _sign(payload: dict[str, Any], secret: bytes) -> str:
@@ -55,13 +78,23 @@ def _check_expiry(payload: dict[str, Any], label: str) -> str:
 
 def generate_magic_token(email: str, secret: bytes) -> str:
     """Return a signed, time-limited token encoding the given email."""
-    payload: dict[str, Any] = {"email": email, "exp": int(time.time()) + _MAGIC_TOKEN_TTL}
+    payload: dict[str, Any] = {
+        "email": email,
+        "exp": int(time.time()) + _MAGIC_TOKEN_TTL,
+        "jti": secrets.token_urlsafe(16),
+    }
     return _sign(payload, secret)
 
 
-def verify_magic_token(token: str, secret: bytes) -> str:
-    """Verify token and return the encoded email, or raise ValueError."""
-    return _check_expiry(_verify(token, secret), "token")
+def verify_magic_token(token: str, secret: bytes) -> MagicTokenClaims:
+    """Verify a token and return its claims, or raise ValueError."""
+    payload = _verify(token, secret)
+    email = _check_expiry(payload, "token")
+    jti = payload.get("jti")
+    if not isinstance(jti, str) or not jti:
+        msg = "missing jti in token"
+        raise ValueError(msg)
+    return MagicTokenClaims(email=email, jti=jti, exp=int(payload["exp"]))
 
 
 def create_session_value(email: str, secret: bytes) -> str:

@@ -3,14 +3,26 @@
 import asyncio
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
-from anthropic import AsyncAnthropic
+from anthropic import AsyncAnthropic, BadRequestError, RateLimitError
 from loguru import logger
 
 from odin import claude, fetch, searxng
 
 SEARXNG_MAX_CONCURRENCY = 2
+
+_SERVICE_UNAVAILABLE_MESSAGE = "Odin is temporarily paused. Please try again in a little while."
+
+
+def _is_billing_error(exc: BadRequestError) -> bool:
+    body = getattr(exc, "body", None)
+    if not isinstance(body, dict):
+        return False
+    error = cast("dict[str, Any]", body).get("error")
+    if not isinstance(error, dict):
+        return False
+    return cast("dict[str, Any]", error).get("type") == "billing_error"
 
 
 @dataclass
@@ -30,6 +42,29 @@ async def build_profile(
     """Run the profile pipeline, yielding a StageEvent at each step."""
     logger.debug("pipeline start query={!r}", query)
 
+    try:
+        async for event in _run_pipeline(query, searxng_url, anthropic_client, fetcher):
+            yield event
+    except RateLimitError as exc:
+        logger.warning("anthropic rate-limited: {}", exc)
+        yield StageEvent(
+            stage="service_unavailable", data={"message": _SERVICE_UNAVAILABLE_MESSAGE}
+        )
+    except BadRequestError as exc:
+        if not _is_billing_error(exc):
+            raise
+        logger.warning("anthropic billing limit reached: {}", exc)
+        yield StageEvent(
+            stage="service_unavailable", data={"message": _SERVICE_UNAVAILABLE_MESSAGE}
+        )
+
+
+async def _run_pipeline(
+    query: str,
+    searxng_url: str,
+    anthropic_client: AsyncAnthropic,
+    fetcher: fetch.PageFetcher,
+) -> AsyncGenerator[StageEvent, None]:
     category = await claude.categorize(anthropic_client, query)
     logger.debug("categorized category={}", category)
     yield StageEvent(stage="categorized", data={"category": category})
@@ -67,6 +102,8 @@ async def build_profile(
 
     try:
         assessment = await claude.assess(anthropic_client, query, profile, content)
+    except (RateLimitError, BadRequestError):
+        raise
     except Exception as exc:  # noqa: BLE001 — assess is non-essential; degrade gracefully
         logger.warning("assess failed; skipping assessment event: {}", exc)
         return

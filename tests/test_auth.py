@@ -11,7 +11,8 @@ _SECRET = b"test-secret-key-32-bytes-padding!"
 
 def test_magic_token_roundtrip() -> None:
     token = auth.generate_magic_token("user@example.com", _SECRET)
-    assert auth.verify_magic_token(token, _SECRET) == "user@example.com"
+    claims = auth.verify_magic_token(token, _SECRET)
+    assert claims.email == "user@example.com"
 
 
 def test_magic_token_wrong_secret_raises() -> None:
@@ -33,6 +34,15 @@ def test_magic_token_expired_raises() -> None:
 def test_magic_token_malformed_raises() -> None:
     with pytest.raises(ValueError, match="malformed token"):
         auth.verify_magic_token("notavalidtoken", _SECRET)
+
+
+def test_magic_token_jti_is_unique() -> None:
+    """Each token gets a fresh nonce so verifies don't collide across users."""
+    a = auth.verify_magic_token(auth.generate_magic_token("a@example.com", _SECRET), _SECRET)
+    b = auth.verify_magic_token(auth.generate_magic_token("a@example.com", _SECRET), _SECRET)
+    assert a.jti
+    assert b.jti
+    assert a.jti != b.jti
 
 
 def test_session_roundtrip() -> None:

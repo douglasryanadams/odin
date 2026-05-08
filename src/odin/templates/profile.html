@@ -1,6 +1,7 @@
 {% extends "_base.html" %}
 {% block title %}{{ query }} — Odin{% endblock %}
 {% block body_class %}page-profile{% endblock %}
+{% block head_extra %}<meta name="odin-query" content="{{ query }}" />{% endblock %}
 {% block header_actions %}
   <form class="header-search" method="get" action="/profile" role="search">
     <label class="header-search__field">
@@ -122,7 +123,4 @@
     </article>
   </section>
 {% endblock %}
-{% block scripts %}
-  <script>window.ODIN_QUERY = {{ query | tojson }};</script>
-  <script src="/static/js/profile.js" defer></script>
-{% endblock %}
+{% block scripts %}<script src="/static/js/profile.js" defer></script>{% endblock %}
