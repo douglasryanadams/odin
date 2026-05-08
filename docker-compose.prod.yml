@@ -10,9 +10,40 @@ services:
       - LOG_LEVEL=INFO
       - ANTHROPIC_API_KEY
       - SEARXNG_SECRET
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-west-2
+        awslogs-group: /odin/web
+        awslogs-create-group: "true"
+        awslogs-stream: web
 
   searxng:
     restart: always
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-west-2
+        awslogs-group: /odin/searxng
+        awslogs-create-group: "true"
+        awslogs-stream: searxng
 
   searxng-valkey:
     restart: always
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-west-2
+        awslogs-group: /odin/searxng-valkey
+        awslogs-create-group: "true"
+        awslogs-stream: searxng-valkey
+
+  odin-valkey:
+    restart: always
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-west-2
+        awslogs-group: /odin/odin-valkey
+        awslogs-create-group: "true"
+        awslogs-stream: odin-valkey

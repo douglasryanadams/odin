@@ -544,6 +544,213 @@ curl --connect-timeout 5 http://<EC2_IP>:8000/health
 
 ---
 
+## Region note
+
+The new P0 sections below assume the workload runs in **us-west-2** (Oregon). The ACM certificate step earlier in this doc still uses `us-east-1` because CloudFront requires its cert there — that's the only resource pinned to us-east-1. AWS Budgets reads billing data that AWS surfaces from `us-east-1` regardless of region, so the budget resource is created without a region setting (account-scoped).
+
+When the AWS Console asks for a region, pick **US West (Oregon) us-west-2** unless the section explicitly says otherwise.
+
+---
+
+## Cost ceilings
+
+### Anthropic Console spend limit
+
+The application spend ceiling lives in the Anthropic Console, not in Odin code.
+
+1. Go to **console.anthropic.com**.
+2. Click your workspace name in the top-left, then **Settings** → **Spend limit**.
+3. Set a **monthly limit**. Recommended start: **$25/month**. Increase as traffic grows.
+4. Save.
+
+When the cap trips, the API returns `BadRequestError` with `error.type == "billing_error"`. Odin catches this (and `RateLimitError`) and emits a `service_unavailable` SSE event so the UI shows a friendly "Odin is temporarily paused" message. Adjusting the cap later is a Console-only change — no code or redeploy needed.
+
+### AWS Budget
+
+1. Open the **AWS Billing and Cost Management** console (search "Billing" in the top bar).
+2. Left nav: **Budgets** → **Create budget**.
+3. **Budget setup**: pick **Customize (advanced)**. Budget type: **Cost budget**.
+4. **Set budget amount**:
+   - Name: `odin-monthly`
+   - Period: **Monthly**
+   - Budget renewal: **Recurring**
+   - Start month: current month
+   - Budgeting method: **Fixed**
+   - Enter your budgeted amount: **$50**
+5. **Configure alerts**: click **Add an alert threshold** three times, then fill in:
+   - Threshold 1: **50%** of budgeted amount, **Actual**, email recipient `douglasryanadams@gmail.com`
+   - Threshold 2: **80%**, **Actual**, same email
+   - Threshold 3: **100%**, **Actual**, same email
+6. **Attach actions**: skip (none).
+7. **Review** → **Create budget**.
+
+### CloudWatch billing alarm (early warning)
+
+The Budget above is the primary cap. Add a CloudWatch alarm for a faster ping:
+
+1. **Region in the top-right must be `us-east-1`** — billing metrics only publish there.
+2. Open **CloudWatch** → left nav **Alarms** → **All alarms** → **Create alarm**.
+3. **Select metric** → **Billing** → **Total Estimated Charge** → check the row with `Currency = USD` → **Select metric**.
+4. **Conditions**: Threshold type **Static**, **Greater than 25**.
+5. **Notification**: create a new SNS topic `odin-alerts`, email endpoint `douglasryanadams@gmail.com`. Confirm the subscription email AWS sends you.
+6. Name the alarm `odin-billing-25`. **Create alarm**.
+
+---
+
+## Backups
+
+### Named volumes (already configured)
+
+`docker-compose.yml` mounts `odin-valkey-data` and `searxng-valkey-data` as named volumes. They live on the EC2 root EBS volume and persist across container restarts. Nothing to do here.
+
+### AWS Backup — daily EBS snapshots
+
+1. Open **AWS Backup** console. Region: **us-west-2**.
+2. Left nav: **Backup vaults** → **Create backup vault**.
+   - Name: `odin-vault`
+   - Encryption key: **(default) aws/backup**
+   - **Create backup vault**.
+3. Left nav: **Backup plans** → **Create backup plan** → **Build a new plan**.
+   - Plan name: `odin-daily`
+   - Rule name: `DailyEBS`
+   - Backup vault: `odin-vault`
+   - Backup frequency: **Daily**
+   - Backup window: **Use backup window defaults** (or pick an off-hours window)
+   - Lifecycle: **Delete after** → **7 days**
+   - **Create plan**.
+4. After creation, you'll be on the plan detail page. Click **Assign resources**.
+   - Resource assignment name: `odin-ec2`
+   - IAM role: **Default role** (AWS Backup creates one the first time)
+   - Assign resources by: **Include specific resource types**
+   - Resource type: **EC2**
+   - Instance ID: pick the Odin EC2 instance
+   - **Assign resources**.
+
+The first snapshot runs at the next scheduled window. You can also click **Create on-demand backup** from the plan to run one immediately for verification.
+
+### Restore drill (document, run once before launch)
+
+1. **AWS Backup** console → **Backup vaults** → `odin-vault` → pick the most recent recovery point.
+2. **Actions** → **Restore**.
+3. Restore type: **Create new instance**. Pick the same instance type, VPC, subnet, and key pair as the live instance. Do NOT pick the same Elastic IP yet.
+4. Wait for the restore to complete (Backup → **Jobs** shows progress; ~5–10 min for a small EBS volume).
+5. **EC2** console → confirm the restored instance is running.
+6. **Stop** (do not terminate) the original instance.
+7. **EC2** → **Volumes** → detach the original instance's root volume, then attach the restored volume to the original instance as `/dev/xvda`. (Alternative simpler path: skip the volume swap and just keep the new instance.)
+8. **Start** the restored or rebuilt instance.
+9. SSM into it (`Session Manager` from the EC2 console row), then `cd /opt/odin && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`.
+10. **Elastic IP** console → reassociate the EIP with the restored instance.
+11. `curl https://yourdomain.com/health` → confirm 200.
+12. Terminate the original instance.
+
+Run this drill once against a throwaway sandbox EC2 before launch so you've actually clicked through the buttons before you need them.
+
+---
+
+## Monitoring
+
+### CloudWatch Logs
+
+`docker-compose.prod.yml` already has the `awslogs` log driver wired for all four services. Log groups are created automatically on first start:
+
+- `/odin/web`
+- `/odin/searxng`
+- `/odin/searxng-valkey`
+- `/odin/odin-valkey`
+
+The EC2 instance role needs CloudWatch Logs permissions. If you used the Step 4 IAM policy from earlier in this doc, you have the SSM core permissions but not log permissions yet — add the AWS-managed policy:
+
+1. **IAM** console → **Roles** → `odinInstanceRole` → **Add permissions** → **Attach policies**.
+2. Search for `CloudWatchAgentServerPolicy` → check it → **Add permissions**.
+
+After the next container restart, log groups appear automatically. Set retention to bound cost:
+
+1. **CloudWatch** → **Logs** → **Log groups**. Region: **us-west-2**.
+2. For each of the four `/odin/*` log groups: click the group → **Actions** → **Edit retention setting** → **2 weeks** → **Save**.
+
+### Uptime check
+
+Pick one:
+
+**Option A — UptimeRobot (free, 5-minute interval):**
+
+1. Sign up at uptimerobot.com.
+2. **+ New monitor** → Monitor type **HTTP(s)** → URL `https://yourdomain.com/health` → name `Odin /health`.
+3. Monitoring interval: **5 minutes**.
+4. Alert contacts: add your email.
+5. **Create monitor**.
+
+**Option B — Route 53 health check (~$0.50/month):**
+
+1. **Route 53** console → left nav **Health checks** → **Create health check**.
+2. Name: `odin-health`. What to monitor: **Endpoint**.
+3. Specify endpoint by domain. Domain name: `yourdomain.com`. Path: `/health`. Port: `443`. Protocol: **HTTPS**.
+4. Request interval: **Standard (30 seconds)**. Failure threshold: **3**.
+5. **Next** → **Create alarm: Yes** → SNS topic `odin-alerts` (created earlier). Email: `douglasryanadams@gmail.com`.
+6. **Create health check**.
+
+### EC2 status-check alarm
+
+Free, alerts when the underlying host or instance loses health:
+
+1. **CloudWatch** → **Alarms** → **All alarms** → **Create alarm**. Region: **us-west-2**.
+2. **Select metric** → **EC2** → **Per-Instance Metrics** → find your instance ID → check **StatusCheckFailed** → **Select metric**.
+3. Statistic: **Maximum**. Period: **1 minute**.
+4. Threshold type: **Static**. Greater than or equal to **1**.
+5. Additional configuration → Datapoints to alarm: **2 out of 2**.
+6. **Next** → **Notification** → existing SNS topic `odin-alerts` → **Next**.
+7. Name: `odin-ec2-status-check`. **Create alarm**.
+
+---
+
+## Post-deploy verification
+
+The GitHub Actions workflow runs `curl https://yourdomain.com/health` after the SSM deploy completes, retrying every 10 seconds for ~2 minutes. A failed check fails the workflow run, so a broken deploy is visible immediately rather than discovered by a user.
+
+If the deploy URL ever needs to change (custom domain, staging), update the `HEALTH_URL` env var in `.github/workflows/deploy.yml` and the Route 53 health check above.
+
+---
+
+## Manual rollback
+
+There is no automatic rollback in P0. To roll back via the GitHub UI:
+
+1. **GitHub** → repo → **Actions** → **Deploy** workflow.
+2. Click **Run workflow** (top-right of the runs list).
+3. Branch: pick `main`. Then in the dropdown, select an older commit SHA (the previous green deploy).
+4. Click **Run workflow**. The job rebuilds and redeploys; the post-deploy health check verifies success.
+
+Alternatively, push a revert commit to `main`:
+
+- Identify the bad commit in **GitHub** → **Commits**.
+- Click the commit → **Revert** button (top-right) → opens a PR with the revert → merge it. The deploy workflow runs automatically.
+
+**Emergency rollback (skip CI):**
+
+1. **EC2** console → select the instance → **Connect** → **Session Manager** → **Connect**.
+2. In the session:
+   ```bash
+   cd /opt/odin
+   ECR_URI="<account>.dkr.ecr.us-west-2.amazonaws.com/odin"
+   aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin $ECR_URI
+   docker pull $ECR_URI:<previous-sha>
+   docker tag $ECR_URI:<previous-sha> odin-prod
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps web
+   ```
+3. `curl https://yourdomain.com/health` → confirm 200.
+
+ECR retains all image tags by SHA, so any prior deploy is recoverable as long as ECR lifecycle hasn't expired it.
+
+---
+
+## SearXNG limiter
+
+Pre-configured in `searxng/limiter.toml` and enabled via `searxng/settings.yml` (`server.limiter: true`). The Odin client at `src/odin/searxng.py` spoofs `X-Forwarded-For: 127.0.0.1` so internal calls from `web` to `searxng` bypass bot detection. External traffic — which should not exist (SearXNG is internal-only, port 8080 is not exposed past the docker network) — would be subject to the limiter as defense-in-depth.
+
+No deploy-time action required.
+
+---
+
 ## Cost Reference
 
 | Item | Monthly |

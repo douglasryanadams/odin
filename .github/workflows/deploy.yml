@@ -9,8 +9,9 @@ permissions:
   contents: read
 
 env:
-  AWS_REGION: us-east-1
+  AWS_REGION: us-west-2
   ECR_REPOSITORY: odin
+  HEALTH_URL: https://odin.douglasryanadams.dev/health
 
 jobs:
   deploy:
@@ -65,3 +66,16 @@ jobs:
               \"docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps web\"
             ]" \
             --wait
+
+      - name: Verify deploy via /health
+        run: |
+          for attempt in $(seq 1 12); do
+            if curl -fsS --max-time 10 "$HEALTH_URL" >/dev/null; then
+              echo "health check passed on attempt $attempt"
+              exit 0
+            fi
+            echo "health check attempt $attempt failed; retrying in 10s"
+            sleep 10
+          done
+          echo "health check failed after 12 attempts (~2 minutes)"
+          exit 1
