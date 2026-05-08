@@ -106,7 +106,9 @@ async def test_push_history_anon_sets_ttl_on_both_keys(valkey: AsyncMock) -> Non
     assert valkey.expire.call_count == 2
 
 
-async def test_push_history_user_writes_to_single_key_without_ttl(valkey: AsyncMock) -> None:
+async def test_push_history_user_writes_to_single_key_with_ninety_day_ttl(
+    valkey: AsyncMock,
+) -> None:
     await store.push_history(
         valkey,
         user_email="u@example.com",
@@ -115,7 +117,10 @@ async def test_push_history_user_writes_to_single_key_without_ttl(valkey: AsyncM
         entry={"q": "test", "t": "now", "cat": "person"},
     )
     assert valkey.lpush.call_count == 1
-    valkey.expire.assert_not_called()
+    valkey.expire.assert_called_once()
+    args = valkey.expire.call_args.args
+    assert args[0].startswith("history:user:")
+    assert args[1] == 90 * 24 * 60 * 60
 
 
 async def test_get_history_merges_and_deduplicates_anon_keys(valkey: AsyncMock) -> None:

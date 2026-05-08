@@ -10,6 +10,7 @@ from valkey.asyncio import Valkey
 _ANON_HISTORY_MAX = 10
 _ANON_HISTORY_TTL = 7 * 24 * 60 * 60  # 7 days in seconds
 _USER_HISTORY_MAX = 50
+_USER_HISTORY_TTL = 90 * 24 * 60 * 60  # 90 days in seconds
 
 
 def _today_utc() -> str:
@@ -130,6 +131,7 @@ async def push_history(
         key = f"history:user:{_hash_email(user_email)}"
         await client.lpush(key, raw)
         await client.ltrim(key, 0, _USER_HISTORY_MAX - 1)
+        await client.expire(key, _USER_HISTORY_TTL)
     else:
         for key in (f"history:anon:{cookie_id}", f"history:anon:{ip_address}"):
             await client.lpush(key, raw)
