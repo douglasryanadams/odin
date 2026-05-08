@@ -832,3 +832,30 @@ def test_dashboard_renders_for_authenticated_user(client: TestClient) -> None:
     assert response.status_code == 200
     assert "user@example.com" in response.text
     assert "searches used today" in response.text
+
+
+def test_privacy_page_renders(client: TestClient) -> None:
+    """GET /privacy returns the privacy policy with key disclosures."""
+    response = client.get("/privacy")
+    assert response.status_code == 200
+    body = response.text
+    assert "Privacy" in body
+    assert "Anthropic" in body
+    assert "SearXNG" in body or "search engines" in body
+    assert "douglasryanadams@gmail.com" in body
+
+
+def test_terms_page_renders(client: TestClient) -> None:
+    """GET /terms returns the terms of service."""
+    response = client.get("/terms")
+    assert response.status_code == 200
+    body = response.text
+    assert "Terms" in body
+
+
+def test_footer_links_to_privacy_and_terms(client: TestClient) -> None:
+    """The shared footer exposes privacy and terms links."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert 'href="/privacy"' in response.text
+    assert 'href="/terms"' in response.text

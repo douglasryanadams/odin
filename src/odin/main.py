@@ -176,6 +176,22 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy(request: Request) -> HTMLResponse:
+    """Render the privacy policy."""
+    return templates.TemplateResponse(
+        request, "privacy.html", {"user": auth.get_current_user(request)}
+    )
+
+
+@app.get("/terms", response_class=HTMLResponse)
+async def terms(request: Request) -> HTMLResponse:
+    """Render the terms of service."""
+    return templates.TemplateResponse(
+        request, "terms.html", {"user": auth.get_current_user(request)}
+    )
+
+
 @app.get("/profile", response_class=HTMLResponse)
 async def profile_page(
     request: Request,
