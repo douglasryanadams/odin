@@ -176,6 +176,26 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+_NOTICE_COOKIE = "odin_seen_notice"
+_NOTICE_COOKIE_MAX_AGE = 365 * 24 * 3600
+
+
+@app.post("/notice/dismiss")
+async def dismiss_notice(request: Request) -> RedirectResponse:
+    """Set the disclosure-notice cookie and bounce back."""
+    target = request.headers.get("referer") or "/"
+    resp = RedirectResponse(url=target, status_code=303)
+    resp.set_cookie(
+        _NOTICE_COOKIE,
+        "1",
+        httponly=False,
+        samesite="lax",
+        secure=settings.cookie_secure,
+        max_age=_NOTICE_COOKIE_MAX_AGE,
+    )
+    return resp
+
+
 @app.get("/privacy", response_class=HTMLResponse)
 async def privacy(request: Request) -> HTMLResponse:
     """Render the privacy policy."""

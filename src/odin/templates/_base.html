@@ -39,6 +39,24 @@
         {% endblock %}
       </header>
     {% endblock %}
+    {% if not request.cookies.get("odin_seen_notice") %}
+      <aside id="disclosure-banner"
+             class="disclosure-banner"
+             role="region"
+             aria-label="Privacy notice">
+        <p class="disclosure-banner__text">
+          Odin sends your queries to Claude (Anthropic) and privacy-respecting search engines.
+          See our <a href="/privacy">Privacy Policy</a>.
+        </p>
+        <form class="disclosure-banner__form"
+              method="post"
+              action="/notice/dismiss">
+          <button type="submit"
+                  class="disclosure-banner__dismiss"
+                  aria-label="Dismiss notice">Got it</button>
+        </form>
+      </aside>
+    {% endif %}
     <main class="site-main">
       {% block content %}{% endblock %}
     </main>

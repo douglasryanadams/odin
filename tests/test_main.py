@@ -859,3 +859,28 @@ def test_footer_links_to_privacy_and_terms(client: TestClient) -> None:
     assert response.status_code == 200
     assert 'href="/privacy"' in response.text
     assert 'href="/terms"' in response.text
+
+
+def test_disclosure_banner_shown_on_first_visit(client: TestClient) -> None:
+    """Index renders the disclosure banner when odin_seen_notice cookie is absent."""
+    response = client.get("/", cookies={})
+    assert response.status_code == 200
+    assert 'id="disclosure-banner"' in response.text
+    assert "Anthropic" in response.text
+    assert 'action="/notice/dismiss"' in response.text
+
+
+def test_disclosure_banner_hidden_when_cookie_set(client: TestClient) -> None:
+    """Index omits the banner once the user has dismissed it."""
+    response = client.get("/", cookies={"odin_seen_notice": "1"})
+    assert response.status_code == 200
+    assert 'id="disclosure-banner"' not in response.text
+
+
+def test_dismiss_notice_sets_cookie_and_redirects(client: TestClient) -> None:
+    """POST /notice/dismiss sets the odin_seen_notice cookie and redirects to referer or home."""
+    response = client.post("/notice/dismiss", follow_redirects=False)
+    assert response.status_code == 303
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "odin_seen_notice=1" in set_cookie
+    assert "Max-Age=" in set_cookie

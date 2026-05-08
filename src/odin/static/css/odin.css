@@ -237,6 +237,46 @@ p {
   color: var(--text);
 }
 
+.disclosure-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  background: var(--bg-elevated, #1a1a1a);
+  border-bottom: 1px solid var(--border, #2a2a2a);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.disclosure-banner__text {
+  margin: 0;
+  flex: 1;
+}
+
+.disclosure-banner__text a {
+  color: var(--accent);
+}
+
+.disclosure-banner__form {
+  margin: 0;
+}
+
+.disclosure-banner__dismiss {
+  background: transparent;
+  border: 1px solid var(--border, #2a2a2a);
+  color: var(--text);
+  padding: var(--sp-1) var(--sp-3);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.disclosure-banner__dismiss:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .legal {
   max-width: 720px;
   margin: 0 auto;
