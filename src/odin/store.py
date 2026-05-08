@@ -137,6 +137,15 @@ async def push_history(
             await client.expire(key, _ANON_HISTORY_TTL)
 
 
+async def delete_user(client: Valkey, email: str) -> None:
+    """Remove all per-user data: history, magic-link rate counter, daily rate counters."""
+    user_hash = _hash_email(email)
+    keys: list[str] = [f"history:user:{user_hash}", f"linkrate:email:{user_hash}"]
+    keys.extend([key.decode() async for key in client.scan_iter(match=f"rate:user:{user_hash}:*")])
+    if keys:
+        await client.delete(*keys)
+
+
 async def get_history(
     client: Valkey,
     *,

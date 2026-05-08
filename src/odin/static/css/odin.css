@@ -1337,6 +1337,48 @@ p {
   margin: 0;
 }
 
+.dashboard-card--danger {
+  border-color: #6a1f1f;
+}
+
+.dashboard-card--danger .dashboard-card__title {
+  color: #d97373;
+}
+
+.delete-account {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  align-items: flex-start;
+}
+
+.delete-account__label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.delete-account__input {
+  width: 100%;
+  padding: var(--sp-2);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  border-radius: 3px;
+}
+
+.btn--danger {
+  background: #6a1f1f;
+  color: #fff;
+  border: 1px solid #8a2929;
+}
+
+.btn--danger:hover {
+  background: #8a2929;
+}
+
 /* ----- Quota bar --------------------------------------------------------- */
 
 .quota {

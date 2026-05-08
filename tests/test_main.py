@@ -1,7 +1,7 @@
 """Tests for the main application routes."""
 
 import json
-from collections.abc import Iterator, Mapping
+from collections.abc import AsyncIterator, Iterator, Mapping
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -75,6 +75,11 @@ class _FakePageFetcher:
 
 def _setup_page_fetcher() -> None:
     app.dependency_overrides[get_page_fetcher] = _FakePageFetcher
+
+
+async def _async_iter(items: list[bytes]) -> "AsyncIterator[bytes]":
+    for item in items:
+        yield item
 
 
 @pytest.fixture
@@ -884,3 +889,72 @@ def test_dismiss_notice_sets_cookie_and_redirects(client: TestClient) -> None:
     set_cookie = response.headers.get("set-cookie", "")
     assert "odin_seen_notice=1" in set_cookie
     assert "Max-Age=" in set_cookie
+
+
+def test_account_delete_clears_data_and_logs_out(
+    client: TestClient, mock_valkey: MagicMock
+) -> None:
+    """POST /account/delete: 303 to /, session cookie cleared, store.delete_user called."""
+    email = "user@example.com"
+    session = _auth.create_session_value(email, _TEST_SECRET)
+    mock_valkey.delete = AsyncMock(return_value=1)
+    mock_valkey.scan_iter = MagicMock(return_value=_async_iter([b"rate:user:abc:2026-05-07"]))
+    client.cookies.set("odin_session", session)
+    csrf = _seed_csrf(client)
+
+    response = client.post(
+        "/account/delete",
+        data={"email": email, **csrf},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "odin_session=" in set_cookie
+    mock_valkey.delete.assert_awaited()
+
+
+def test_account_delete_rejects_email_mismatch(client: TestClient) -> None:
+    """Submitting a non-matching email returns 400."""
+    session = _auth.create_session_value("user@example.com", _TEST_SECRET)
+    client.cookies.set("odin_session", session)
+    csrf = _seed_csrf(client)
+    response = client.post(
+        "/account/delete",
+        data={"email": "wrong@example.com", **csrf},
+        follow_redirects=False,
+    )
+    assert response.status_code == 400
+
+
+def test_account_delete_rejects_missing_csrf(client: TestClient) -> None:
+    """Without a matching CSRF token the endpoint returns 403."""
+    session = _auth.create_session_value("user@example.com", _TEST_SECRET)
+    client.cookies.set("odin_session", session)
+    client.cookies.set("csrf_token", "right")
+    response = client.post(
+        "/account/delete",
+        data={"csrf_token": "wrong", "email": "user@example.com"},
+    )
+    assert response.status_code == 403
+
+
+def test_account_delete_rejects_unauthenticated(client: TestClient) -> None:
+    """Without a session cookie the endpoint redirects to /login."""
+    csrf = _seed_csrf(client)
+    response = client.post(
+        "/account/delete",
+        data={"email": "user@example.com", **csrf},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert "/login" in response.headers["location"]
+
+
+def test_dashboard_shows_delete_account_form(client: TestClient) -> None:
+    """Dashboard renders the delete-account form for authenticated users."""
+    session = _auth.create_session_value("user@example.com", _TEST_SECRET)
+    response = client.get("/dashboard", cookies={"odin_session": session})
+    assert response.status_code == 200
+    assert 'action="/account/delete"' in response.text

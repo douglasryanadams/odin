@@ -434,6 +434,27 @@ async def logout(
     return resp
 
 
+@app.post("/account/delete")
+async def account_delete(
+    request: Request,
+    csrf_token: Annotated[str, Form()],
+    email: Annotated[str, Form()],
+    valkey_client: Annotated[Valkey, Depends(get_valkey_client)],
+) -> Response:
+    """Delete all data tied to the signed-in user and clear the session."""
+    user = auth.get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    if not auth.csrf_matches(request.cookies.get(_CSRF_COOKIE), csrf_token):
+        raise HTTPException(status_code=403, detail="CSRF check failed")
+    if email.strip().lower() != user.lower():
+        raise HTTPException(status_code=400, detail="Email does not match signed-in account")
+    await store.delete_user(valkey_client, user)
+    resp = RedirectResponse(url="/", status_code=303)
+    resp.delete_cookie("odin_session")
+    return resp
+
+
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(
     request: Request,
