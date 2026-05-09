@@ -8,7 +8,7 @@ Manual steps to provision the production environment. Update this file as you go
 Browser → CloudFront (HTTPS, ACM cert) → EC2 t4g.small (HTTP:8000)
                └─ /static/* cached           └─ docker-compose
                └─ /* pass-through                 ├─ web:8000
-                  (180s SSE timeout)              ├─ searxng:8080
+                  (120s SSE timeout)              ├─ searxng:8080
                                                   ├─ searxng-valkey
                                                   └─ odin-valkey
 
@@ -46,6 +46,10 @@ Region: **us-west-2**.
 ## 2. Route 53 Hosted Zone
 
 Region: not applicable (Route 53 is global).
+
+If you registered the domain through Route 53, AWS automatically created a public hosted zone for it and pointed its NS records at AWS nameservers. Open **Route 53** → **Hosted zones** and confirm `yourdomain.com` is listed; you're done with this step.
+
+If the domain is registered elsewhere:
 
 1. Open the **Route 53** console → **Hosted zones** → **Create hosted zone**.
 2. Domain name: `yourdomain.com`. Type: **Public hosted zone**.
@@ -120,7 +124,14 @@ Same flow as 4b. JSON (replace `<account-id>` with your 12-digit account ID from
 
 Policy name: `secrets-read`.
 
-### 4d. Instance profile
+### 4d. Attach the CloudWatch Logs managed policy
+
+The `awslogs` driver in `docker-compose.awslogs.yml` calls `logs:CreateLogStream` / `logs:PutLogEvents` at container start; without these permissions the first deploy fails before any container reaches *running*.
+
+1. Role → **Add permissions** → **Attach policies**.
+2. Search for `CloudWatchAgentServerPolicy` → check it → **Add permissions**.
+
+### 4e. Instance profile
 
 When you create a role with the **EC2** trusted-entity use case, IAM auto-creates a matching instance profile of the same name (`odinInstanceRole`). You can confirm by running through the EC2 launch wizard in step 8 — `odinInstanceRole` will appear in the IAM instance profile dropdown. No extra clicks needed here.
 
@@ -134,9 +145,11 @@ Region: not applicable.
 
 1. **IAM** console → **Identity providers** → **Add provider**.
 2. Provider type: **OpenID Connect**.
-3. Provider URL: `https://token.actions.githubusercontent.com`. Click **Get thumbprint**.
+3. Provider URL: `https://token.actions.githubusercontent.com`.
 4. Audience: `sts.amazonaws.com`.
 5. **Add provider**.
+
+AWS manages the OIDC thumbprint for `token.actions.githubusercontent.com` automatically; the wizard has no thumbprint field.
 
 ### 5b. Create the role
 
@@ -218,23 +231,26 @@ Policy name: `ssm-deploy`.
 
 Region: **us-west-2**.
 
-Create three empty secret resources now; set real values in step 12 (after EC2 is running). Empty placeholders are fine — Secrets Manager lets you skip the value at create time.
-
-For each of the three names below:
+A single secret named `odin/app` holds every runtime credential as JSON. One billing line, one `GetSecretValue` call at boot, and the IAM policy in step 4c (`odin/*`) already covers it.
 
 1. Open the **Secrets Manager** console → **Store a new secret**.
 2. Secret type: **Other type of secret**.
-3. Key/value pairs: leave blank and switch to **Plaintext** tab. Enter `placeholder` (you'll overwrite this in step 12).
+3. Switch to the **Plaintext** tab and paste this placeholder (you'll fill in real values in steps 7d and 12):
+   ```json
+   {
+     "anthropic_api_key": "placeholder",
+     "secret_key": "placeholder",
+     "app_url": "placeholder",
+     "searxng_secret": "placeholder",
+     "smtp_host": "placeholder",
+     "smtp_from": "placeholder",
+     "smtp_user": "placeholder",
+     "smtp_pass": "placeholder"
+   }
+   ```
 4. Encryption key: **aws/secretsmanager** (default).
 5. **Next**.
-6. Secret name and description (one per loop):
-
-| Secret name | Description |
-|---|---|
-| `odin/anthropic-api-key` | Anthropic API key for odin — set real value before first deploy |
-| `odin/searxng-secret` | SearXNG secret_key — set real value before first deploy |
-| `odin/smtp` | SMTP credentials for magic link delivery — set real values after step 7 |
-
+6. Secret name: `odin/app`. Description: `Odin runtime credentials — Anthropic, SearXNG, Purelymail SMTP`.
 7. **Next** through automatic rotation (skip — leave **Disable automatic rotation**).
 8. **Next** → **Store**.
 
@@ -278,14 +294,18 @@ Pass:  <password from step 7c.2>
 
 ### 7d. Store credentials in Secrets Manager
 
-1. **Secrets Manager** console → open `odin/smtp` → **Retrieve secret value** → **Edit**.
-2. Switch to the **Plaintext** tab and paste (you can omit `host` and `from` to fall back to the app defaults of `smtp.purelymail.com` and `odin@odinseye.info`; set `from` to your own domain so recipients see the right sender):
+1. **Secrets Manager** console → open `odin/app` → **Retrieve secret value** → **Edit**.
+2. Switch to the **Plaintext** tab. Replace the four `smtp_*` placeholder values with the real ones from step 7c, leaving the other keys untouched for now:
    ```json
    {
-     "host": "smtp.purelymail.com",
-     "from": "odin@yourdomain.com",
-     "user": "odin@yourdomain.com",
-     "pass": "<password from step 7c.2>"
+     "anthropic_api_key": "placeholder",
+     "secret_key": "placeholder",
+     "app_url": "placeholder",
+     "searxng_secret": "placeholder",
+     "smtp_host": "smtp.purelymail.com",
+     "smtp_from": "odin@yourdomain.com",
+     "smtp_user": "odin@yourdomain.com",
+     "smtp_pass": "<password from step 7c.2>"
    }
    ```
 3. **Save**.
@@ -324,13 +344,26 @@ Region: **us-west-2**.
    - **User data**: paste the script below. Leave **User data has been base64 encoded** unchecked.
      ```bash
      #!/bin/bash
-     dnf install -y docker git
+     dnf install -y docker git jq
      systemctl enable --now docker
      usermod -aG docker ec2-user
      mkdir -p /usr/local/lib/docker/cli-plugins
+
+     # Enable memory overcommit for Valkey/Redis background saves
+     echo "vm.overcommit_memory = 1" > /etc/sysctl.d/99-valkey.conf
+     sysctl -w vm.overcommit_memory=1
+
+     # docker compose plugin
      curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64 \
        -o /usr/local/lib/docker/cli-plugins/docker-compose
      chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+     # docker buildx plugin (required by `docker compose build` ≥ v2.30)
+     BUILDX_VERSION=v0.19.0
+     curl -SL https://github.com/docker/buildx/releases/download/${BUILDX_VERSION}/buildx-${BUILDX_VERSION}.linux-arm64 \
+       -o /usr/local/lib/docker/cli-plugins/docker-buildx
+     chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
+
      git clone https://github.com/douglasryanadams/odin.git /opt/odin
      ```
 9. **Launch instance**.
@@ -360,44 +393,56 @@ If the **Connect** button is disabled, the agent hasn't registered yet — wait 
 Region: not applicable (CloudFront is global; the console may keep showing N. Virginia).
 
 1. Open the **CloudFront** console → **Distributions** → **Create distribution**.
-2. **Origin**:
-   - Origin domain: paste the **EIP** from step 8c.
-   - Protocol: **HTTP only**.
-   - HTTP port: `8000`.
-   - Name: `ec2` (or accept the auto-generated name).
-   - Expand **Add custom header** — none needed.
-   - Expand **Connection attempts/timeout** under additional settings:
-     - **Origin response timeout (read timeout)**: `180`
-     - **Origin keep-alive timeout**: `60`
-3. **Default cache behavior**:
-   - Viewer protocol policy: **Redirect HTTP to HTTPS**.
-   - Allowed HTTP methods: **GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE**.
-   - Cache key and origin requests: **Cache policy and origin request policy**.
-     - Cache policy: **CachingDisabled** (managed). The dynamic app should not cache by default; the static behavior below handles assets.
-     - Origin request policy: **AllViewer** (managed).
-   - Compress objects automatically: **Yes**.
-4. **Web Application Firewall (WAF)**: **Do not enable security protections** for P0 (you can flip this later).
-5. **Settings**:
-   - Price class: **Use only North America and Europe** (`PriceClass_100`).
-   - Alternate domain name (CNAME): `yourdomain.com`.
-   - Custom SSL certificate: pick the certificate from step 3 (it's the only one in us-east-1 that matches).
-   - Security policy: **TLSv1.2_2021**.
-   - Supported HTTP versions: **HTTP/2** and **HTTP/3** both checked.
-   - Default root object: leave blank.
-6. **Create distribution**.
+2. **Choose a plan**: pick **Free** ($0/month, 1M requests + 100 GB transfer + 5 GB S3 storage). For Odin's launch traffic that's ~33k requests/day of headroom. AWS WAF and DDoS protection are bundled into every plan, including Free, at no extra charge.
+3. **Specify origin** page:
+   - **Origin type**: pick **Other** (publicly resolvable URL). (VPC origin is the cleaner long-term option since it removes the EIP requirement, but it's gated behind extra setup; punt on it for P0.)
+   - **Origin domain**: the EC2 instance's **Public IPv4 DNS** (e.g. `ec2-44-230-41-145.us-west-2.compute.amazonaws.com`), shown on the EC2 instance detail page. The **Other** origin type requires a hostname, not a raw IP. The public DNS is stable as long as the EIP stays attached; if the EIP ever changes, update this field to the new EC2 public DNS.
+   - **Origin path**: leave blank.
+   - **Origin settings**: pick **Customize origin settings**, then set:
+     - Protocol: **HTTP only**
+     - HTTP port: `8000`
+     - Origin response timeout: `120` (max allowed; range 1–120)
+     - Origin keep-alive timeout: `60` (range 1–120)
+     - Custom headers: none
+   - **Cache settings**: pick **Customize cache settings**, then set:
+     - Viewer protocol policy: **Redirect HTTP to HTTPS**
+     - Allowed HTTP methods: **GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE**
+     - Cache policy: **CachingDisabled** (managed) — the dynamic app should not cache; the `/static/*` behavior added in 9a handles assets
+     - Origin request policy: **AllViewer** (managed)
+   - **Next**.
+4. **Enable security** page (WAF):
+   - The three "Included security protections" (common-vulnerability rules, vulnerability-discovery blocking, IP threat-intel) are always on at the Free plan — no toggle.
+   - **Use monitor mode**: ✅ check. Counts what would be blocked without actually blocking. Leave it on for a few days post-launch, scan the WAF logs for false positives on magic-link redemptions and SSE streams, then uncheck to start blocking.
+   - **Rate limiting** (Recommended): ✅ enable. Cheap flood protection.
+   - **SQL protections**: skip — Pro plan only, and Odin doesn't use SQL.
+   - **Layer 7 DDoS**: skip — Business plan only.
+5. **Get TLS certificate** page:
+   - The wizard auto-discovers ACM certificates in us-east-1. Pick the cert created in step 3 (its **Covered domains** column should list `yourdomain.com` and `*.yourdomain.com`).
+   - **Next**.
+6. **Review and create** page:
+   - Confirm the summary: distribution name set, **Domains to serve** = `yourdomain.com`, **Custom origin** = the EC2 public DNS, **Cache policy** = CachingDisabled, **Origin request policy** = AllViewer, **Security protections** = Enabled with monitor mode, **TLS certificate** ARN matches step 3.
+   - **Create distribution**.
+
+The Free-plan wizard doesn't expose price class, security policy (TLS minimum version), supported HTTP versions, or default root object. They're at managed defaults — fine for P0. If you ever need to tighten them, the distribution's **General → Edit** screen post-creation lets you override.
 
 ### 9a. Add the `/static/*` cache behavior
 
 CloudFront only lets you create one behavior at a time, so the static-asset rule is added after the distribution exists.
 
 1. Open the new distribution → **Behaviors** tab → **Create behavior**.
-2. Path pattern: `/static/*`. Origin: the `ec2` origin.
-3. Viewer protocol policy: **Redirect HTTP to HTTPS**.
-4. Allowed HTTP methods: **GET, HEAD**.
-5. Cache key and origin requests: **Cache policy and origin request policy**.
-   - Cache policy: **CachingOptimized** (managed).
-6. Compress objects automatically: **Yes**.
-7. **Create behavior**.
+2. **Settings**:
+   - Path pattern: `/static/*`
+   - Origin and origin groups: the EC2 origin from step 9
+   - Compress objects automatically: **Yes**
+3. **Viewer**:
+   - Viewer protocol policy: **Redirect HTTP to HTTPS**
+   - Allowed HTTP methods: **GET, HEAD**
+   - Restrict viewer access: **No**
+4. **Cache key and origin requests**:
+   - Cache policy: **CachingOptimized** (managed; recommended for this path pattern)
+   - Origin request policy: leave blank
+   - Response headers policy: leave blank
+5. **Create behavior**.
 
 Distributions take ~5–10 minutes to deploy. The status column shows **Deploying** → **Enabled**.
 
@@ -422,30 +467,35 @@ DNS propagates in a minute or two. After CloudFront finishes deploying, `https:/
 
 ## 11. GitHub Actions Secrets
 
-In the GitHub repo settings → Secrets and variables → Actions, add:
+1. In the GitHub repo, open **Settings → Secrets and variables → Actions** → **Secrets** tab.
+2. Under **Repository secrets**, click **New repository secret** and add each of these in turn:
 
-| Secret | Value |
+| Name | Value |
 |---|---|
 | `AWS_ACCOUNT_ID` | your 12-digit account ID (from step 1) |
 | `EC2_INSTANCE_ID` | the instance ID from step 8b |
 
-The deploy workflow assumes the `GitHubActionsOdinDeploy` role from step 5 via OIDC, so no AWS access keys are stored in GitHub.
+Neither value is strictly secret (account IDs and instance IDs aren't credentials), but the deploy workflow at `.github/workflows/deploy.yml` reads both via `${{ secrets.* }}`, so they go under Secrets rather than Variables.
+
+The workflow assumes the `GitHubActionsOdinDeploy` role from step 5 via OIDC, so no AWS access keys are stored in GitHub.
 
 ---
 
 ## 12. Set Real Secret Values
 
-Region: **us-west-2**. Repeat the edit flow from 7d for each secret:
+Region: **us-west-2**.
 
-1. **Secrets Manager** console → open the secret → **Retrieve secret value** → **Edit** → **Plaintext** tab.
-2. Replace the placeholder with the real value, then **Save**.
+1. **Secrets Manager** console → open `odin/app` → **Retrieve secret value** → **Edit** → **Plaintext** tab.
+2. Replace the two remaining placeholders with the real values, then **Save**:
 
-| Secret | Plaintext value |
+| Key | Value |
 |---|---|
-| `odin/anthropic-api-key` | `sk-ant-your-real-key-here` |
-| `odin/searxng-secret` | a 64-character hex string. Generate one locally with `openssl rand -hex 32` and paste the output. |
+| `anthropic_api_key` | `sk-ant-your-real-key-here` |
+| `secret_key` | a 64-character hex string for HMAC cookie/magic-link signing. Generate locally with `openssl rand -hex 32`. Min 32 chars. |
+| `app_url` | the public origin used to build magic-link URLs, e.g. `https://yourdomain.com`. No trailing slash. |
+| `searxng_secret` | a 64-character hex string. Generate one locally with `openssl rand -hex 32` and paste the output. |
 
-The `odin/smtp` secret was already populated in step 7d.
+The `smtp_*` keys were already populated in step 7d.
 
 ---
 
@@ -455,28 +505,27 @@ Open an SSM Session Manager shell to the instance and start the stack manually f
 
 1. **EC2** console → **Instances** → select `odin` → **Connect** → **Session Manager** tab → **Connect**.
 
-A browser-based shell opens. Everything below runs inside that shell — there is no UI alternative for `docker compose`.
+A browser-based shell opens as `ssm-user`. Everything below runs inside that shell — there is no UI alternative for `docker compose`.
+
+`ssm-user` isn't in the docker group, so first switch to `ec2-user` (which is, courtesy of the user_data script in step 8b):
 
 ```bash
+sudo -i -u ec2-user
 cd /opt/odin
 
-# Pull secrets into environment
-export ANTHROPIC_API_KEY=$(aws secretsmanager get-secret-value \
-  --region us-west-2 --secret-id odin/anthropic-api-key \
+# Pull all credentials in one call and unpack into environment
+_SECRETS=$(aws secretsmanager get-secret-value \
+  --region us-west-2 --secret-id odin/app \
   --query SecretString --output text)
-export SEARXNG_SECRET=$(aws secretsmanager get-secret-value \
-  --region us-west-2 --secret-id odin/searxng-secret \
-  --query SecretString --output text)
-
-# Pull and unpack SMTP credentials
-_SMTP=$(aws secretsmanager get-secret-value \
-  --region us-west-2 --secret-id odin/smtp \
-  --query SecretString --output text)
-export SMTP_HOST=$(echo "$_SMTP" | python3 -c "import sys,json; print(json.load(sys.stdin)['host'])")
-export SMTP_FROM=$(echo "$_SMTP" | python3 -c "import sys,json; print(json.load(sys.stdin)['from'])")
-export SMTP_USER=$(echo "$_SMTP" | python3 -c "import sys,json; print(json.load(sys.stdin)['user'])")
-export SMTP_PASS=$(echo "$_SMTP" | python3 -c "import sys,json; print(json.load(sys.stdin)['pass'])")
-unset _SMTP
+export ANTHROPIC_API_KEY=$(echo "$_SECRETS" | jq -r '.anthropic_api_key')
+export SECRET_KEY=$(echo "$_SECRETS" | jq -r '.secret_key')
+export APP_URL=$(echo "$_SECRETS" | jq -r '.app_url')
+export SEARXNG_SECRET=$(echo "$_SECRETS" | jq -r '.searxng_secret')
+export SMTP_HOST=$(echo "$_SECRETS" | jq -r '.smtp_host')
+export SMTP_FROM=$(echo "$_SECRETS" | jq -r '.smtp_from')
+export SMTP_USER=$(echo "$_SECRETS" | jq -r '.smtp_user')
+export SMTP_PASS=$(echo "$_SECRETS" | jq -r '.smtp_pass')
+unset _SECRETS
 
 # Login to ECR and pull the prod image (substitute your 12-digit account ID from step 1)
 ECR_URI="<account-id>.dkr.ecr.us-west-2.amazonaws.com/odin"
@@ -614,12 +663,7 @@ Run this drill once against a throwaway sandbox EC2 before launch so you've actu
 - `/odin/searxng-valkey`
 - `/odin/odin-valkey`
 
-The EC2 instance role needs CloudWatch Logs permissions. If you used the Step 4 IAM policy from earlier in this doc, you have the SSM core permissions but not log permissions yet — add the AWS-managed policy:
-
-1. **IAM** console → **Roles** → `odinInstanceRole` → **Add permissions** → **Attach policies**.
-2. Search for `CloudWatchAgentServerPolicy` → check it → **Add permissions**.
-
-After the next container restart, log groups appear automatically. Set retention to bound cost:
+Log groups appear automatically once containers start (the role permission for this was attached in step 4d). Set retention to bound cost:
 
 1. **CloudWatch** → **Logs** → **Log groups**. Region: **us-west-2**.
 2. For each of the four `/odin/*` log groups: click the group → **Actions** → **Edit retention setting** → **2 weeks** → **Save**.
@@ -713,13 +757,13 @@ No deploy-time action required.
 |---|---|
 | EC2 t4g.small (on-demand) | ~$12 |
 | Elastic IP (attached) | $0 |
-| CloudFront + Shield Standard | $0 (free tier) |
+| CloudFront Free plan (1M req + 100 GB + WAF + Shield Standard) | $0 |
 | ACM certificate | $0 |
 | Route 53 hosted zone | $0.50 |
 | ECR storage | ~$0.10 |
-| Secrets Manager (3 secrets) | ~$1.20 |
+| Secrets Manager (1 secret) | ~$0.40 |
 | Purelymail | billed separately |
-| **Total** | **~$14/month** |
+| **Total** | **~$13/month** |
 
-1-year Reserved Instance reduces EC2 to ~$6/month → **~$8/month total**.
-Optional AWS WAF: +~$5–8/month when needed.
+1-year Reserved Instance reduces EC2 to ~$6/month → **~$7/month total**.
+If traffic outgrows the CloudFront Free plan (1M requests or 100 GB/mo), the next step up is the Pro plan at $15/month (10M requests + 50 TB).
