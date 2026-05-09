@@ -26,6 +26,7 @@ jq -r '
   | map("\(.key | ascii_upcase)=\(.value)")
   | .[]
 ' <<<"$SECRETS_JSON" > .env
+chown ec2-user:ec2-user .env
 
 unset SECRETS_JSON
 
