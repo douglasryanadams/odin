@@ -6,7 +6,7 @@
 
 # Absolute prohibitions
 
-- Never write display borders (e.g. `────────────`) anywhere in the project — not in source files, comments, CSS, templates, scripts, or documentation. They are terminal UI artifacts and have no place in committed code.
+- Never write display borders (e.g. `────────────`) anywhere in the project — not in source files, comments, CSS, templates, scripts, documentation, git commit messages, or pull request messages. They are terminal UI artifacts and have no place in committed code.
 
 # Process expectations
 
