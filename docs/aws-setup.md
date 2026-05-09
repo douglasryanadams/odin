@@ -522,7 +522,7 @@ aws ecr get-login-password --region us-east-1 \
   | docker login --username AWS --password-stdin $ECR_URI
 
 # On first deploy, build locally since there's no ECR image yet
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.awslogs.yml up -d
 ```
 
 After the first GitHub Actions deploy runs successfully, subsequent deploys pull from ECR automatically.
@@ -638,7 +638,7 @@ The first snapshot runs at the next scheduled window. You can also click **Creat
 6. **Stop** (do not terminate) the original instance.
 7. **EC2** → **Volumes** → detach the original instance's root volume, then attach the restored volume to the original instance as `/dev/xvda`. (Alternative simpler path: skip the volume swap and just keep the new instance.)
 8. **Start** the restored or rebuilt instance.
-9. SSM into it (`Session Manager` from the EC2 console row), then `cd /opt/odin && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`.
+9. SSM into it (`Session Manager` from the EC2 console row), then `cd /opt/odin && docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.awslogs.yml up -d`.
 10. **Elastic IP** console → reassociate the EIP with the restored instance.
 11. `curl https://yourdomain.com/health` → confirm 200.
 12. Terminate the original instance.
@@ -651,7 +651,7 @@ Run this drill once against a throwaway sandbox EC2 before launch so you've actu
 
 ### CloudWatch Logs
 
-`docker-compose.prod.yml` already has the `awslogs` log driver wired for all four services. Log groups are created automatically on first start:
+`docker-compose.awslogs.yml` (a separate overlay applied on top of the prod compose file on EC2) configures the `awslogs` log driver for all four services. The driver is split into its own file because it requires EC2 IMDS to authenticate, which CI runners don't have. Log groups are created automatically on first start:
 
 - `/odin/web`
 - `/odin/searxng`
@@ -735,7 +735,7 @@ Alternatively, push a revert commit to `main`:
    aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin $ECR_URI
    docker pull $ECR_URI:<previous-sha>
    docker tag $ECR_URI:<previous-sha> odin-prod
-   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps web
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.awslogs.yml up -d --no-deps web
    ```
 3. `curl https://yourdomain.com/health` → confirm 200.
 
