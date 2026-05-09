@@ -4,7 +4,10 @@
 {% block header %}{% endblock %}
 {% block content %}
   <section class="hero">
-    <h1 class="wordmark wordmark--hero">ODIN</h1>
+    <div class="hero__brand">
+      <h1 class="wordmark wordmark--hero">ODIN</h1>
+      <span class="beta-badge beta-badge--hero" aria-label="Beta release">Beta</span>
+    </div>
     <p class="hero__tagline">Profiles synthesized from the web.</p>
     <form id="search-form"
           class="search-form"

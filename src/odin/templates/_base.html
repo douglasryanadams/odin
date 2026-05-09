@@ -21,9 +21,12 @@
   <body class="{% block body_class %}{% endblock %}">
     {% block header %}
       <header class="site-header">
-        <a href="/" class="wordmark wordmark--small" aria-label="Odin home">
-          <span>ODIN</span>
-        </a>
+        <div class="site-header__brand">
+          <a href="/" class="wordmark wordmark--small" aria-label="Odin home">
+            <span>ODIN</span>
+          </a>
+          <span class="beta-badge" aria-label="Beta release">Beta</span>
+        </div>
         {% block header_actions %}
           <nav class="header-nav">
             {% if user %}

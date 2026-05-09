@@ -113,6 +113,14 @@ def test_index_renders_wordmark_and_form(client: TestClient) -> None:
     assert 'id="search-form"' in response.text
 
 
+def test_index_renders_beta_badge(client: TestClient) -> None:
+    """Landing page includes a beta badge so users know the product is in beta."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "beta-badge" in response.text
+    assert ">Beta<" in response.text
+
+
 def test_index_sets_anon_cookie_on_first_visit(client: TestClient) -> None:
     """Index sets odin_anon cookie when not already present."""
     response = client.get("/", cookies={})
