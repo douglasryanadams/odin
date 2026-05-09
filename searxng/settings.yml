@@ -4,11 +4,15 @@ use_default_settings:
       - ahmia
       - torch
       - wikidata
+      - duckduckgo
+      - google
+      - bing
+      - yahoo
 
 server:
   # Override in production via SEARXNG_SECRET environment variable
   secret_key: "dev-secret-key-not-for-production"
-  limiter: false
+  limiter: true
   image_proxy: true
 
 search:

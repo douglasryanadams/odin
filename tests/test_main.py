@@ -1,7 +1,7 @@
 """Tests for the main application routes."""
 
 import json
-from collections.abc import Iterator, Mapping
+from collections.abc import AsyncIterator, Iterator, Mapping
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -42,6 +42,7 @@ def mock_valkey() -> MagicMock:
     m.lpush = AsyncMock()
     m.ltrim = AsyncMock()
     m.expire = AsyncMock()
+    m.set = AsyncMock(return_value=True)
     return m
 
 
@@ -74,6 +75,11 @@ class _FakePageFetcher:
 
 def _setup_page_fetcher() -> None:
     app.dependency_overrides[get_page_fetcher] = _FakePageFetcher
+
+
+async def _async_iter(items: list[bytes]) -> "AsyncIterator[bytes]":
+    for item in items:
+        yield item
 
 
 @pytest.fixture
@@ -117,6 +123,125 @@ def test_index_does_not_overwrite_existing_anon_cookie(client: TestClient) -> No
     """Index leaves an existing odin_anon cookie unchanged."""
     response = client.get("/", cookies={"odin_anon": "existing-id"})
     assert "odin_anon" not in response.cookies
+
+
+def test_anon_cookie_lacks_secure_flag_in_dev(client: TestClient) -> None:
+    """When cookie_secure is False (local dev), Set-Cookie omits Secure."""
+    response = client.get("/", cookies={})
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "odin_anon=" in set_cookie
+    assert "Secure" not in set_cookie
+
+
+def test_anon_cookie_has_secure_flag_when_enabled(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When cookie_secure is True, Set-Cookie for odin_anon includes Secure."""
+    from odin import main as _main  # noqa: PLC0415
+
+    monkeypatch.setattr(_main.settings, "cookie_secure", True)
+    response = client.get("/", cookies={})
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "odin_anon=" in set_cookie
+    assert "Secure" in set_cookie
+
+
+def test_session_cookie_has_secure_flag_when_enabled(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """/auth/verify sets odin_session with Secure when cookie_secure is True."""
+    from odin import main as _main  # noqa: PLC0415
+
+    monkeypatch.setattr(_main.settings, "cookie_secure", True)
+    token = _auth.generate_magic_token("user@example.com", _TEST_SECRET)
+    response = client.get(f"/auth/verify?token={token}", follow_redirects=False)
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "odin_session=" in set_cookie
+    assert "Secure" in set_cookie
+
+
+def test_auth_verify_rejects_reused_token(client: TestClient, mock_valkey: MagicMock) -> None:
+    """A magic-link token can only be redeemed once; replay falls through to login error."""
+    # First call: jti claim succeeds (Valkey SET NX returns truthy).
+    # Second call: jti already claimed (returns None / falsy).
+    mock_valkey.set = AsyncMock(side_effect=[True, None])
+    token = _auth.generate_magic_token("user@example.com", _TEST_SECRET)
+
+    first = client.get(f"/auth/verify?token={token}", follow_redirects=False)
+    assert "odin_session=" in first.headers.get("set-cookie", "")
+
+    second = client.get(f"/auth/verify?token={token}")
+    assert "odin_session=" not in second.headers.get("set-cookie", "")
+    assert "Invalid or expired link" in second.text
+
+
+def test_index_response_has_security_headers(client: TestClient) -> None:
+    """All responses carry baseline security headers."""
+    response = client.get("/")
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+    assert "default-src 'self'" in response.headers["Content-Security-Policy"]
+
+
+def test_health_response_also_has_security_headers(client: TestClient) -> None:
+    """JSON endpoints get the same headers as HTML ones."""
+    response = client.get("/health")
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert "Content-Security-Policy" in response.headers
+
+
+def test_hsts_absent_when_cookie_secure_false(client: TestClient) -> None:
+    """HSTS is omitted in dev (plain HTTP) so browsers don't pin localhost to HTTPS."""
+    response = client.get("/")
+    assert "Strict-Transport-Security" not in response.headers
+
+
+def test_hsts_present_when_cookie_secure_true(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """HSTS is set in production where cookie_secure is True."""
+    from odin import main as _main  # noqa: PLC0415
+
+    monkeypatch.setattr(_main.settings, "cookie_secure", True)
+    response = client.get("/")
+    hsts = response.headers["Strict-Transport-Security"]
+    assert "max-age=" in hsts
+    assert "includeSubDomains" in hsts
+
+
+def test_csp_allows_required_external_assets(client: TestClient) -> None:
+    """CSP must not block the actual fonts and Font Awesome asset hosts in use."""
+    response = client.get("/")
+    csp = response.headers["Content-Security-Policy"]
+    assert "https://fonts.googleapis.com" in csp
+    assert "https://fonts.gstatic.com" in csp
+    assert "https://cdnjs.cloudflare.com" in csp
+
+
+def test_profile_page_rejects_overlong_query(client: TestClient) -> None:
+    """A query above the cap returns 422 from FastAPI's built-in validation."""
+    long_q = "a" * 257
+    response = client.get(f"/profile?q={long_q}")
+    assert response.status_code == 422
+
+
+def test_profile_page_accepts_query_at_cap(client: TestClient) -> None:
+    """A query at exactly the cap renders normally."""
+    boundary_q = "a" * 256
+    response = client.get(f"/profile?q={boundary_q}")
+    assert response.status_code == 200
+
+
+def test_profile_stream_rejects_overlong_query(client: TestClient) -> None:
+    """The stream endpoint returns 422 for an overlong query."""
+    _setup_page_fetcher()
+    try:
+        long_q = "a" * 257
+        response = client.get(f"/profile/stream?q={long_q}")
+        assert response.status_code == 422
+    finally:
+        app.dependency_overrides.pop(get_page_fetcher, None)
 
 
 def test_index_shows_quota_when_count_is_nonzero(
@@ -229,6 +354,123 @@ def test_profile_page_sets_anon_cookie_on_first_visit(client: TestClient) -> Non
 def _parse_sse_events(body: str) -> list[dict[str, object]]:
     """Parse the body of an SSE response into a list of decoded JSON events."""
     return [json.loads(line[5:]) for line in body.splitlines() if line.startswith("data:")]
+
+
+def _stateful_kv(mock_valkey: MagicMock) -> dict[str, bytes]:
+    """Replace mock_valkey.get/set with a real-ish in-memory backing store."""
+    storage: dict[str, bytes] = {}
+
+    async def _get(key: str) -> bytes | None:
+        return storage.get(key)
+
+    async def _set(key: str, value: str | bytes, **_kw: object) -> bool:
+        storage[key] = value.encode() if isinstance(value, str) else value
+        return True
+
+    mock_valkey.get = AsyncMock(side_effect=_get)
+    mock_valkey.set = AsyncMock(side_effect=_set)
+    return storage
+
+
+def _make_rate_limit_error() -> Exception:
+    from anthropic import RateLimitError  # noqa: PLC0415
+
+    response = httpx.Response(429, request=httpx.Request("POST", "https://api.anthropic.com"))
+    return RateLimitError("rate limited", response=response, body=None)
+
+
+def _make_billing_error() -> Exception:
+    from anthropic import BadRequestError  # noqa: PLC0415
+
+    response = httpx.Response(400, request=httpx.Request("POST", "https://api.anthropic.com"))
+    return BadRequestError(
+        "billing limit reached",
+        response=response,
+        body={"error": {"type": "billing_error", "message": "spend limit"}},
+    )
+
+
+def test_profile_stream_emits_service_unavailable_on_rate_limit_error(
+    client: TestClient, mock_anthropic: MagicMock
+) -> None:
+    """When Anthropic rate-limits us, the stream emits service_unavailable and stops."""
+    _setup_page_fetcher()
+    mock_anthropic.messages.create.side_effect = _make_rate_limit_error()
+    response = client.get("/profile/stream?q=foo")
+    events = _parse_sse_events(response.text)
+    assert any(e["type"] == "service_unavailable" for e in events)
+
+
+def test_profile_stream_emits_service_unavailable_on_billing_error(
+    client: TestClient, mock_anthropic: MagicMock
+) -> None:
+    """When the workspace spend limit is hit, the stream emits service_unavailable."""
+    _setup_page_fetcher()
+    mock_anthropic.messages.create.side_effect = _make_billing_error()
+    response = client.get("/profile/stream?q=foo")
+    events = _parse_sse_events(response.text)
+    assert any(e["type"] == "service_unavailable" for e in events)
+
+
+@respx.mock
+def test_profile_stream_caches_and_replays_results(
+    client: TestClient, mock_anthropic: MagicMock, mock_valkey: MagicMock
+) -> None:
+    """Second call for the same query replays cached events; pipeline is not re-run."""
+    _setup_page_fetcher()
+    _stateful_kv(mock_valkey)
+    mock_anthropic.messages.create.side_effect = _pipeline_side_effects()
+    respx.get(f"{MOCK_BASE_URL}/search").mock(
+        return_value=httpx.Response(200, json=_MOCK_SEARXNG_RESULTS)
+    )
+
+    first = client.get("/profile/stream?q=einstein")
+    first_events = _parse_sse_events(first.text)
+    first_call_count = mock_anthropic.messages.create.call_count
+
+    second = client.get("/profile/stream?q=einstein")
+    second_events = _parse_sse_events(second.text)
+
+    assert mock_anthropic.messages.create.call_count == first_call_count  # no extra calls
+    assert {e["type"] for e in second_events} == {e["type"] for e in first_events}
+
+
+@respx.mock
+def test_profile_stream_cache_normalizes_query(
+    client: TestClient, mock_anthropic: MagicMock, mock_valkey: MagicMock
+) -> None:
+    """Different whitespace/case for the same logical query hit the same cache entry."""
+    _setup_page_fetcher()
+    _stateful_kv(mock_valkey)
+    mock_anthropic.messages.create.side_effect = _pipeline_side_effects()
+    respx.get(f"{MOCK_BASE_URL}/search").mock(
+        return_value=httpx.Response(200, json=_MOCK_SEARXNG_RESULTS)
+    )
+
+    client.get("/profile/stream?q=Albert%20Einstein")
+    first_call_count = mock_anthropic.messages.create.call_count
+
+    client.get("/profile/stream?q=%20%20albert%20%20einstein%20%20")
+
+    assert mock_anthropic.messages.create.call_count == first_call_count
+
+
+def test_profile_stream_does_not_cache_service_unavailable(
+    client: TestClient, mock_anthropic: MagicMock, mock_valkey: MagicMock
+) -> None:
+    """A pipeline that trips a billing error must not poison the cache."""
+    _setup_page_fetcher()
+    _stateful_kv(mock_valkey)
+    mock_anthropic.messages.create.side_effect = _make_billing_error()
+
+    client.get("/profile/stream?q=foo")
+    # On the second call, ensure the pipeline runs again rather than serving a cached failure.
+    mock_anthropic.messages.create.side_effect = _make_billing_error()
+    pre_count = mock_anthropic.messages.create.call_count
+
+    client.get("/profile/stream?q=foo")
+
+    assert mock_anthropic.messages.create.call_count > pre_count
 
 
 @respx.mock
@@ -449,11 +691,23 @@ def test_login_page_shows_limit_message_when_reason_is_limit(client: TestClient)
     assert "free searches for today" in response.text
 
 
+_CSRF = "test-csrf-token"
+
+
+def _seed_csrf(client: TestClient) -> dict[str, str]:
+    """Set a CSRF cookie on the client and return matching form-data."""
+    client.cookies.set("csrf_token", _CSRF)
+    return {"csrf_token": _CSRF}
+
+
 @patch("odin.main.send_magic_link")
 def test_send_link_renders_confirmation(mock_send: MagicMock, client: TestClient) -> None:
     """POST /auth/send-link renders a confirmation and calls send_magic_link."""
     mock_send.return_value = None
-    response = client.post("/auth/send-link", data={"email": "user@example.com"})
+    response = client.post(
+        "/auth/send-link",
+        data={"email": "user@example.com", **_seed_csrf(client)},
+    )
     assert response.status_code == 200
     assert "user@example.com" in response.text
     mock_send.assert_called_once()
@@ -463,9 +717,81 @@ def test_send_link_renders_confirmation(mock_send: MagicMock, client: TestClient
 def test_send_link_normalizes_email(mock_send: MagicMock, client: TestClient) -> None:
     """POST /auth/send-link lowercases and strips the submitted email."""
     mock_send.return_value = None
-    client.post("/auth/send-link", data={"email": "  USER@EXAMPLE.COM  "})
+    client.post(
+        "/auth/send-link",
+        data={"email": "  USER@EXAMPLE.COM  ", **_seed_csrf(client)},
+    )
     called_email = mock_send.call_args[0][0]
     assert called_email == "user@example.com"
+
+
+def _stateful_incr(mock_valkey: MagicMock) -> dict[str, int]:
+    """Wire mock_valkey.incr to maintain real per-key counts; return the dict for inspection."""
+    counts: dict[str, int] = {}
+
+    async def _incr(key: str) -> int:
+        counts[key] = counts.get(key, 0) + 1
+        return counts[key]
+
+    mock_valkey.incr = AsyncMock(side_effect=_incr)
+    return counts
+
+
+@patch("odin.main.send_magic_link")
+def test_send_link_rejects_second_email_within_hour_silently(
+    mock_send: MagicMock, client: TestClient, mock_valkey: MagicMock
+) -> None:
+    """Second magic-link request for the same email is silently dropped."""
+    _stateful_incr(mock_valkey)
+    mock_send.return_value = None
+    csrf = _seed_csrf(client)
+
+    first = client.post("/auth/send-link", data={"email": "user@example.com", **csrf})
+    second = client.post("/auth/send-link", data={"email": "user@example.com", **csrf})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert "user@example.com" in second.text
+    assert mock_send.call_count == 1
+
+
+@patch("odin.main.send_magic_link")
+def test_send_link_rejects_sixth_ip_within_hour(
+    mock_send: MagicMock, client: TestClient, mock_valkey: MagicMock
+) -> None:
+    """Six different emails from the same IP within an hour: only five are sent."""
+    _stateful_incr(mock_valkey)
+    mock_send.return_value = None
+    csrf = _seed_csrf(client)
+
+    for i in range(6):
+        client.post("/auth/send-link", data={"email": f"u{i}@example.com", **csrf})
+
+    assert mock_send.call_count == 5
+
+
+def test_login_page_sets_csrf_cookie(client: TestClient) -> None:
+    """GET /login issues a csrf_token cookie so subsequent POSTs can match."""
+    response = client.get("/login")
+    assert "csrf_token" in response.cookies
+
+
+@patch("odin.main.send_magic_link")
+def test_send_link_rejects_mismatched_csrf(mock_send: MagicMock, client: TestClient) -> None:
+    """POST with a CSRF form value that does not match the cookie returns 403."""
+    client.cookies.set("csrf_token", "real-token")
+    response = client.post(
+        "/auth/send-link",
+        data={"email": "user@example.com", "csrf_token": "tampered"},
+    )
+    assert response.status_code == 403
+    mock_send.assert_not_called()
+
+
+def test_logout_via_get_is_method_not_allowed(client: TestClient) -> None:
+    """Logout is now POST-only to defend against link-based CSRF."""
+    response = client.get("/auth/logout", follow_redirects=False)
+    assert response.status_code == 405
 
 
 def test_auth_verify_sets_session_cookie_and_redirects(client: TestClient) -> None:
@@ -485,8 +811,9 @@ def test_auth_verify_invalid_token_renders_error(client: TestClient) -> None:
 
 
 def test_auth_logout_clears_session_and_redirects(client: TestClient) -> None:
-    """GET /auth/logout deletes the session cookie and redirects to /."""
-    response = client.get("/auth/logout", follow_redirects=False)
+    """POST /auth/logout deletes the session cookie and redirects to /."""
+    csrf = _seed_csrf(client)
+    response = client.post("/auth/logout", data=csrf, follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"] == "/"
 
@@ -510,3 +837,124 @@ def test_dashboard_renders_for_authenticated_user(client: TestClient) -> None:
     assert response.status_code == 200
     assert "user@example.com" in response.text
     assert "searches used today" in response.text
+
+
+def test_privacy_page_renders(client: TestClient) -> None:
+    """GET /privacy returns the privacy policy with key disclosures."""
+    response = client.get("/privacy")
+    assert response.status_code == 200
+    body = response.text
+    assert "Privacy" in body
+    assert "Anthropic" in body
+    assert "SearXNG" in body or "search engines" in body
+    assert "douglasryanadams@gmail.com" in body
+
+
+def test_terms_page_renders(client: TestClient) -> None:
+    """GET /terms returns the terms of service."""
+    response = client.get("/terms")
+    assert response.status_code == 200
+    body = response.text
+    assert "Terms" in body
+
+
+def test_footer_links_to_privacy_and_terms(client: TestClient) -> None:
+    """The shared footer exposes privacy and terms links."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert 'href="/privacy"' in response.text
+    assert 'href="/terms"' in response.text
+
+
+def test_disclosure_banner_shown_on_first_visit(client: TestClient) -> None:
+    """Index renders the disclosure banner when odin_seen_notice cookie is absent."""
+    response = client.get("/", cookies={})
+    assert response.status_code == 200
+    assert 'id="disclosure-banner"' in response.text
+    assert "Anthropic" in response.text
+    assert 'action="/notice/dismiss"' in response.text
+
+
+def test_disclosure_banner_hidden_when_cookie_set(client: TestClient) -> None:
+    """Index omits the banner once the user has dismissed it."""
+    response = client.get("/", cookies={"odin_seen_notice": "1"})
+    assert response.status_code == 200
+    assert 'id="disclosure-banner"' not in response.text
+
+
+def test_dismiss_notice_sets_cookie_and_redirects(client: TestClient) -> None:
+    """POST /notice/dismiss sets the odin_seen_notice cookie and redirects to referer or home."""
+    response = client.post("/notice/dismiss", follow_redirects=False)
+    assert response.status_code == 303
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "odin_seen_notice=1" in set_cookie
+    assert "Max-Age=" in set_cookie
+
+
+def test_account_delete_clears_data_and_logs_out(
+    client: TestClient, mock_valkey: MagicMock
+) -> None:
+    """POST /account/delete: 303 to /, session cookie cleared, store.delete_user called."""
+    email = "user@example.com"
+    session = _auth.create_session_value(email, _TEST_SECRET)
+    mock_valkey.delete = AsyncMock(return_value=1)
+    mock_valkey.scan_iter = MagicMock(return_value=_async_iter([b"rate:user:abc:2026-05-07"]))
+    client.cookies.set("odin_session", session)
+    csrf = _seed_csrf(client)
+
+    response = client.post(
+        "/account/delete",
+        data={"email": email, **csrf},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "odin_session=" in set_cookie
+    mock_valkey.delete.assert_awaited()
+
+
+def test_account_delete_rejects_email_mismatch(client: TestClient) -> None:
+    """Submitting a non-matching email returns 400."""
+    session = _auth.create_session_value("user@example.com", _TEST_SECRET)
+    client.cookies.set("odin_session", session)
+    csrf = _seed_csrf(client)
+    response = client.post(
+        "/account/delete",
+        data={"email": "wrong@example.com", **csrf},
+        follow_redirects=False,
+    )
+    assert response.status_code == 400
+
+
+def test_account_delete_rejects_missing_csrf(client: TestClient) -> None:
+    """Without a matching CSRF token the endpoint returns 403."""
+    session = _auth.create_session_value("user@example.com", _TEST_SECRET)
+    client.cookies.set("odin_session", session)
+    client.cookies.set("csrf_token", "right")
+    response = client.post(
+        "/account/delete",
+        data={"csrf_token": "wrong", "email": "user@example.com"},
+    )
+    assert response.status_code == 403
+
+
+def test_account_delete_rejects_unauthenticated(client: TestClient) -> None:
+    """Without a session cookie the endpoint redirects to /login."""
+    csrf = _seed_csrf(client)
+    response = client.post(
+        "/account/delete",
+        data={"email": "user@example.com", **csrf},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert "/login" in response.headers["location"]
+
+
+def test_dashboard_shows_delete_account_form(client: TestClient) -> None:
+    """Dashboard renders the delete-account form for authenticated users."""
+    session = _auth.create_session_value("user@example.com", _TEST_SECRET)
+    response = client.get("/dashboard", cookies={"odin_session": session})
+    assert response.status_code == 200
+    assert 'action="/account/delete"' in response.text

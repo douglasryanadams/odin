@@ -227,6 +227,89 @@ p {
   opacity: 0.5;
 }
 
+.site-footer__link {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color var(--t-fast);
+}
+
+.site-footer__link:hover {
+  color: var(--text);
+}
+
+.disclosure-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  background: var(--bg-elevated, #1a1a1a);
+  border-bottom: 1px solid var(--border, #2a2a2a);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.disclosure-banner__text {
+  margin: 0;
+  flex: 1;
+}
+
+.disclosure-banner__text a {
+  color: var(--accent);
+}
+
+.disclosure-banner__form {
+  margin: 0;
+}
+
+.disclosure-banner__dismiss {
+  background: transparent;
+  border: 1px solid var(--border, #2a2a2a);
+  color: var(--text);
+  padding: var(--sp-1) var(--sp-3);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.disclosure-banner__dismiss:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.legal {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--sp-6) var(--sp-5);
+  line-height: 1.6;
+}
+
+.legal__heading {
+  font-family: var(--font-display);
+  margin-bottom: var(--sp-2);
+}
+
+.legal__updated {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  margin-bottom: var(--sp-5);
+}
+
+.legal h2 {
+  margin-top: var(--sp-5);
+  margin-bottom: var(--sp-2);
+  font-size: 1.125rem;
+}
+
+.legal ul {
+  padding-left: var(--sp-5);
+}
+
+.legal li {
+  margin-bottom: var(--sp-2);
+}
+
 .header-nav {
   display: flex;
   align-items: center;
@@ -242,6 +325,19 @@ p {
 
 .header-nav__link:hover {
   color: var(--text);
+}
+
+.header-nav__logout {
+  display: inline-flex;
+  margin: 0;
+}
+
+.header-nav__link--button {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
 }
 
 @media (min-width: 720px) {
@@ -1239,6 +1335,48 @@ p {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin: 0;
+}
+
+.dashboard-card--danger {
+  border-color: #6a1f1f;
+}
+
+.dashboard-card--danger .dashboard-card__title {
+  color: #d97373;
+}
+
+.delete-account {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  align-items: flex-start;
+}
+
+.delete-account__label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.delete-account__input {
+  width: 100%;
+  padding: var(--sp-2);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  border-radius: 3px;
+}
+
+.btn--danger {
+  background: #6a1f1f;
+  color: #fff;
+  border: 1px solid #8a2929;
+}
+
+.btn--danger:hover {
+  background: #8a2929;
 }
 
 /* ----- Quota bar --------------------------------------------------------- */

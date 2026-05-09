@@ -304,6 +304,9 @@ function startStream(query) {
     } else if (data.type === "rate_limited") {
       es.close();
       window.location.href = data.redirect || "/login?reason=limit";
+    } else if (data.type === "service_unavailable") {
+      es.close();
+      failProgress(data.message || "Odin is temporarily paused. Please try again later.");
     } else if (data.type === "done") {
       es.close();
     }
@@ -326,5 +329,6 @@ function startStream(query) {
 document.addEventListener("DOMContentLoaded", () => {
   setSynthTime();
   renderStubs();
-  if (window.ODIN_QUERY) startStream(window.ODIN_QUERY);
+  const meta = document.querySelector('meta[name="odin-query"]');
+  if (meta && meta.content) startStream(meta.content);
 });

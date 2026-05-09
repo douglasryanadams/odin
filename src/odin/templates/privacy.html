@@ -1,0 +1,53 @@
+{% extends "_base.html" %}
+{% block title %}Privacy · Odin{% endblock %}
+{% block body_class %}page-legal{% endblock %}
+{% block content %}
+  <article class="legal">
+    <h1 class="legal__heading">Privacy Policy</h1>
+    <p class="legal__updated">Last updated: 2026-05-07</p>
+    <h2>What we collect</h2>
+    <ul>
+      <li>
+        <strong>Email address</strong> — only if you sign in. Used to send sign-in links and identify your account.
+      </li>
+      <li>
+        <strong>Anonymous cookie</strong> — a random ID stored in your browser to count daily searches before sign-in.
+      </li>
+      <li>
+        <strong>IP address</strong> — used in memory for rate limiting. Not retained after the rate-limit window expires.
+      </li>
+      <li>
+        <strong>Search queries</strong> — the text you submit. Tied to your account if signed in, otherwise to the anonymous cookie.
+      </li>
+    </ul>
+    <h2>Where your queries go</h2>
+    <p>Each query is sent to two third parties to produce a profile:</p>
+    <ul>
+      <li>
+        <strong>Anthropic</strong> (Claude API) — for categorization, query expansion, and synthesis. See Anthropic's privacy policy for their data handling.
+      </li>
+      <li>
+        <strong>SearXNG-routed search engines</strong> — your query is forwarded to Brave Search, Startpage, Qwant, and Mojeek to find sources. SearXNG is hosted by us; the engines do not see your IP.
+      </li>
+    </ul>
+    <h2>Retention</h2>
+    <ul>
+      <li>Anonymous search history: 7 days.</li>
+      <li>Signed-in search history: 90 days.</li>
+      <li>Rate-limit counters: until the next UTC midnight.</li>
+      <li>Cached profile results: 24 hours.</li>
+    </ul>
+    <h2>Your rights</h2>
+    <p>
+      You can delete your account and all associated data from your dashboard at any time. To request access to or correction of your data, email us.
+    </p>
+    <h2>Cookies</h2>
+    <p>
+      Odin uses only essential cookies: an anonymous ID for quota tracking, a session token after sign-in, and a CSRF token. No third-party analytics or trackers.
+    </p>
+    <h2>Contact</h2>
+    <p>
+      Questions or requests: <a href="mailto:douglasryanadams@gmail.com">douglasryanadams@gmail.com</a>.
+    </p>
+  </article>
+{% endblock %}

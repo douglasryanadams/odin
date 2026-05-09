@@ -38,5 +38,23 @@
       <a href="/" class="btn btn--secondary">New search</a>
       <a href="/auth/logout" class="dashboard__logout muted">Sign out</a>
     </p>
+    <div class="dashboard-card dashboard-card--danger">
+      <h2 class="dashboard-card__title">Delete account</h2>
+      <p class="muted">
+        Permanently removes your search history, rate-limit counters, and any other data tied to your account.
+        Type your email to confirm.
+      </p>
+      <form class="delete-account" method="post" action="/account/delete">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <label class="delete-account__label" for="delete-confirm-email">Email</label>
+        <input class="delete-account__input"
+               id="delete-confirm-email"
+               type="email"
+               name="email"
+               placeholder="{{ user }}"
+               required />
+        <button type="submit" class="btn btn--danger">Delete my account</button>
+      </form>
+    </div>
   </section>
 {% endblock %}

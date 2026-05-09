@@ -1,0 +1,49 @@
+# CloudWatch Logs overlay — apply only when running on EC2.
+# Requires the EC2 instance role to have CloudWatch Logs permissions
+# (CloudWatchAgentServerPolicy or equivalent). Combine with
+# docker-compose.yml + docker-compose.prod.yml on the host:
+#
+#   docker compose -f docker-compose.yml \
+#                  -f docker-compose.prod.yml \
+#                  -f docker-compose.awslogs.yml \
+#                  up -d
+#
+# Do NOT include this in CI smoke tests — GitHub Actions runners have no
+# EC2 IMDS, so the awslogs driver fails to authenticate.
+
+services:
+  web:
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-west-2
+        awslogs-group: /odin/web
+        awslogs-create-group: "true"
+        awslogs-stream: web
+
+  searxng:
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-west-2
+        awslogs-group: /odin/searxng
+        awslogs-create-group: "true"
+        awslogs-stream: searxng
+
+  searxng-valkey:
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-west-2
+        awslogs-group: /odin/searxng-valkey
+        awslogs-create-group: "true"
+        awslogs-stream: searxng-valkey
+
+  odin-valkey:
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-west-2
+        awslogs-group: /odin/odin-valkey
+        awslogs-create-group: "true"
+        awslogs-stream: odin-valkey

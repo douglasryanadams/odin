@@ -28,7 +28,10 @@
           <nav class="header-nav">
             {% if user %}
               <a href="/dashboard" class="header-nav__link">Dashboard</a>
-              <a href="/auth/logout" class="header-nav__link">Sign out</a>
+              <form class="header-nav__logout" method="post" action="/auth/logout">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                <button type="submit" class="header-nav__link header-nav__link--button">Sign out</button>
+              </form>
             {% else %}
               <a href="/login" class="header-nav__link">Sign in</a>
             {% endif %}
@@ -36,6 +39,24 @@
         {% endblock %}
       </header>
     {% endblock %}
+    {% if not request.cookies.get("odin_seen_notice") %}
+      <aside id="disclosure-banner"
+             class="disclosure-banner"
+             role="region"
+             aria-label="Privacy notice">
+        <p class="disclosure-banner__text">
+          Odin sends your queries to Claude (Anthropic) and privacy-respecting search engines.
+          See our <a href="/privacy">Privacy Policy</a>.
+        </p>
+        <form class="disclosure-banner__form"
+              method="post"
+              action="/notice/dismiss">
+          <button type="submit"
+                  class="disclosure-banner__dismiss"
+                  aria-label="Dismiss notice">Got it</button>
+        </form>
+      </aside>
+    {% endif %}
     <main class="site-main">
       {% block content %}{% endblock %}
     </main>
@@ -43,6 +64,10 @@
       <span class="site-footer__brand">odin</span>
       <span class="site-footer__sep" aria-hidden="true">·</span>
       <span class="site-footer__muted">profiles synthesized from the web</span>
+      <span class="site-footer__sep" aria-hidden="true">·</span>
+      <a class="site-footer__link" href="/privacy">Privacy</a>
+      <span class="site-footer__sep" aria-hidden="true">·</span>
+      <a class="site-footer__link" href="/terms">Terms</a>
     </footer>
     {% block scripts %}{% endblock %}
   </body>

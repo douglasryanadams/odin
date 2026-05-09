@@ -35,3 +35,6 @@ traces/
 
 # IDEA IDEs
 .idea/
+
+# Claude Code resume marker
+.resume_claude

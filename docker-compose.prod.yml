@@ -16,3 +16,6 @@ services:
 
   searxng-valkey:
     restart: always
+
+  odin-valkey:
+    restart: always
