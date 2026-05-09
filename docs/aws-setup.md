@@ -324,7 +324,7 @@ Region: **us-west-2**.
    - Type: **Custom TCP**
    - Port range: `8000`
    - Source type: **Custom**
-   - In the source field, start typing `pl-` and pick the prefix list named `com.amazonaws.global.cloudfront.origin-facing` from the dropdown. (This is AWS's managed list of CloudFront edge IPs — it locks port 8000 to CloudFront only.)
+   - In the source field, start typing `pl-` and pick the prefix list named **`com.amazonaws.global.cloudfront.origin-facing`** — this is the IPv4 list. AWS also exposes `com.amazonaws.global.ipv6.cloudfront.origin-facing`; do not pick that one. CloudFront edges contact origins over IPv4 by default, so an IPv6-only rule silently drops every connection from CloudFront and requests hang until the origin response timeout fires. (Both prefix lists are AWS-managed lists of CloudFront edge IPs; the IPv4 one locks port 8000 to CloudFront only.)
 4. Outbound rules: leave the default *all traffic* rule.
 5. **Create security group**.
 
