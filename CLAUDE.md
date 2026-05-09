@@ -16,6 +16,10 @@
 - Write git commit subjects that make history easy to read. Do not use dashes to decorate commit messages.
 - When adding new components, dependencies, or tools, review existing documentation and update it as needed. When unsure what to add, ask.
 
+# Configuration defaults
+
+- Default to production values. Configuration defaults should be the safe production setting (e.g., `cookie_secure=True`, HSTS enabled, strict CSP). Local-dev overrides go in `.env` or test fixtures, not in the code default. The reason: a forgotten or unset env var should fail closed, not insecure.
+
 # Testing standards
 
 - Never pass a fixture as a parameter purely for its side effects. The `del fixture_name` pattern is a symptom of this — avoid it.
