@@ -16,7 +16,7 @@ env:
 jobs:
   deploy:
     name: Build & Deploy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
 
@@ -39,7 +39,6 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           docker buildx build \
-            --platform linux/arm64 \
             --target production \
             --cache-from type=gha \
             --cache-to type=gha,mode=max \
