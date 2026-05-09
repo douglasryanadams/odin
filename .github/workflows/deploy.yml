@@ -53,7 +53,7 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
         run: |
-          aws ssm send-command \
+          COMMAND_ID=$(aws ssm send-command \
             --region $AWS_REGION \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
@@ -65,7 +65,19 @@ jobs:
               \"docker tag $ECR_REGISTRY/$ECR_REPOSITORY:latest odin-prod\",
               \"docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.awslogs.yml up -d --no-deps web\"
             ]" \
-            --wait
+            --query "Command.CommandId" \
+            --output text)
+          echo "SSM command id: $COMMAND_ID"
+          aws ssm wait command-executed \
+            --region $AWS_REGION \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID"
+          aws ssm get-command-invocation \
+            --region $AWS_REGION \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --query "{Status:Status,Stdout:StandardOutputContent,Stderr:StandardErrorContent}" \
+            --output json
 
       - name: Verify deploy via /health
         run: |
