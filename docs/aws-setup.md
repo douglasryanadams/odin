@@ -196,7 +196,7 @@ Role → **Permissions** tab → **Add permissions** → **Create inline policy*
     },
     {
       "Effect": "Allow",
-      "Action": ["ecr:BatchCheckLayerAvailability", "ecr:PutImage",
+      "Action": ["ecr:BatchCheckLayerAvailability", "ecr:BatchGetImage", "ecr:PutImage",
                  "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload"],
       "Resource": "arn:aws:ecr:us-west-2:<account-id>:repository/odin"
     }
