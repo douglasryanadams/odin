@@ -52,18 +52,20 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
         run: |
+          PARAMS=$(jq -n \
+            --arg region "$AWS_REGION" \
+            --arg registry "$ECR_REGISTRY" \
+            --arg repo "$ECR_REPOSITORY" \
+            '{commands: [
+              "cd /opt/odin",
+              "git pull origin main",
+              "AWS_REGION=\($region) ECR_REGISTRY=\($registry) ECR_REPOSITORY=\($repo) bash scripts/deploy.sh"
+            ]}')
           COMMAND_ID=$(aws ssm send-command \
-            --region $AWS_REGION \
+            --region "$AWS_REGION" \
             --instance-ids "$INSTANCE_ID" \
-            --document-name "AWS-RunShellScript" \
-            --parameters commands="[
-              \"cd /opt/odin\",
-              \"git pull origin main\",
-              \"aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY\",
-              \"docker pull $ECR_REGISTRY/$ECR_REPOSITORY:latest\",
-              \"docker tag $ECR_REGISTRY/$ECR_REPOSITORY:latest odin-prod\",
-              \"docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.awslogs.yml up -d --no-deps web\"
-            ]" \
+            --document-name AWS-RunShellScript \
+            --parameters "$PARAMS" \
             --query "Command.CommandId" \
             --output text)
           echo "SSM command id: $COMMAND_ID"
