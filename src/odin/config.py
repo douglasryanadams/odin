@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     secret_key: str = Field(min_length=32)  # required; HMAC-SHA256 needs 256 bits of entropy
     app_url: str  # required — used in magic link URLs; no safe generic default
 
-    cookie_secure: bool = False  # set true in prod so Set-Cookie includes Secure
+    cookie_secure: bool = True  # secure-by-default; set false for plain-HTTP local dev
 
     odin_valkey_url: str = "redis://odin-valkey:6379"
 

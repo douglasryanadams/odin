@@ -133,8 +133,13 @@ def test_index_does_not_overwrite_existing_anon_cookie(client: TestClient) -> No
     assert "odin_anon" not in response.cookies
 
 
-def test_anon_cookie_lacks_secure_flag_in_dev(client: TestClient) -> None:
+def test_anon_cookie_lacks_secure_flag_in_dev(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """When cookie_secure is False (local dev), Set-Cookie omits Secure."""
+    from odin import main as _main  # noqa: PLC0415
+
+    monkeypatch.setattr(_main.settings, "cookie_secure", False)
     response = client.get("/", cookies={})
     set_cookie = response.headers.get("set-cookie", "")
     assert "odin_anon=" in set_cookie
@@ -199,8 +204,13 @@ def test_health_response_also_has_security_headers(client: TestClient) -> None:
     assert "Content-Security-Policy" in response.headers
 
 
-def test_hsts_absent_when_cookie_secure_false(client: TestClient) -> None:
+def test_hsts_absent_when_cookie_secure_false(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """HSTS is omitted in dev (plain HTTP) so browsers don't pin localhost to HTTPS."""
+    from odin import main as _main  # noqa: PLC0415
+
+    monkeypatch.setattr(_main.settings, "cookie_secure", False)
     response = client.get("/")
     assert "Strict-Transport-Security" not in response.headers
 

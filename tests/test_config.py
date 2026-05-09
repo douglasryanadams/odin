@@ -21,16 +21,16 @@ def test_secret_key_at_32_chars_accepted() -> None:
     assert len(settings.secret_key) == 32
 
 
-def test_cookie_secure_defaults_false() -> None:
-    """Default is False so plain-HTTP local dev still works."""
+def test_cookie_secure_defaults_true() -> None:
+    """Default is True so production is secure by default; a missing env var fails closed."""
     settings = Settings(secret_key=_VALID_SECRET, app_url=_APP_URL)
-    assert settings.cookie_secure is False
-
-
-def test_cookie_secure_can_be_enabled() -> None:
-    """Production sets cookie_secure=True via env var."""
-    settings = Settings(secret_key=_VALID_SECRET, app_url=_APP_URL, cookie_secure=True)
     assert settings.cookie_secure is True
+
+
+def test_cookie_secure_can_be_disabled() -> None:
+    """Local plain-HTTP dev sets cookie_secure=False via env var."""
+    settings = Settings(secret_key=_VALID_SECRET, app_url=_APP_URL, cookie_secure=False)
+    assert settings.cookie_secure is False
 
 
 def test_smtp_defaults_purelymail() -> None:
