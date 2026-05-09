@@ -855,7 +855,7 @@ def test_privacy_page_renders(client: TestClient) -> None:
     assert "Privacy" in body
     assert "Anthropic" in body
     assert "SearXNG" in body or "search engines" in body
-    assert "douglasryanadams@gmail.com" in body
+    assert "odin@odinseye.info" in body
 
 
 def test_terms_page_renders(client: TestClient) -> None:
@@ -864,6 +864,7 @@ def test_terms_page_renders(client: TestClient) -> None:
     assert response.status_code == 200
     body = response.text
     assert "Terms" in body
+    assert "odin@odinseye.info" in body
 
 
 def test_footer_links_to_privacy_and_terms(client: TestClient) -> None:

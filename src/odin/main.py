@@ -200,7 +200,9 @@ async def dismiss_notice(request: Request) -> RedirectResponse:
 async def privacy(request: Request) -> HTMLResponse:
     """Render the privacy policy."""
     return templates.TemplateResponse(
-        request, "privacy.html", {"user": auth.get_current_user(request)}
+        request,
+        "privacy.html",
+        {"user": auth.get_current_user(request), "contact_email": settings.contact_email},
     )
 
 
@@ -208,7 +210,9 @@ async def privacy(request: Request) -> HTMLResponse:
 async def terms(request: Request) -> HTMLResponse:
     """Render the terms of service."""
     return templates.TemplateResponse(
-        request, "terms.html", {"user": auth.get_current_user(request)}
+        request,
+        "terms.html",
+        {"user": auth.get_current_user(request), "contact_email": settings.contact_email},
     )
 
 

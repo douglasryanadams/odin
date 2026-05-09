@@ -31,3 +31,39 @@ def test_cookie_secure_can_be_enabled() -> None:
     """Production sets cookie_secure=True via env var."""
     settings = Settings(secret_key=_VALID_SECRET, app_url=_APP_URL, cookie_secure=True)
     assert settings.cookie_secure is True
+
+
+def test_smtp_defaults_purelymail() -> None:
+    """SMTP host/port/from default to Purelymail and odinseye.info."""
+    settings = Settings(secret_key=_VALID_SECRET, app_url=_APP_URL)
+    assert settings.smtp_host == "smtp.purelymail.com"
+    assert settings.smtp_port == 587
+    assert settings.smtp_from == "odin@odinseye.info"
+
+
+def test_contact_email_default() -> None:
+    """Contact email defaults to odin@odinseye.info."""
+    settings = Settings(secret_key=_VALID_SECRET, app_url=_APP_URL)
+    assert settings.contact_email == "odin@odinseye.info"
+
+
+def test_smtp_host_override() -> None:
+    """Self-hosters can override SMTP host and from address."""
+    settings = Settings(
+        secret_key=_VALID_SECRET,
+        app_url=_APP_URL,
+        smtp_host="mail.example.org",
+        smtp_from="bot@example.org",
+    )
+    assert settings.smtp_host == "mail.example.org"
+    assert settings.smtp_from == "bot@example.org"
+
+
+def test_contact_email_override() -> None:
+    """Self-hosters can override the displayed contact email."""
+    settings = Settings(
+        secret_key=_VALID_SECRET,
+        app_url=_APP_URL,
+        contact_email="hi@example.org",
+    )
+    assert settings.contact_email == "hi@example.org"

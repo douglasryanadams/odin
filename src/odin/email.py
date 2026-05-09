@@ -15,9 +15,9 @@ _BODY = "Click to sign in to Odin:\n\n{link}\n\nThis link expires in 15 minutes.
 async def send_magic_link(to: str, link: str) -> None:
     """Send a magic sign-in link.
 
-    Logs the link to the console when SMTP_HOST is not configured (development).
+    Logs the link to the console when SMTP credentials are not configured (development).
     """
-    if settings.smtp_host:
+    if settings.smtp_user:
         await asyncio.to_thread(_send_smtp, to, link)
     else:
         logger.debug("magic link for {}: {}", to, link)
