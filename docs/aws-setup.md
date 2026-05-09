@@ -12,7 +12,7 @@ Browser → CloudFront (HTTPS, ACM cert) → EC2 t4g.small (HTTP:8000)
                                                   ├─ searxng-valkey
                                                   └─ odin-valkey
 
-Magic link emails → Amazon SES (SMTP relay, port 587)
+Magic link emails → Purelymail (SMTP relay, port 587)
 ```
 
 Shield Standard (DDoS) is included free with CloudFront. EC2 port 8000 is locked to the CloudFront origin prefix list — not publicly reachable.
@@ -233,50 +233,59 @@ For each of the three names below:
 |---|---|
 | `odin/anthropic-api-key` | Anthropic API key for odin — set real value before first deploy |
 | `odin/searxng-secret` | SearXNG secret_key — set real value before first deploy |
-| `odin/smtp` | SES SMTP credentials for magic link delivery — set real values after step 7 |
+| `odin/smtp` | SMTP credentials for magic link delivery — set real values after step 7 |
 
 7. **Next** through automatic rotation (skip — leave **Disable automatic rotation**).
 8. **Next** → **Store**.
 
 ---
 
-## 7. Amazon SES (email)
+## 7. Purelymail (email)
 
-Region: **us-west-2**. Magic links are sent over SMTP. SES is the simplest relay; the app only needs standard SMTP credentials.
+Region: not applicable (Purelymail is external; the only AWS touchpoint is the Route 53 DNS records in 7b).
 
-### 7a. Verify your sender domain
+Magic links are sent over SMTP. The app defaults to Purelymail (`smtp.purelymail.com:587`); override `SMTP_HOST`/`SMTP_FROM` if you prefer a different provider. Either way the app only needs standard SMTP credentials.
 
-In the SES console → **Verified identities** → **Create identity**, choose **Domain**, enter `yourdomain.com`. Leave **Use a custom MAIL FROM domain** unchecked unless you have a reason. Under **DKIM**, accept the default Easy DKIM with RSA 2048-bit. **Create identity**.
+### 7a. Create a Purelymail account and add your domain
 
-On the identity detail page, expand **DKIM**. Click **Publish DNS records** to **Amazon Route 53** → **Publish records**. SES writes the CNAMEs into your hosted zone. Verification usually completes within a few minutes; the status on the identity page flips to **Verified**.
+1. Sign up at **purelymail.com** and pay the one-time or annual fee.
+2. **Domains → Add domain** → enter `yourdomain.com`.
+3. Purelymail shows the DNS records you need to add. Keep that page open for the next step.
 
-Alternatively, verify a single address (**Email address** identity type) if you only need one sender and don't want to manage DKIM records.
+### 7b. Add DNS records in Route 53
 
-### 7b. Request production access
+In the Route 53 console, open the hosted zone for `yourdomain.com` and add the records Purelymail listed. Typical set:
 
-New SES accounts start in sandbox mode — outbound email only reaches verified addresses. In the SES console: **Account dashboard** → **Request production access**. Fill in the form (use case: transactional, mail type: transactional, website URL: your domain) and submit. Typical approval time is 24 hours.
+- **MX** at the apex pointing to Purelymail's inbound hosts
+- **TXT** at the apex containing the SPF policy (`v=spf1 include:_spf.purelymail.com -all`)
+- **TXT** at `<selector>._domainkey.yourdomain.com` containing the DKIM public key
+- **TXT** at `_dmarc.yourdomain.com` containing the DMARC policy
 
-### 7c. Generate SMTP credentials
+Use the exact values Purelymail's domain page shows; copy them verbatim. Verification usually completes within a few minutes once the records propagate. Purelymail's domain page will flip each row to a green check when it sees the record.
 
-In the SES console → **SMTP settings** → **Create SMTP credentials**. This opens an IAM user-creation flow with sensible defaults; accept the suggested IAM user name and **Create user**. The next page shows the generated SMTP **username** and **password** — **download the .csv or copy both now**, they cannot be retrieved again.
+### 7c. Create the sending mailbox
 
-Note the SMTP endpoint shown on the SMTP settings page:
+1. **Users → Create user** → mailbox `odin@yourdomain.com`.
+2. Set a strong password — this doubles as the SMTP submission password.
+3. Note the SMTP endpoint:
 
 ```
-Host:  email-smtp.us-west-2.amazonaws.com
+Host:  smtp.purelymail.com
 Port:  587  (STARTTLS)
+User:  odin@yourdomain.com
+Pass:  <password from step 7c.2>
 ```
 
 ### 7d. Store credentials in Secrets Manager
 
 1. **Secrets Manager** console → open `odin/smtp` → **Retrieve secret value** → **Edit**.
-2. Switch to the **Plaintext** tab and paste:
+2. Switch to the **Plaintext** tab and paste (you can omit `host` and `from` to fall back to the app defaults of `smtp.purelymail.com` and `odin@odinseye.info`; set `from` to your own domain so recipients see the right sender):
    ```json
    {
-     "host": "email-smtp.us-west-2.amazonaws.com",
-     "from": "noreply@yourdomain.com",
-     "user": "<smtp-username-from-7c>",
-     "pass": "<smtp-password-from-7c>"
+     "host": "smtp.purelymail.com",
+     "from": "odin@yourdomain.com",
+     "user": "odin@yourdomain.com",
+     "pass": "<password from step 7c.2>"
    }
    ```
 3. **Save**.
@@ -525,7 +534,7 @@ When the cap trips, the API returns `BadRequestError` with `error.type == "billi
    - Budgeting method: **Fixed**
    - Enter your budgeted amount: **$50**
 5. **Configure alerts**: click **Add an alert threshold** three times, then fill in:
-   - Threshold 1: **50%** of budgeted amount, **Actual**, email recipient `douglasryanadams@gmail.com`
+   - Threshold 1: **50%** of budgeted amount, **Actual**, email recipient `odin@odinseye.info`
    - Threshold 2: **80%**, **Actual**, same email
    - Threshold 3: **100%**, **Actual**, same email
 6. **Attach actions**: skip (none).
@@ -539,7 +548,7 @@ The Budget above is the primary cap. Add a CloudWatch alarm for a faster ping:
 2. Open **CloudWatch** → left nav **Alarms** → **All alarms** → **Create alarm**.
 3. **Select metric** → **Billing** → **Total Estimated Charge** → check the row with `Currency = USD` → **Select metric**.
 4. **Conditions**: Threshold type **Static**, **Greater than 25**.
-5. **Notification**: create a new SNS topic `odin-alerts`, email endpoint `douglasryanadams@gmail.com`. Confirm the subscription email AWS sends you.
+5. **Notification**: create a new SNS topic `odin-alerts`, email endpoint `odin@odinseye.info`. Confirm the subscription email AWS sends you.
 6. Name the alarm `odin-billing-25`. **Create alarm**.
 
 ---
@@ -633,7 +642,7 @@ Pick one:
 2. Name: `odin-health`. What to monitor: **Endpoint**.
 3. Specify endpoint by domain. Domain name: `yourdomain.com`. Path: `/health`. Port: `443`. Protocol: **HTTPS**.
 4. Request interval: **Standard (30 seconds)**. Failure threshold: **3**.
-5. **Next** → **Create alarm: Yes** → SNS topic `odin-alerts` (created earlier). Email: `douglasryanadams@gmail.com`.
+5. **Next** → **Create alarm: Yes** → SNS topic `odin-alerts` (created earlier). Email: `odin@odinseye.info`.
 6. **Create health check**.
 
 ### EC2 status-check alarm
@@ -709,7 +718,7 @@ No deploy-time action required.
 | Route 53 hosted zone | $0.50 |
 | ECR storage | ~$0.10 |
 | Secrets Manager (3 secrets) | ~$1.20 |
-| SES (first 62k emails/month) | $0 (free tier) |
+| Purelymail | billed separately |
 | **Total** | **~$14/month** |
 
 1-year Reserved Instance reduces EC2 to ~$6/month → **~$8/month total**.

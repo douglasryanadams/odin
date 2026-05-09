@@ -1,6 +1,6 @@
 """Application settings loaded from environment variables at startup."""
 
-from pydantic import Field, model_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,18 +26,15 @@ class Settings(BaseSettings):
     anon_daily_limit: int = Field(default=3, ge=0)
     auth_daily_limit: int = Field(default=20, ge=0)
 
-    smtp_host: str | None = None
+    # Magic-link delivery defaults to Purelymail; override host/from for other providers.
+    # Without SMTP_USER/SMTP_PASS the link is logged instead of sent (dev mode).
+    smtp_host: str = "smtp.purelymail.com"
     smtp_port: int = Field(default=587, ge=1, le=65535)
-    smtp_from: str | None = None
+    smtp_from: str = "odin@odinseye.info"
     smtp_user: str | None = None
     smtp_pass: str | None = None
 
-    @model_validator(mode="after")
-    def _smtp_from_required_with_host(self) -> "Settings":
-        if self.smtp_host and not self.smtp_from:
-            msg = "SMTP_FROM is required when SMTP_HOST is set"
-            raise ValueError(msg)
-        return self
+    contact_email: str = "odin@odinseye.info"
 
 
 settings = Settings()  # pyright: ignore[reportCallIssue]
