@@ -85,8 +85,15 @@ One multi-stage Dockerfile; two images (`odin-prod`, `odin-dev`).
 | `PLAYWRIGHT_TRACE_DIR` | `_fetch_pages_playwright()` in `fetch.py` | unset (when set, each `fetch_pages` call writes a `.zip` trace; view with `uvx playwright show-trace`) |
 | `WORKERS` | `gunicorn.conf.py` | `(cpu_count * 2) + 1` |
 | `SEARXNG_SECRET` | `searxng/settings.yml` via SearXNG env | unset (required in production — overrides `secret_key`) |
+| `SMTP_HOST` | `Settings` in `config.py`, used by `email.py` | `smtp.purelymail.com` |
+| `SMTP_FROM` | `Settings` in `config.py`, used by `email.py` | `odin@odinseye.info` |
+| `SMTP_USER` | `Settings` in `config.py`, used by `email.py` | unset (required in production — without it, magic links are not sent and a `WARNING` is logged) |
+| `SMTP_PASS` | `Settings` in `config.py`, used by `email.py` | unset (required when `SMTP_USER` is set) |
+| `SMTP_TEST_RECIPIENT` | `tests/integration/test_email_smtp.py` | unset (required for the SMTP integration test; set to your own address so devs don't share an inbox) |
 
 `.env` is gitignored and is the conventional place for secrets. `.env.example` documents all variables. `traces/` is gitignored for `PLAYWRIGHT_TRACE_DIR` output.
+
+In production these must be set as host environment variables before `make prod`; `docker-compose.prod.yml` forwards them into the container. The `.env` file is not mounted in production (only the dev override mounts it).
 
 ## Secrets baseline
 

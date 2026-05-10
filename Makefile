@@ -62,7 +62,7 @@ test-js: node_modules
 test-integration:
 	START=$$(date -u +"%Y-%m-%dT%H:%M:%SZ"); \
 	docker compose up -d --wait searxng searxng-valkey odin-valkey; \
-	docker compose run --rm web uv run pytest -m integration; \
+	docker compose run --rm -e SMTP_TEST_RECIPIENT web uv run pytest -m integration; \
 	TEST_EXIT=$$?; \
 	docker compose stop searxng searxng-valkey odin-valkey; \
 	ERROR_LOGS=$$(docker compose logs --no-color --since "$$START" 2>&1 | grep -E "ERROR|CRITICAL" | grep -v "searx.botdetection" | grep -v "searx.engines" | grep -v "searx.search.processor" || true); \
