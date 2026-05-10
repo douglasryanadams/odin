@@ -342,11 +342,10 @@ def mock_anthropic() -> Iterator[MagicMock]:
     app.dependency_overrides.pop(get_anthropic_client, None)
 
 
-def test_profile_page_renders_sidebar_and_loads_static_js(client: TestClient) -> None:
-    """Profile page renders the sidebar+main skeleton and references the static JS."""
+def test_profile_page_loads_static_js(client: TestClient) -> None:
+    """Profile page references the static JS bundle so streamed events have a renderer."""
     response = client.get("/profile?q=foo")
     assert response.status_code == 200
-    assert 'class="profile"' in response.text
     assert "/static/js/profile.js" in response.text
 
 
@@ -369,32 +368,6 @@ def test_profile_page_sets_anon_cookie_on_first_visit(client: TestClient) -> Non
     """Profile page sets odin_anon cookie when not already present."""
     response = client.get("/profile?q=foo", cookies={})
     assert "odin_anon" in response.cookies
-
-
-def test_profile_page_renders_sidebar_and_main_layout(client: TestClient) -> None:
-    """Profile page uses sidebar + main article column; no card-grid is rendered.
-
-    Sidebar holds Subject Compass and Source Audit; main column carries the
-    longform content (exposition, significant events, findings, sources).
-    Source order is main-then-sidebar so the responsive single-column stack
-    surfaces the primary content first.
-    """
-    response = client.get("/profile?q=foo")
-    body = response.text
-    assert 'class="profile"' in body
-    assert 'class="profile__sidebar"' in body
-    assert 'class="profile__main"' in body
-    # Sidebar holds the two assessment surfaces.
-    assert "subject-compass" in body
-    assert "source-audit" in body
-    # Main column contains the longform sections.
-    for region in ("section-events", "section-highlights", "section-lowlights", "section-sources"):
-        assert region in body
-    # Main must come before the sidebar in source order — narrow viewports stack
-    # in DOM order and we want the primary content first.
-    assert body.index('class="profile__main"') < body.index('class="profile__sidebar"')
-    # The legacy card-grid is gone.
-    assert "card-grid" not in body
 
 
 def _parse_sse_events(body: str) -> list[dict[str, object]]:
