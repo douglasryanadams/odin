@@ -9,6 +9,7 @@ from loguru import logger
 from odin.models import (
     Assessment,
     Category,
+    Caveat,
     Citation,
     Profile,
     ProfileHighlight,
@@ -51,7 +52,7 @@ class _AssessOutput:
     source_political_bias: float
     law_chaos: float
     good_evil: float
-    caveats: list[str]
+    caveats: list[Caveat]
 
 
 _HAIKU = "claude-haiku-4-5-20251001"
@@ -89,10 +90,19 @@ _SYNTHESIZE_SYSTEM = (
     "You are a research analyst building structured profiles from web content.\n"
     "Given a subject and pre-fetched content from multiple sources, create a structured profile.\n"
     "The profile must include:\n"
-    "- A concise 2-3 sentence summary\n"
-    "- 3-5 highlights (notable achievements, positive aspects, key facts)\n"
-    "- 0-3 lowlights (controversies, failures, criticisms — only if well-documented)\n"
-    "- A chronological timeline of key events\n"
+    "- summary: a 3-5 paragraph article-style overview. Open with who/what/when in the lede;\n"
+    "  use the body paragraphs to expand on significance, context, and complications. Separate\n"
+    "  paragraphs with a blank line (\\n\\n).\n"
+    "- 3-5 highlights (notable achievements, positive aspects, key facts). Each highlight has\n"
+    "  three fields:\n"
+    "    title       — short headline tag, e.g. 'Algorithm A (1843)'.\n"
+    "    description — one-line summary phrase shown at rest in the UI.\n"
+    "    detail      — 2-4 sentences explaining context, significance, or evidence; this is\n"
+    "                  revealed when the user clicks the row.\n"
+    "- 0-3 lowlights (controversies, failures, criticisms — only if well-documented), with the\n"
+    "  same three fields as highlights.\n"
+    "- A chronological timeline of 4-6 truly significant events. Prefer fewer, weightier\n"
+    "  entries over an exhaustive chronology.\n"
     "- citations: the URLs of source pages whose content materially informed the profile.\n"
     "  Only list URLs you actually drew from; skip sources you ignored.\n"
     "Be factual and cite specific details from the provided content.\n"
@@ -111,9 +121,12 @@ _ASSESS_SYSTEM = (
     "- source_political_bias (-1..+1): aggregate political lean of the cited sources as a set.\n"
     "- law_chaos (-1..+1): D&D alignment axis (-1 lawful, +1 chaotic).\n"
     "- good_evil (-1..+1): D&D alignment axis (-1 evil, +1 good).\n"
-    "- caveats: 1-4 short, specific limitations or biases that apply to THIS page's data\n"
-    "  (e.g. 'Sources skew Anglo-American', 'Coverage thin before 1990'). Avoid generic\n"
-    "  disclaimers. If you cannot find anything noteworthy, return one item explaining why.\n"
+    "- caveats: 1-4 specific limitations or biases that apply to THIS page's data. Each\n"
+    "  caveat has two fields:\n"
+    "    brief  — one-line headline phrase, e.g. 'Sources skew Anglo-American.'\n"
+    "    detail — 1-2 sentences of supporting explanation, revealed on click.\n"
+    "  Avoid generic disclaimers. If you cannot find anything noteworthy, return one item\n"
+    "  with a brief like 'No significant audit findings.' and a short detail explaining why.\n"
     "Respond using the assess_profile tool."
 )
 
@@ -183,8 +196,9 @@ _CREATE_PROFILE_TOOL: dict[str, Any] = {
                     "properties": {
                         "title": {"type": "string"},
                         "description": {"type": "string"},
+                        "detail": {"type": "string"},
                     },
-                    "required": ["title", "description"],
+                    "required": ["title", "description", "detail"],
                 },
             },
             "lowlights": {
@@ -194,8 +208,9 @@ _CREATE_PROFILE_TOOL: dict[str, Any] = {
                     "properties": {
                         "title": {"type": "string"},
                         "description": {"type": "string"},
+                        "detail": {"type": "string"},
                     },
-                    "required": ["title", "description"],
+                    "required": ["title", "description", "detail"],
                 },
             },
             "timeline": {
@@ -256,7 +271,14 @@ _ASSESS_TOOL: dict[str, Any] = {
             },
             "caveats": {
                 "type": "array",
-                "items": {"type": "string"},
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "brief": {"type": "string"},
+                        "detail": {"type": "string"},
+                    },
+                    "required": ["brief", "detail"],
+                },
                 "minItems": 1,
                 "maxItems": 4,
             },

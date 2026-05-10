@@ -22,3 +22,18 @@ def test_prod_compose_surfaces_smtp_settings() -> None:
     names = {entry.split("=", 1)[0] for entry in env}
     missing = {"SMTP_HOST", "SMTP_FROM", "SMTP_USER", "SMTP_PASS"} - names
     assert not missing, f"docker-compose.prod.yml web.environment missing: {sorted(missing)}"
+
+
+def test_dev_compose_disables_cookie_secure() -> None:
+    """Dev compose must set COOKIE_SECURE=false so HTTP localhost can receive cookies.
+
+    The code default is True (production-safe per CLAUDE.md). On HTTP localhost,
+    browsers silently discard Secure cookies, which would break CSRF, session
+    cookies, and the privacy-notice dismissal flow. The dev override lives in
+    docker-compose.yml so `docker compose up` just works.
+    """
+    data = yaml.safe_load((REPO_ROOT / "docker-compose.yml").read_text())
+    env = data["services"]["web"]["environment"]
+    assert "COOKIE_SECURE=false" in env, (
+        f"docker-compose.yml (dev) must override COOKIE_SECURE=false; saw web.environment={env}"
+    )

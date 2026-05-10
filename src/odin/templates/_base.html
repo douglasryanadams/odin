@@ -42,6 +42,18 @@
         {% endblock %}
       </header>
     {% endblock %}
+    {% if user %}
+      <div class="status-bar" role="status" aria-label="Session identity">
+        <span class="status-bar__cell">
+          <span class="status-bar__key">PILOT</span>
+          <span class="status-bar__value">{{ user.email }}</span>
+        </span>
+        <span class="status-bar__cell">
+          <span class="status-bar__key">NODE</span>
+          <span class="status-bar__value mono">{{ user.ip or "unknown" }}</span>
+        </span>
+      </div>
+    {% endif %}
     {% if not request.cookies.get("odin_seen_notice") %}
       <aside id="disclosure-banner"
              class="disclosure-banner"

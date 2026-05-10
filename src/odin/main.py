@@ -112,6 +112,10 @@ def _ip(request: Request) -> str:
     return request.client.host if request.client else ""
 
 
+def _user_email(user: auth.SessionUser | None) -> str | None:
+    return user.email if user else None
+
+
 def _csrf_token_value(request: Request) -> str:
     """Return the CSRF token to embed in templates (existing cookie or a fresh value)."""
     return request.cookies.get(_CSRF_COOKIE) or auth.generate_csrf_token()
@@ -140,7 +144,10 @@ async def index(
     user = auth.get_current_user(request)
     cookie_id = _anon_cookie_id(request)
     used = await store.get_daily_count(
-        valkey_client, user_email=user, cookie_id=cookie_id, ip_address=_ip(request)
+        valkey_client,
+        user_email=_user_email(user),
+        cookie_id=cookie_id,
+        ip_address=_ip(request),
     )
     limit = settings.auth_daily_limit if user else settings.anon_daily_limit
     if not user and used >= limit:
@@ -226,7 +233,10 @@ async def profile_page(
     user = auth.get_current_user(request)
     cookie_id = _anon_cookie_id(request)
     used = await store.get_daily_count(
-        valkey_client, user_email=user, cookie_id=cookie_id, ip_address=_ip(request)
+        valkey_client,
+        user_email=_user_email(user),
+        cookie_id=cookie_id,
+        ip_address=_ip(request),
     )
     limit = settings.auth_daily_limit if user else settings.anon_daily_limit
     csrf = _csrf_token_value(request)
@@ -271,7 +281,7 @@ async def profile_stream(  # noqa: PLR0913
 
     if await store.is_rate_limited(
         valkey_client,
-        user_email=user,
+        user_email=_user_email(user),
         cookie_id=cookie_id,
         ip_address=ip_address,
         anon_limit=settings.anon_daily_limit,
@@ -298,7 +308,9 @@ async def profile_stream(  # noqa: PLR0913
             category = _category_from(collected) or category
             if not _had_failure(collected):
                 await cache.put(valkey_client, q, collected)
-        await _record_completed_query(valkey_client, user, cookie_id, ip_address, q, category)
+        await _record_completed_query(
+            valkey_client, _user_email(user), cookie_id, ip_address, q, category
+        )
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -337,18 +349,18 @@ def _had_failure(events: list[dict[str, Any]]) -> bool:
 
 async def _record_completed_query(  # noqa: PLR0913
     valkey_client: Valkey,
-    user: str | None,
+    user_email: str | None,
     cookie_id: str,
     ip_address: str,
     q: str,
     category: str,
 ) -> None:
     await store.record_query(
-        valkey_client, user_email=user, cookie_id=cookie_id, ip_address=ip_address
+        valkey_client, user_email=user_email, cookie_id=cookie_id, ip_address=ip_address
     )
     await store.push_history(
         valkey_client,
-        user_email=user,
+        user_email=user_email,
         cookie_id=cookie_id,
         ip_address=ip_address,
         entry={
@@ -412,7 +424,9 @@ async def auth_verify(
         return invalid
     if not await store.consume_magic_jti(valkey_client, claims.jti, claims.exp):
         return invalid
-    session_value = auth.create_session_value(claims.email, request.app.state.secret_key)
+    session_value = auth.create_session_value(
+        claims.email, request.app.state.secret_key, ip=_ip(request)
+    )
     resp = RedirectResponse(url="/", status_code=303)
     resp.set_cookie(
         "odin_session",
@@ -451,9 +465,9 @@ async def account_delete(
         return RedirectResponse(url="/login", status_code=303)
     if not auth.csrf_matches(request.cookies.get(_CSRF_COOKIE), csrf_token):
         raise HTTPException(status_code=403, detail="CSRF check failed")
-    if email.strip().lower() != user.lower():
+    if email.strip().lower() != user.email.lower():
         raise HTTPException(status_code=400, detail="Email does not match signed-in account")
-    await store.delete_user(valkey_client, user)
+    await store.delete_user(valkey_client, user.email)
     resp = RedirectResponse(url="/", status_code=303)
     resp.delete_cookie("odin_session")
     return resp
@@ -471,10 +485,10 @@ async def dashboard(
     cookie_id = request.cookies.get(_ANON_COOKIE, "")
     ip_address = _ip(request)
     used = await store.get_daily_count(
-        valkey_client, user_email=user, cookie_id=cookie_id, ip_address=ip_address
+        valkey_client, user_email=user.email, cookie_id=cookie_id, ip_address=ip_address
     )
     history = await store.get_history(
-        valkey_client, user_email=user, cookie_id=cookie_id, ip_address=ip_address
+        valkey_client, user_email=user.email, cookie_id=cookie_id, ip_address=ip_address
     )
     csrf = _csrf_token_value(request)
     resp = templates.TemplateResponse(

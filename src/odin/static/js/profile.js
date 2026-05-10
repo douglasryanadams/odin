@@ -1,8 +1,16 @@
-// Odin profile page — SSE handler + card rendering.
+// Odin profile page — SSE handler + content rendering.
+// Layout: anchored sidebar (subject + Subject Compass + Source Audit) plus a
+// longform main article column with exposition, significant events, and
+// click-to-expand findings.
 
-const STUB_DATA = true;
-
-const STAGES = ["categorized", "queries", "searching", "fetching", "profile"];
+const STAGES = [
+  "categorized",
+  "queries",
+  "searching",
+  "fetching",
+  "synthesizing",
+  "assessing",
+];
 
 const CATEGORY_ICONS = {
   person: "fa-user",
@@ -10,12 +18,6 @@ const CATEGORY_ICONS = {
   event: "fa-calendar",
   other: "fa-circle-nodes",
 };
-
-const STUB_MENTIONS = [
-  { time: "2026-04-25 14:02", domain: "techcrunch.com", headline: "Profile cited in announcement coverage." },
-  { time: "2026-04-23 09:11", domain: "nytimes.com", headline: "Mentioned in feature piece on the topic." },
-  { time: "2026-04-19 22:48", domain: "hackernews.ycombinator.com", headline: "Discussion thread (217 comments)." },
-];
 
 function $(id) {
   return document.getElementById(id);
@@ -59,6 +61,7 @@ function completeProgress() {
     step.classList.add("is-done");
   });
   strip.classList.add("is-complete");
+  strip.hidden = true;
 }
 
 function failProgress(message) {
@@ -71,40 +74,94 @@ function failProgress(message) {
 
 function setCategory(category) {
   const badge = $("category-badge");
-  if (!badge) return;
-  const icon = badge.querySelector("i");
-  const label = badge.querySelector(".badge__label");
-  const cls = CATEGORY_ICONS[category] || CATEGORY_ICONS.other;
-  if (icon) icon.className = `fa-solid ${cls}`;
-  if (label) label.textContent = category.charAt(0).toUpperCase() + category.slice(1);
-  badge.dataset.category = category;
+  if (badge) {
+    const icon = badge.querySelector("i");
+    const label = badge.querySelector(".badge__label");
+    const cls = CATEGORY_ICONS[category] || CATEGORY_ICONS.other;
+    if (icon) icon.className = `fa-solid ${cls}`;
+    if (label) label.textContent = category.charAt(0).toUpperCase() + category.slice(1);
+    badge.dataset.category = category;
+  }
+  const kicker = $("kicker-category");
+  if (kicker) kicker.textContent = category.charAt(0).toUpperCase() + category.slice(1);
 }
 
-function renderHighlights(listEl, items) {
-  listEl.replaceChildren();
-  if (!items || !items.length) {
-    listEl.appendChild(el("li", "hl-list__empty muted", listEl.dataset.empty || ""));
+function renderExposition(summary) {
+  const node = $("exposition");
+  if (!node) return;
+  node.replaceChildren();
+  const paragraphs = (summary || "").split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  if (!paragraphs.length) {
     return;
   }
-  items.forEach((item) => {
-    const li = el("li", "hl-list__item");
-    li.appendChild(el("strong", "hl-list__title", item.title));
-    li.appendChild(el("p", "hl-list__body", item.description));
-    listEl.appendChild(li);
+  paragraphs.forEach((text, i) => {
+    const p = el("p", i === 0 ? "profile__lede dropcap" : null, text);
+    node.appendChild(p);
   });
 }
 
-function renderTimeline(listEl, items) {
+function renderEvents(listEl, items) {
   listEl.replaceChildren();
   if (!items || !items.length) {
-    listEl.appendChild(el("li", "timeline__empty muted", listEl.dataset.empty || ""));
+    listEl.appendChild(el("li", "events__empty muted", listEl.dataset.empty || ""));
     return;
   }
   items.forEach((item) => {
-    const li = el("li", "timeline__item");
-    li.appendChild(el("span", "timeline__node", ""));
-    li.appendChild(el("span", "timeline__date mono", item.date));
-    li.appendChild(el("p", "timeline__event", item.event));
+    const li = el("li", "events__item");
+    li.appendChild(el("time", "events__date mono", item.date));
+    const body = el("div", "events__body");
+    body.appendChild(el("p", "events__text", item.event));
+    li.appendChild(body);
+    listEl.appendChild(li);
+  });
+  const counter = listEl.matches("#section-events .events")
+    ? $("events-count")
+    : null;
+  if (counter) counter.textContent = `${items.length} events`;
+}
+
+// Render a click-to-expand finding row using a native <details>/<summary>.
+// Each row collapses to (label) + title + brief; expansion reveals the longer
+// `detail` field with a left-rail accent.
+function renderFinding(label, item, kind) {
+  const details = el("details", "finding");
+  const summary = el("summary");
+
+  const labelEl = el("span", "finding__label" + (kind === "neg" ? " finding__label--neg" : ""));
+  labelEl.textContent = `${kind === "neg" ? "−" : "+"} ${label}`;
+  summary.appendChild(labelEl);
+
+  const titleWrap = el("div", "finding__title");
+  const strong = el("strong");
+  strong.textContent = item.title ? `${item.title}.` : "";
+  titleWrap.appendChild(strong);
+  const brief = el("span", "finding__brief", item.description || "");
+  titleWrap.appendChild(brief);
+  summary.appendChild(titleWrap);
+
+  const more = el("span", "finding__more");
+  more.appendChild(el("span", "finding__chev", "▸"));
+  more.appendChild(el("span", "finding__more-label"));
+  summary.appendChild(more);
+
+  details.appendChild(summary);
+
+  const detail = el("div", "finding__detail");
+  detail.appendChild(el("p", null, item.detail || ""));
+  details.appendChild(detail);
+
+  return details;
+}
+
+function renderFindings(listEl, items, kind) {
+  listEl.replaceChildren();
+  if (!items || !items.length) {
+    listEl.appendChild(el("li", "findings__empty muted", listEl.dataset.empty || ""));
+    return;
+  }
+  items.forEach((item, idx) => {
+    const li = el("li", "findings__item");
+    li.appendChild(renderFinding(String(idx + 1).padStart(2, "0"), item, kind));
     listEl.appendChild(li);
   });
 }
@@ -120,49 +177,80 @@ function domainOf(url) {
 function renderCitations(listEl, items) {
   listEl.replaceChildren();
   if (!items || !items.length) {
-    listEl.appendChild(el("li", "source-item__empty muted", listEl.dataset.empty || ""));
+    listEl.appendChild(el("li", "citations__empty muted", listEl.dataset.empty || ""));
     return;
   }
   items.forEach((item) => {
     const domain = domainOf(item.url);
-    const li = el("li", "source-item");
-    const link = el("a", "source-item__link");
+    const li = el("li", "citations__item");
+    const link = el("a", "citations__link");
     link.href = item.url;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
-    link.appendChild(el("span", "source-item__favicon", domain.charAt(0).toUpperCase()));
-    const body = el("div", "source-item__body");
-    body.appendChild(el("span", "source-item__domain mono", domain));
-    body.appendChild(el("strong", "source-item__title", item.title || domain));
-    body.appendChild(el("p", "source-item__snippet muted", item.snippet));
-    link.appendChild(body);
+    link.textContent = item.title || domain;
     li.appendChild(link);
+    li.appendChild(el("span", "citations__domain mono", domain));
+    li.appendChild(el("p", "citations__snippet muted", item.snippet || ""));
     listEl.appendChild(li);
   });
+  const counter = $("sources-count");
+  if (counter) counter.textContent = `${items.length} cited`;
 }
 
 function renderProfile(data) {
-  const summary = $("summary");
-  if (summary) {
-    summary.replaceChildren();
-    summary.appendChild(document.createTextNode(data.summary));
+  const name = data.name || "";
+  const sidebarName = $("sidebar-name");
+  if (sidebarName) sidebarName.textContent = name;
+  const subjectName = $("subject-name");
+  if (subjectName) subjectName.textContent = name;
+
+  const deck = $("summary");
+  if (deck) {
+    deck.replaceChildren();
+    // Use the first paragraph as the deck; the rest go into the exposition.
+    const paragraphs = (data.summary || "").split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+    if (paragraphs.length) {
+      deck.textContent = paragraphs[0];
+    }
   }
+  // Render any remaining paragraphs into the exposition area.
+  const exposition = $("exposition");
+  if (exposition) {
+    exposition.replaceChildren();
+    const paragraphs = (data.summary || "").split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+    paragraphs.slice(1).forEach((text, i) => {
+      const p = el("p", i === 0 ? "dropcap" : null, text);
+      exposition.appendChild(p);
+    });
+  }
+
   setCategory(data.category);
-  const hl = document.querySelector("#card-highlights .hl-list");
-  const ll = document.querySelector("#card-lowlights .hl-list");
-  const tl = document.querySelector("#card-timeline .timeline");
-  const sources = document.querySelector("#card-sources .sources-list");
-  if (hl) renderHighlights(hl, data.highlights);
-  if (ll) renderHighlights(ll, data.lowlights);
-  if (tl) renderTimeline(tl, data.timeline);
+
+  const events = document.querySelector("#section-events .events");
+  if (events) renderEvents(events, data.timeline || []);
+
+  const hl = document.querySelector("#section-highlights .findings");
+  const ll = document.querySelector("#section-lowlights .findings");
+  if (hl) renderFindings(hl, data.highlights || [], "pos");
+  if (ll) renderFindings(ll, data.lowlights || [], "neg");
+
+  const sources = document.querySelector("#section-sources .citations");
   if (sources) renderCitations(sources, data.citations || []);
-  completeProgress();
-  const strip = $("progress-strip");
-  if (strip) strip.hidden = true;
+  const bylineSources = $("byline-sources");
+  if (bylineSources) bylineSources.textContent = String((data.citations || []).length);
+
+  const highlightsHint = $("highlights-hint");
+  if (highlightsHint && data.highlights && data.highlights.length) {
+    highlightsHint.textContent = `${data.highlights.length} items · click any for detail`;
+  }
+  const lowlightsHint = $("lowlights-hint");
+  if (lowlightsHint && data.lowlights && data.lowlights.length) {
+    lowlightsHint.textContent = `${data.lowlights.length} items · click any for detail`;
+  }
 }
 
 function renderAssessment(data) {
-  const subjectGauges = document.querySelector("#card-subject-compass .assessment-gauges");
+  const subjectGauges = document.querySelector("#subject-compass .assessment-gauges");
   if (subjectGauges) {
     subjectGauges.replaceChildren();
     subjectGauges.appendChild(
@@ -201,7 +289,7 @@ function renderAssessment(data) {
       }),
     );
   }
-  const sourceGauges = document.querySelector("#card-source-audit .assessment-gauges");
+  const sourceGauges = document.querySelector("#source-audit .assessment-gauges");
   if (sourceGauges) {
     sourceGauges.replaceChildren();
     sourceGauges.appendChild(
@@ -217,17 +305,35 @@ function renderAssessment(data) {
       }),
     );
   }
-  const caveatsList = document.querySelector("#card-source-audit .caveats-list");
-  if (caveatsList) {
-    caveatsList.replaceChildren();
-    if (!data.caveats || !data.caveats.length) {
-      caveatsList.appendChild(
-        el("li", "caveats-list__empty muted", caveatsList.dataset.empty || ""),
-      );
-    } else {
-      data.caveats.forEach((c) => caveatsList.appendChild(el("li", "caveats-list__item", c)));
-    }
+  const auditPct = $("audit-pct");
+  if (auditPct) auditPct.textContent = `${Math.round(data.confidence * 100)}%`;
+
+  const caveats = document.querySelector("#source-audit .profile__caveats");
+  if (caveats) renderCaveats(caveats, data.caveats || []);
+}
+
+function renderCaveats(listEl, items) {
+  listEl.replaceChildren();
+  if (!items.length) {
+    listEl.appendChild(el("li", "profile__caveats-empty muted", listEl.dataset.empty || ""));
+    return;
   }
+  items.forEach((c) => {
+    const li = el("li");
+    const details = el("details", "caveat");
+    const summary = el("summary");
+    summary.appendChild(el("span", "caveat__brief", c.brief || ""));
+    const more = el("span", "caveat__more");
+    more.appendChild(el("span", "caveat__chev", "▸"));
+    more.appendChild(el("span", "caveat__more-label"));
+    summary.appendChild(more);
+    details.appendChild(summary);
+    const detail = el("div", "caveat__detail");
+    detail.appendChild(el("p", null, c.detail || ""));
+    details.appendChild(detail);
+    li.appendChild(details);
+    listEl.appendChild(li);
+  });
 }
 
 function buildGauge(label, percent, modifier) {
@@ -265,22 +371,29 @@ function buildSentimentGauge({ label, leftLabel, rightLabel, value, neutral = fa
   return wrap;
 }
 
-function renderStubMentions() {
-  const list = document.querySelector("#card-mentions .mentions-list");
-  if (!list) return;
-  list.replaceChildren();
-  STUB_MENTIONS.forEach((m) => {
-    const li = el("li", "mention-item");
-    li.appendChild(el("time", "mention-item__time mono", m.time));
-    li.appendChild(el("span", "mention-item__domain", m.domain));
-    li.appendChild(el("p", "mention-item__headline", m.headline));
-    list.appendChild(li);
-  });
-}
+// Each pipeline event names the step the user should now see as in-progress
+// (`active`), or marks the run complete (`complete: true`). Render hooks attach
+// content rendering to specific events. Keeping wire-event semantics in this
+// table keeps the dispatcher trivially testable.
+const EVENT_HANDLERS = {
+  categorized:  { active: "queries",     render: (d) => setCategory(d.category) },
+  queries:      { active: "searching" },
+  searching:    { active: "fetching" },
+  fetching:     { active: "fetching" },
+  synthesizing: { active: "synthesizing" },
+  profile:      { active: "assessing", render: renderProfile },
+  assessing:    { active: "assessing" },
+  assessment:   { complete: true, render: renderAssessment },
+  done:         { complete: true },
+};
 
-function renderStubs() {
-  if (!STUB_DATA) return;
-  renderStubMentions();
+function handleEvent(data) {
+  const handler = EVENT_HANDLERS[data.type];
+  if (!handler) return false;
+  if (handler.active) advanceProgress(handler.active);
+  if (handler.render) handler.render(data);
+  if (handler.complete) completeProgress();
+  return true;
 }
 
 function startStream(query) {
@@ -288,28 +401,18 @@ function startStream(query) {
 
   es.onmessage = (e) => {
     const data = JSON.parse(e.data);
-    if (data.type === "categorized") {
-      setCategory(data.category);
-      advanceProgress("queries");
-    } else if (data.type === "queries") {
-      advanceProgress("searching");
-    } else if (data.type === "searching") {
-      advanceProgress("fetching");
-    } else if (data.type === "fetching") {
-      advanceProgress("profile");
-    } else if (data.type === "profile") {
-      renderProfile(data);
-    } else if (data.type === "assessment") {
-      renderAssessment(data);
-    } else if (data.type === "rate_limited") {
+    if (data.type === "rate_limited") {
       es.close();
       window.location.href = data.redirect || "/login?reason=limit";
-    } else if (data.type === "service_unavailable") {
+      return;
+    }
+    if (data.type === "service_unavailable") {
       es.close();
       failProgress(data.message || "Odin is temporarily paused. Please try again later.");
-    } else if (data.type === "done") {
-      es.close();
+      return;
     }
+    handleEvent(data);
+    if (data.type === "done") es.close();
   };
 
   es.onerror = () => {
@@ -328,7 +431,6 @@ function startStream(query) {
 
 document.addEventListener("DOMContentLoaded", () => {
   setSynthTime();
-  renderStubs();
   const meta = document.querySelector('meta[name="odin-query"]');
   if (meta && meta.content) startStream(meta.content);
 });

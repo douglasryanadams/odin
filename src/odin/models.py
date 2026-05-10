@@ -8,10 +8,16 @@ Category = Literal["person", "place", "event", "other"]
 
 
 class ProfileHighlight(BaseModel):
-    """A single highlight or lowlight entry."""
+    """A single highlight or lowlight entry.
+
+    Rendered in the profile page as a click-to-expand row: `description` is the
+    one-line phrase shown at rest, `detail` is the longer note revealed on click.
+    `title` is the short headline tag shown alongside the description.
+    """
 
     title: str
     description: str
+    detail: str
 
 
 class TimelineEntry(BaseModel):
@@ -41,6 +47,13 @@ class Profile(BaseModel):
     citations: list[Citation] = []
 
 
+class Caveat(BaseModel):
+    """A single audit caveat: short headline + expanded note."""
+
+    brief: str
+    detail: str
+
+
 class Assessment(BaseModel):
     """Confidence, sentiment, bias and alignment judgments about a profile."""
 
@@ -50,4 +63,4 @@ class Assessment(BaseModel):
     source_political_bias: float = Field(ge=-1, le=1)
     law_chaos: float = Field(ge=-1, le=1)
     good_evil: float = Field(ge=-1, le=1)
-    caveats: list[str]
+    caveats: list[Caveat]
