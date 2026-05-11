@@ -36,7 +36,10 @@
     </div>
     <p class="dashboard__actions">
       <a href="/" class="btn btn--secondary">New search</a>
-      <a href="/auth/logout" class="dashboard__logout muted">Sign out</a>
+      <form class="dashboard__logout-form" method="post" action="/auth/logout">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button type="submit" class="dashboard__logout muted">Sign out</button>
+      </form>
     </p>
     <div class="dashboard-card dashboard-card--danger">
       <h2 class="dashboard-card__title">Delete account</h2>

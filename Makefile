@@ -1,4 +1,4 @@
-.PHONY: dev prod prod-logs lint lint-frontend format metrics test test-smoke test-unit test-integration test-js
+.PHONY: dev prod prod-logs down lint lint-frontend format metrics test test-smoke test-unit test-integration test-js
 
 dev:
 	docker compose up --build
@@ -8,6 +8,9 @@ prod:
 
 prod-logs: ## Tail logs from the running prod compose stack
 	docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f
+
+down: ## Tear down this worktree's dev and prod compose stacks
+	docker compose -f docker-compose.yml -f docker-compose.prod.yml down --remove-orphans
 
 format:
 	docker compose run --rm web uv run ruff format .

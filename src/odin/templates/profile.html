@@ -17,9 +17,17 @@
   </form>
   {% if user %}
     <span class="header-quota">{{ limit - used }}/{{ limit }} today</span>
-  {% elif used >= 1 %}
+    <nav class="header-nav">
+      <a href="/dashboard" class="header-nav__link">Dashboard</a>
+      <form class="header-nav__logout" method="post" action="/auth/logout">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button type="submit" class="header-nav__link header-nav__link--button">Sign out</button>
+      </form>
+    </nav>
+  {% else %}
     <span class="header-quota">
-      {{ limit - used }}/{{ limit }} free · <a href="/login">sign in</a> for {{ auth_limit }}/day
+      {% if used >= 1 %}{{ limit - used }}/{{ limit }} free ·{% endif %}
+      <a href="/login">sign in</a> for {{ auth_limit }}/day
     </span>
   {% endif %}
 {% endblock %}
