@@ -7,10 +7,7 @@ services:
       - ANTHROPIC_API_KEY
       - SECRET_KEY
       - APP_URL
-      # Dev override: HTTP localhost cannot accept Secure cookies, which would
-      # silently break CSRF, session, and notice-dismissal flows. Production
-      # compose leaves COOKIE_SECURE unset so the code default (True) applies.
-      - COOKIE_SECURE=false
+      - COOKIE_SECURE
     depends_on:
       - odin-valkey
     healthcheck:
