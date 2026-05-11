@@ -10,13 +10,14 @@ Python lives under `src/odin/` as one flat package — no subpackages. Front-end
 | `pipeline.py` | Orchestrates the profile build as an async generator. |
 | `claude.py` | Anthropic API calls — one function per stage. |
 | `searxng.py` | Async SearXNG client; defines `SearchResult`. |
-| `fetch.py` | Parallel Playwright page fetch + `trafilatura` extraction; defines the `PageFetcher` Protocol and `PlaywrightPageFetcher`. |
+| `fetch.py` | Tiered page fetch: hardened Playwright (Tier 1) plus orchestration via `TieredPageFetcher`. Defines the `PageFetcher` Protocol and `PlaywrightPageFetcher`. |
+| `curl_fetch.py` | Tier 0 fetcher: `curl_cffi` with Chrome TLS impersonation. Defines `CurlCffiPageFetcher`, `CurlFetchResult`, and the `_should_fall_back` predicate. |
 | `models.py` | `Profile`, `ProfileHighlight`, `TimelineEntry`, `Citation`, `Assessment`, the `Category` literal. |
 | `log.py` | `loguru` setup, stdlib bridging, `/health` access-log filter. |
 
 ## FastAPI app
 
-`main.py` calls `log.setup()` at import, instantiates `app = FastAPI(lifespan=lifespan)`, mounts `/static`, configures Jinja2 templates. The `lifespan` async-context-manager launches one Chromium per worker on startup (headless unless `PLAYWRIGHT_HEADLESS=false`) and stores it on `app.state.browser`; it closes on shutdown. An ungraceful kill (`SIGKILL`) leaves the Chromium subprocess to be reaped by the OS.
+`main.py` calls `log.setup()` at import, instantiates `app = FastAPI(lifespan=lifespan)`, mounts `/static`, configures Jinja2 templates. The `lifespan` async-context-manager launches one hardened Chromium per worker on startup (headless unless `PLAYWRIGHT_HEADLESS=false`, with `--disable-blink-features=AutomationControlled` and `--disable-features=IsolateOrigins,site-per-process`) and stores it on `app.state.browser`; it closes on shutdown. `PLAYWRIGHT_CHANNEL` can swap in a system-installed browser channel when one is available; we'll revisit a `chrome` channel default once Google ships a native arm64 Chrome build. An ungraceful kill (`SIGKILL`) leaves the Chromium subprocess to be reaped by the OS.
 
 | Route | Handler | Notes |
 |---|---|---|
@@ -29,7 +30,7 @@ Three dependency providers, used with `Annotated[..., Depends(...)]` and overrid
 
 - `get_searxng_url()` — reads `SEARXNG_URL` (default `http://searxng:8080`).
 - `get_anthropic_client()` — returns `AsyncAnthropic()`, which itself reads `ANTHROPIC_API_KEY`.
-- `get_page_fetcher(request)` — returns `PlaywrightPageFetcher(browser=request.app.state.browser)`.
+- `get_page_fetcher(request)` — returns `TieredPageFetcher(curl=CurlCffiPageFetcher(), playwright=PlaywrightPageFetcher(browser=...))` so each batch tries Tier 0 first.
 
 ## Profile pipeline
 
@@ -39,7 +40,7 @@ Three dependency providers, used with `Annotated[..., Depends(...)]` and overrid
 2. **`queries`** — `claude.generate_queries()` → 3–5 search strings (Haiku).
 3. **`searching`** — Run queries against SearXNG, gated by `asyncio.Semaphore(SEARXNG_MAX_CONCURRENCY=2)`. Dedupe by URL, preserving first-seen order.
 4. **`fetching`** — `claude.select_urls()` picks ≤ 5 URLs (Haiku); the event carries the count.
-5. **`profile`** — `fetcher.fetch_pages()` renders each URL in a fresh `BrowserContext` (15 s `domcontentloaded` timeout, image/media/font/stylesheet requests aborted by the route handler), passes the rendered HTML through `trafilatura.extract`, and caps each result at `CONTENT_LIMIT = 10_000` chars. `claude.synthesize()` then builds the `Profile` (Sonnet); yielded as `Profile.model_dump()`. Page-level `playwright.async_api.Error` is mapped to `"Error fetching URL: <exc>"` so a single bad URL does not fail the batch.
+5. **`profile`** — `fetcher.fetch_pages()` runs each URL through Tier 0 (`curl_cffi` with `impersonate="chrome"`, 8 s timeout, `trafilatura.extract`); any URL whose result has `fall_back=True` is then rendered in a fresh Playwright `BrowserContext` with locale `en-US`, timezone `America/Los_Angeles`, an `Accept-Language` header, a randomized viewport drawn from `(1366, 768)`, `(1536, 864)`, or `(1440, 900)` ±20 px, an init script that hides `navigator.webdriver`, and an optional shared `storage_state` JSON file persisted under an `fcntl` lock. The first `domcontentloaded` attempt is retried once with `wait_until="load"` if the extraction is too short. Each result is capped at `CONTENT_LIMIT = 10_000` chars. `claude.synthesize()` then builds the `Profile` (Sonnet); yielded as `Profile.model_dump()`. Page-level errors are mapped to `"Error fetching URL: <exc>"` so a single bad URL does not fail the batch.
 6. **`assessment`** — `claude.assess()` scores the profile + sources on confidence, sentiment, subject/source political bias, D&D law-chaos / good-evil, and a short caveats list (Sonnet). If the call raises, the stage is skipped and a warning is logged so the profile still reaches the user.
 
 `profile_stream` emits a terminal `{"type": "done"}` SSE event after the generator is exhausted.

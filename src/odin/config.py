@@ -13,6 +13,10 @@ class Settings(BaseSettings):
 
     playwright_headless: bool = True
     playwright_trace_dir: str | None = None
+    # Channel for chromium.launch(). None uses Playwright's bundled Chromium.
+    playwright_channel: str | None = None
+    playwright_storage_state_path: str | None = "/var/lib/odin/playwright-state/state.json"
+    fetch_curl_cffi_enabled: bool = True
 
     searxng_url: str = "http://searxng:8080"
 
