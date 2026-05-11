@@ -304,15 +304,17 @@ async def test_storage_state_persist_skipped_when_lock_unavailable(
 ) -> None:
     """When the lock can't be acquired, persist is skipped and the fetch still succeeds.
 
-    Stubs out :func:`fetch._acquire_lock` so the test doesn't wait on real
-    locking — the contract under test is "fail gracefully," not "wait N seconds."
+    Force ``fcntl.flock`` to always raise ``BlockingIOError`` and shrink the
+    lock timeout so the deadline trips after a single poll — the contract is
+    "fail gracefully," not "wait N seconds."
     """
     state_path = tmp_path / "state.json"
 
-    async def _never_acquires(_fd: int, _deadline: float) -> bool:
-        return False
+    def _always_blocking(_fd: int, _op: int) -> None:
+        raise BlockingIOError
 
-    monkeypatch.setattr(fetch, "_acquire_lock", _never_acquires)
+    monkeypatch.setattr(fetch.fcntl, "flock", _always_blocking)
+    monkeypatch.setattr(fetch, "LOCK_TIMEOUT_SECONDS", 0.05)
 
     httpserver.expect_request("/q").respond_with_data(_LONG_BODY, content_type="text/html")
     fetcher = PlaywrightPageFetcher(browser=browser, storage_state_path=str(state_path))

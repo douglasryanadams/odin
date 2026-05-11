@@ -21,10 +21,12 @@ from loguru import logger
 from odin.fetch import CONTENT_LIMIT
 
 CURL_TIMEOUT_SECONDS = 8.0
-BOT_WALL_SCAN_BYTES = 4096
-LOW_EXTRACTION_THRESHOLD = 200
-HEAVY_HTML_THRESHOLD = 5000
-FALLBACK_STATUS_THRESHOLD = 400
+# Named only because ruff's PLR2004 forbids bare comparison literals; the
+# values themselves are domain-obvious (HTTP error class, trafilatura minimum,
+# "lots of HTML" threshold).
+_FALLBACK_STATUS = 400
+_LOW_EXTRACTION_CHARS = 200
+_HEAVY_HTML_CHARS = 5000
 
 _BOT_WALL_PATTERN = re.compile(
     r"just a moment|enable javascript|access denied|attention required|verify you are human",
@@ -47,36 +49,13 @@ class CurlFetchResult:
 
 def should_fall_back(status_code: int, html: str, extracted: str) -> bool:
     """Decide whether a curl_cffi response should trigger fallback to Playwright."""
-    if status_code >= FALLBACK_STATUS_THRESHOLD:
+    if status_code >= _FALLBACK_STATUS:
         return True
-    if _BOT_WALL_PATTERN.search(html[:BOT_WALL_SCAN_BYTES]):
+    # Scan the first 4 KB — bot-wall pages always declare themselves up top.
+    if _BOT_WALL_PATTERN.search(html[:4096]):
         return True
-    return len(extracted) < LOW_EXTRACTION_THRESHOLD and len(html) > HEAVY_HTML_THRESHOLD
-
-
-async def _fetch_one(session: AsyncSession[Response], url: str) -> tuple[str, CurlFetchResult]:
-    try:
-        response: Response = await session.get(
-            url,
-            impersonate="chrome",
-            timeout=CURL_TIMEOUT_SECONDS,
-            allow_redirects=True,
-        )
-    except RequestException as exc:
-        logger.debug("curl_cffi error url={!r} error={}", url, exc)
-        return url, CurlFetchResult(text="", fall_back=True)
-    html: str = response.text or ""
-    extracted = trafilatura.extract(html) or ""
-    text = (extracted or html)[:CONTENT_LIMIT]
-    fall_back = should_fall_back(response.status_code, html, extracted)
-    logger.debug(
-        "curl_cffi url={!r} status={} chars={} fall_back={}",
-        url,
-        response.status_code,
-        len(text),
-        fall_back,
-    )
-    return url, CurlFetchResult(text=text, fall_back=fall_back)
+    # Lots of HTML but no extracted article body → almost certainly a bot wall.
+    return len(extracted) < _LOW_EXTRACTION_CHARS and len(html) > _HEAVY_HTML_CHARS
 
 
 @dataclass(frozen=True)
@@ -87,6 +66,33 @@ class CurlCffiPageFetcher:
         """Fetch each URL concurrently and tag results with a ``fall_back`` flag."""
         if not urls:
             return {}
+
         async with AsyncSession[Response]() as session:
-            results = await asyncio.gather(*[_fetch_one(session, u) for u in urls])
+
+            async def fetch_one(url: str) -> tuple[str, CurlFetchResult]:
+                try:
+                    response: Response = await session.get(
+                        url,
+                        impersonate="chrome",
+                        timeout=CURL_TIMEOUT_SECONDS,
+                        allow_redirects=True,
+                    )
+                except RequestException as exc:
+                    logger.debug("curl_cffi error url={!r} error={}", url, exc)
+                    return url, CurlFetchResult(text="", fall_back=True)
+                html: str = response.text or ""
+                extracted = trafilatura.extract(html) or ""
+                text = (extracted or html)[:CONTENT_LIMIT]
+                fall_back = should_fall_back(response.status_code, html, extracted)
+                logger.debug(
+                    "curl_cffi url={!r} status={} chars={} fall_back={}",
+                    url,
+                    response.status_code,
+                    len(text),
+                    fall_back,
+                )
+                return url, CurlFetchResult(text=text, fall_back=fall_back)
+
+            results = await asyncio.gather(*[fetch_one(u) for u in urls])
+
         return dict(results)

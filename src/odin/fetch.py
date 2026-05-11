@@ -46,19 +46,19 @@ if TYPE_CHECKING:
 CONTENT_LIMIT = 10_000
 GOTO_TIMEOUT_MS = 8_000
 LOCK_TIMEOUT_SECONDS = 2.0
-LOCK_RETRY_INTERVAL_SECONDS = 0.05
-RETRY_MIN_CONTENT_CHARS = 100
-
+LOCK_POLL_INTERVAL_SECONDS = 0.05
+# Hard cap on the lock-poll loop so it always exits, even if the monotonic
+# clock somehow fails to advance. At LOCK_POLL_INTERVAL_SECONDS=0.05 and
+# LOCK_TIMEOUT_SECONDS=2.0 the deadline normally trips after ~40 iterations;
+# 200 gives 5x headroom without spinning forever.
+LOCK_POLL_MAX_ITERATIONS = 200
+# Named only because ruff's PLR2004 forbids bare comparison literals.
+_RETRY_MIN_CHARS = 100
 VIEWPORT_ANCHORS: list[tuple[int, int]] = [(1366, 768), (1536, 864), (1440, 900)]
 VIEWPORT_JITTER_PX = 20
 _rand = secrets.SystemRandom()
 
 WaitUntil = Literal["commit", "domcontentloaded", "load", "networkidle"]
-
-LOCALE = "en-US"
-TIMEZONE = "America/Los_Angeles"
-EXTRA_HEADERS = {"Accept-Language": "en-US,en;q=0.9"}
-NAVIGATOR_WEBDRIVER_INIT = "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
 
 
 class PageFetcher(Protocol):
@@ -77,13 +77,6 @@ class CurlFetcher(Protocol):
         ...
 
 
-def extract_or_html(html: str, limit: int = CONTENT_LIMIT) -> str:
-    """Return trafilatura-extracted text, falling back to raw HTML, capped at ``limit``."""
-    extracted = trafilatura.extract(html)
-    text = extracted or html
-    return text[:limit]
-
-
 def choose_viewport() -> ViewportSize:
     """Pick a viewport anchor at random and jitter it by up to ``VIEWPORT_JITTER_PX``."""
     width, height = _rand.choice(VIEWPORT_ANCHORS)
@@ -92,34 +85,61 @@ def choose_viewport() -> ViewportSize:
     return {"width": width, "height": height}
 
 
-def _read_storage_state(path: str | None) -> StorageState | None:
-    if path is None:
-        return None
-    state_path = Path(path)
-    if not state_path.exists():
-        return None
+async def _attempt_goto(page: Page, url: str, wait_until: WaitUntil) -> str:
+    await page.goto(url, wait_until=wait_until, timeout=GOTO_TIMEOUT_MS)
+    html = await page.content()
+    extracted = trafilatura.extract(html)
+    return (extracted or html)[:CONTENT_LIMIT]
+
+
+async def _fetch_one(context: BrowserContext, url: str) -> tuple[str, str]:
+    page = await context.new_page()
     try:
-        loaded: StorageState = json.loads(state_path.read_text())
-    except (json.JSONDecodeError, OSError):
-        logger.warning("storage_state file unreadable, ignoring: {}", path)
-        return None
-    return loaded
+        try:
+            text = await _attempt_goto(page, url, "domcontentloaded")
+        except PlaywrightError as exc:
+            logger.debug("fetch dom error url={!r} error={}", url, exc)
+            text = ""
+        # Retry once on a near-empty result — domcontentloaded can return before
+        # SPA content paints; "load" waits for full network + onload.
+        if len(text) < _RETRY_MIN_CHARS:
+            try:
+                text = await _attempt_goto(page, url, "load")
+            except PlaywrightError as exc:
+                logger.debug("fetch load error url={!r} error={}", url, exc)
+                return url, f"Error fetching URL: {exc}"
+        logger.debug("fetch ok url={!r} chars={}", url, len(text))
+        return url, text
+    finally:
+        await page.close()
 
 
 async def _acquire_lock(lockfile_fd: int, deadline: float) -> bool:
-    while True:
+    """Poll for an exclusive flock with bounded retries.
+
+    Exits when the lock is acquired, the deadline elapses, or
+    :data:`LOCK_POLL_MAX_ITERATIONS` is exhausted.
+    """
+    for _ in range(LOCK_POLL_MAX_ITERATIONS):
         try:
             fcntl.flock(lockfile_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             if time.monotonic() >= deadline:
                 return False
-            await asyncio.sleep(LOCK_RETRY_INTERVAL_SECONDS)
+            await asyncio.sleep(LOCK_POLL_INTERVAL_SECONDS)
         else:
             return True
+    logger.warning("storage_state lock poll exceeded {} iterations", LOCK_POLL_MAX_ITERATIONS)
+    return False
 
 
 async def _persist_storage_state(context: BrowserContext, path: str) -> None:
-    """Atomically persist storage_state under an exclusive ``flock`` with timeout."""
+    """Atomically write storage_state under an exclusive flock with timeout.
+
+    A worker that can't grab the lock within ``LOCK_TIMEOUT_SECONDS`` logs and
+    returns; cookies are domain-scoped so a missed write is recovered on the
+    next visit.
+    """
     state_path = Path(path)
     state_path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = state_path.with_name(state_path.name + ".lock")
@@ -134,79 +154,9 @@ async def _persist_storage_state(context: BrowserContext, path: str) -> None:
         tmp_path.replace(state_path)
 
 
-async def _attempt_goto(page: Page, url: str, wait_until: WaitUntil) -> str:
-    await page.goto(url, wait_until=wait_until, timeout=GOTO_TIMEOUT_MS)
-    html = await page.content()
-    return extract_or_html(html, CONTENT_LIMIT)
-
-
-async def _fetch_one(context: BrowserContext, url: str) -> tuple[str, str]:
-    page = await context.new_page()
-    try:
-        try:
-            text = await _attempt_goto(page, url, "domcontentloaded")
-        except PlaywrightError as exc:
-            logger.debug("fetch dom error url={!r} error={}", url, exc)
-            text = ""
-        if len(text) < RETRY_MIN_CONTENT_CHARS:
-            try:
-                text = await _attempt_goto(page, url, "load")
-            except PlaywrightError as exc:
-                logger.debug("fetch load error url={!r} error={}", url, exc)
-                return url, f"Error fetching URL: {exc}"
-        logger.debug("fetch ok url={!r} chars={}", url, len(text))
-        return url, text
-    finally:
-        await page.close()
-
-
-async def _new_hardened_context(browser: Browser, storage_state_path: str | None) -> BrowserContext:
-    context = await browser.new_context(
-        viewport=choose_viewport(),
-        locale=LOCALE,
-        timezone_id=TIMEZONE,
-        extra_http_headers=EXTRA_HEADERS,
-        storage_state=_read_storage_state(storage_state_path),
-    )
-    await context.add_init_script(NAVIGATOR_WEBDRIVER_INIT)
-    return context
-
-
-async def _maybe_start_tracing(context: BrowserContext) -> bool:
-    if not settings.playwright_trace_dir:
-        return False
-    await context.tracing.start(screenshots=True, snapshots=True, sources=True)
-    return True
-
-
-async def _maybe_stop_tracing(context: BrowserContext, *, tracing_on: bool) -> None:
-    if not tracing_on or not settings.playwright_trace_dir:
-        return
-    trace_path = (
-        Path(settings.playwright_trace_dir) / f"trace-{int(time.time())}-{uuid.uuid4().hex[:8]}.zip"
-    )
-    trace_path.parent.mkdir(parents=True, exist_ok=True)
-    await context.tracing.stop(path=str(trace_path))
-
-
-async def _fetch_pages_playwright(
-    urls: list[str], browser: Browser, storage_state_path: str | None
-) -> dict[str, str]:
-    context = await _new_hardened_context(browser, storage_state_path)
-    tracing_on = await _maybe_start_tracing(context)
-    try:
-        results = await asyncio.gather(*[_fetch_one(context, url) for url in urls])
-    finally:
-        await _maybe_stop_tracing(context, tracing_on=tracing_on)
-        if storage_state_path:
-            await _persist_storage_state(context, storage_state_path)
-        await context.close()
-    return dict(results)
-
-
 @dataclass(frozen=True)
 class PlaywrightPageFetcher:
-    """Tier 1 fetcher: real-Chrome Playwright with persistent ``storage_state``."""
+    """Tier 1 fetcher: hardened Playwright with persistent ``storage_state``."""
 
     browser: Browser
     storage_state_path: str | None = None
@@ -215,7 +165,51 @@ class PlaywrightPageFetcher:
         """Render and extract text from URLs in parallel using a fresh ``BrowserContext``."""
         if not urls:
             return {}
-        return await _fetch_pages_playwright(urls, self.browser, self.storage_state_path)
+
+        # ASYNC240 (sync I/O in async fn) is suppressed for the two reads
+        # below: state.json is a small (<10 KB) local-volume file, the cost
+        # of a thread hop would dwarf the actual syscall, and this code path
+        # runs once per batch on startup, not in the request hot loop.
+        storage: StorageState | None = None
+        if self.storage_state_path:
+            state_path = Path(self.storage_state_path)
+            if state_path.exists():  # noqa: ASYNC240
+                try:
+                    storage = json.loads(state_path.read_text())  # noqa: ASYNC240
+                except (json.JSONDecodeError, OSError):
+                    logger.warning(
+                        "storage_state file unreadable, ignoring: {}", self.storage_state_path
+                    )
+
+        context = await self.browser.new_context(
+            viewport=choose_viewport(),
+            locale="en-US",
+            timezone_id="America/Los_Angeles",
+            extra_http_headers={"Accept-Language": "en-US,en;q=0.9"},
+            storage_state=storage,
+        )
+        await context.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
+        )
+
+        trace_dir = settings.playwright_trace_dir
+        if trace_dir:
+            await context.tracing.start(screenshots=True, snapshots=True, sources=True)
+
+        try:
+            results = await asyncio.gather(*[_fetch_one(context, url) for url in urls])
+        finally:
+            if trace_dir:
+                trace_path = (
+                    Path(trace_dir) / f"trace-{int(time.time())}-{uuid.uuid4().hex[:8]}.zip"
+                )
+                trace_path.parent.mkdir(parents=True, exist_ok=True)
+                await context.tracing.stop(path=str(trace_path))
+
+            if self.storage_state_path:
+                await _persist_storage_state(context, self.storage_state_path)
+            await context.close()
+        return dict(results)
 
 
 @dataclass(frozen=True)

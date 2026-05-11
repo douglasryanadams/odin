@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from odin.curl_fetch import CurlCffiPageFetcher, should_fall_back
 
 if TYPE_CHECKING:
@@ -46,45 +48,24 @@ _HEAVY_HTML_NO_ARTICLE = "<html><body>" + ("<div>boilerplate noise </div>" * 400
 _CLEAN_EXTRACTION = "A clean article extraction with several hundred characters " * 6
 
 
-def test_should_not_fall_back_on_clean_article() -> None:
-    """200 + healthy extraction → no fallback."""
-    assert should_fall_back(200, _LONG_ARTICLE, _CLEAN_EXTRACTION) is False
-
-
-def test_should_fall_back_on_4xx_status() -> None:
-    """403 from origin should always trigger fallback."""
-    assert should_fall_back(403, _LONG_ARTICLE, _CLEAN_EXTRACTION) is True
-
-
-def test_should_fall_back_on_5xx_status() -> None:
-    """502 from origin should also trigger fallback."""
-    assert should_fall_back(502, _LONG_ARTICLE, _CLEAN_EXTRACTION) is True
-
-
-def test_should_fall_back_on_cloudflare_interstitial_regex() -> None:
-    """A 200 response whose body matches the bot-wall regex falls back."""
-    assert should_fall_back(200, _CLOUDFLARE_INTERSTITIAL, "short text") is True
-
-
-def test_should_fall_back_on_access_denied_body() -> None:
-    """'Access denied' phrase in the body triggers fallback."""
-    assert should_fall_back(200, _ACCESS_DENIED, "short text") is True
-
-
-def test_should_fall_back_on_attention_required_title() -> None:
-    """'Attention Required' (Cloudflare's title for many challenges) triggers fallback."""
-    assert should_fall_back(200, _ATTENTION_REQUIRED, "short text") is True
-
-
-def test_should_fall_back_when_html_large_but_extraction_tiny() -> None:
-    """Lots of HTML with essentially no article body looks like a bot wall."""
-    assert should_fall_back(200, _HEAVY_HTML_NO_ARTICLE, "x" * 50) is True
-
-
-def test_should_not_fall_back_when_both_html_and_extraction_short() -> None:
-    """A genuinely tiny page (e.g. a JSON-API HTML wrapper) is not a bot wall."""
-    tiny_html = "<html><body><p>ok</p></body></html>"
-    assert should_fall_back(200, tiny_html, "ok") is False
+@pytest.mark.parametrize(
+    ("status_code", "html", "extracted", "expected"),
+    [
+        pytest.param(200, _LONG_ARTICLE, _CLEAN_EXTRACTION, False, id="clean-article"),
+        pytest.param(403, _LONG_ARTICLE, _CLEAN_EXTRACTION, True, id="4xx-status"),
+        pytest.param(502, _LONG_ARTICLE, _CLEAN_EXTRACTION, True, id="5xx-status"),
+        pytest.param(200, _CLOUDFLARE_INTERSTITIAL, "short", True, id="cloudflare-interstitial"),
+        pytest.param(200, _ACCESS_DENIED, "short", True, id="access-denied"),
+        pytest.param(200, _ATTENTION_REQUIRED, "short", True, id="attention-required"),
+        pytest.param(200, _HEAVY_HTML_NO_ARTICLE, "x" * 50, True, id="low-extraction-ratio"),
+        pytest.param(
+            200, "<html><body><p>ok</p></body></html>", "ok", False, id="genuinely-tiny-page"
+        ),
+    ],
+)
+def test_should_fall_back(status_code: int, html: str, extracted: str, *, expected: bool) -> None:
+    """Each fallback signal — status, bot-wall regex, low extraction ratio — fires correctly."""
+    assert should_fall_back(status_code, html, extracted) is expected
 
 
 async def test_curl_cffi_happy_path(httpserver: HTTPServer) -> None:
@@ -100,25 +81,19 @@ async def test_curl_cffi_happy_path(httpserver: HTTPServer) -> None:
     assert "quick brown fox" in results[url].text
 
 
-async def test_curl_cffi_marks_fallback_on_403(httpserver: HTTPServer) -> None:
-    """A 403 response flags the result for fallback to Playwright."""
-    httpserver.expect_request("/forbidden").respond_with_data(
-        "<html><body>nope</body></html>", status=403, content_type="text/html"
-    )
-    url = httpserver.url_for("/forbidden")
-
-    fetcher = CurlCffiPageFetcher()
-    results = await fetcher.fetch_pages([url])
-
-    assert results[url].fall_back is True
-
-
-async def test_curl_cffi_marks_fallback_on_bot_wall(httpserver: HTTPServer) -> None:
-    """A 200 that matches the bot-wall regex flags the result for fallback."""
-    httpserver.expect_request("/wall").respond_with_data(
-        _CLOUDFLARE_INTERSTITIAL, content_type="text/html"
-    )
-    url = httpserver.url_for("/wall")
+@pytest.mark.parametrize(
+    ("path", "body", "status"),
+    [
+        pytest.param("/forbidden", "<html><body>nope</body></html>", 403, id="403-response"),
+        pytest.param("/wall", _CLOUDFLARE_INTERSTITIAL, 200, id="cloudflare-interstitial-200"),
+    ],
+)
+async def test_curl_cffi_marks_fallback(
+    httpserver: HTTPServer, path: str, body: str, status: int
+) -> None:
+    """Responses that match the predicate get flagged for Playwright fallback."""
+    httpserver.expect_request(path).respond_with_data(body, status=status, content_type="text/html")
+    url = httpserver.url_for(path)
 
     fetcher = CurlCffiPageFetcher()
     results = await fetcher.fetch_pages([url])
