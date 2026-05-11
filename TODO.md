@@ -18,6 +18,7 @@ Tracking outstanding work that we want to address but haven't scheduled yet.
 
 - **Add a Google Search API key.** Provision a Google Search API key and wire it into the configuration (env var / Secrets Manager) so the Google backend can be enabled.
 - **Add a Brave Search API key.** Provision a Brave Search API key and wire it into the configuration (env var / Secrets Manager) so the Brave backend can be enabled.
+- **Apply the ECR lifecycle policy.** The `odin` ECR repository has no retention rules, so every deploy adds a new `:<sha>` tag that lives forever and storage cost grows monotonically. Follow `docs/aws-setup.md` § 1a to add the two-rule policy (expire untagged after 1 day, keep last 10 tagged).
 
 ## Safety / hardening
 
