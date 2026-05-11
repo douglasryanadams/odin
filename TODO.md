@@ -12,6 +12,7 @@ Tracking outstanding work that we want to address but haven't scheduled yet.
 ## Features
 
 - **Recent successful searches on the home page.** Surface a list of recent user searches that succeeded on the home page, so visitors get a sense of what the tool can do and what others are finding. Decide on privacy/anonymization rules before implementing.
+- **Print/export button on search results.** Add a button on the results page that produces a clean, shareable version of the answer and sources (print-friendly stylesheet at minimum; ideally also a downloadable export such as PDF or Markdown). Strip site chrome, keep citations linkable, and make sure it works without JavaScript where feasible.
 
 ## Tasks
 
@@ -21,3 +22,8 @@ Tracking outstanding work that we want to address but haven't scheduled yet.
 ## Safety / hardening
 
 - **Constrain media types and sources sent to Claude API.** Add an allowlist for the kinds of content we'll fetch and forward to Claude (e.g., text/HTML only, size caps, drop binaries/executables, domain blocklist). Primary motivation is reducing prompt-injection surface from adversarial pages in search results; a secondary benefit is avoiding Claude refusals on clearly harmful content. Keep the list permissive enough that legitimate research queries still work.
+- **Harden search-result reliability.** Reduce the rate at which searches and page loads fail end-to-end. Catalogue the failure modes we see (upstream search timeouts, fetch errors on individual result pages, Claude API hiccups, partial result sets), then add the right mix of retries with backoff, per-source timeouts, graceful degradation when one source is down, and clear user-facing messaging when a partial answer is the best we can do. Add metrics so we can track failure rates over time.
+
+## Research
+
+- **Evaluate additional public-data search sources.** Investigate which public platforms expose supported APIs we could query to supplement our current backends — Twitter/X, Reddit, Hacker News, Stack Exchange, Wikipedia, Mastodon, YouTube, GitHub, etc. For each, capture: API availability and stability, auth requirements, rate limits, pricing, terms-of-service constraints on resale/redistribution, and how well the content fits our answer-synthesis pipeline. Output a short ranked recommendation of which to integrate first.
