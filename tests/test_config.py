@@ -21,9 +21,12 @@ def test_secret_key_at_32_chars_accepted() -> None:
     assert len(settings.secret_key) == 32
 
 
-def test_cookie_secure_defaults_true() -> None:
+def test_cookie_secure_defaults_true(monkeypatch: pytest.MonkeyPatch) -> None:
     """Default is True so production is secure by default; a missing env var fails closed."""
-    settings = Settings(secret_key=_VALID_SECRET, app_url=_APP_URL)
+    monkeypatch.delenv("COOKIE_SECURE", raising=False)
+    # _env_file=None bypasses the on-disk .env so we exercise the code default,
+    # not a developer's local override.
+    settings = Settings(secret_key=_VALID_SECRET, app_url=_APP_URL, _env_file=None)  # type: ignore[call-arg]
     assert settings.cookie_secure is True
 
 

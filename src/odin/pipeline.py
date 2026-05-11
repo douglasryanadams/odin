@@ -96,10 +96,13 @@ async def _run_pipeline(
 
     content = await fetcher.fetch_pages(selected_urls)
     logger.debug("pages fetched count={}", len(content))
+    yield StageEvent(stage="synthesizing", data={"page_count": len(content)})
+
     profile = await claude.synthesize(anthropic_client, query, category, content, unique_results)
     logger.debug("profile synthesized name={!r} citations={}", profile.name, len(profile.citations))
     yield StageEvent(stage="profile", data=profile.model_dump())
 
+    yield StageEvent(stage="assessing", data={})
     try:
         assessment = await claude.assess(anthropic_client, query, profile, content)
     except (RateLimitError, BadRequestError):

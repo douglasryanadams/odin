@@ -24,103 +24,101 @@
   {% endif %}
 {% endblock %}
 {% block content %}
-  <article class="subject">
-    <header class="subject__top">
-      <h1 class="subject__title">{{ query }}</h1>
-      <div class="subject__meta">
+  <div class="profile">
+    <article class="profile__main">
+      <p class="profile__kicker">
+        Profile &nbsp;/&nbsp; <span id="kicker-category">…</span>
+      </p>
+      <h1 class="profile__title" id="subject-name">{{ query }}</h1>
+      <p class="profile__deck" id="summary">
+        <span class="muted">Researching…</span>
+      </p>
+      <div class="profile__byline">
+        <span><strong>Synthesized</strong> <time id="synth-time">—</time></span>
+        <span><strong>Sources</strong> <span id="byline-sources">…</span></span>
+      </div>
+      <ol class="progress-strip"
+          id="progress-strip"
+          aria-label="Pipeline progress">
+        <li class="progress-step is-active" data-stage="categorized">
+          <span class="progress-step__dot" aria-hidden="true"></span>
+          <span class="progress-step__label">Categorize</span>
+        </li>
+        <li class="progress-step" data-stage="queries">
+          <span class="progress-step__dot" aria-hidden="true"></span>
+          <span class="progress-step__label">Plan queries</span>
+        </li>
+        <li class="progress-step" data-stage="searching">
+          <span class="progress-step__dot" aria-hidden="true"></span>
+          <span class="progress-step__label">Search</span>
+        </li>
+        <li class="progress-step" data-stage="fetching">
+          <span class="progress-step__dot" aria-hidden="true"></span>
+          <span class="progress-step__label">Load pages</span>
+        </li>
+        <li class="progress-step" data-stage="synthesizing">
+          <span class="progress-step__dot" aria-hidden="true"></span>
+          <span class="progress-step__label">Synthesize</span>
+        </li>
+        <li class="progress-step" data-stage="assessing">
+          <span class="progress-step__dot" aria-hidden="true"></span>
+          <span class="progress-step__label">Audit</span>
+        </li>
+      </ol>
+      <div id="exposition" class="profile__exposition"></div>
+      <section id="section-events">
+        <h2>
+          Significant events <span class="profile__hint" id="events-count"></span>
+        </h2>
+        <ol class="events" data-empty="No timeline events identified.">
+        </ol>
+      </section>
+      <section id="section-highlights">
+        <h2>
+          Key contributions <span class="profile__hint" id="highlights-hint"></span>
+        </h2>
+        <ul class="findings findings--up" data-empty="No highlights identified.">
+        </ul>
+      </section>
+      <section id="section-lowlights">
+        <h2>
+          Concerns <span class="profile__hint" id="lowlights-hint"></span>
+        </h2>
+        <ul class="findings findings--down" data-empty="No lowlights identified.">
+        </ul>
+      </section>
+      <section id="section-sources">
+        <h2>
+          Sources <span class="profile__hint" id="sources-count"></span>
+        </h2>
+        <ol class="citations" data-empty="No sources cited.">
+        </ol>
+      </section>
+    </article>
+    <aside class="profile__sidebar">
+      <h1 class="profile__sidebar-title" id="sidebar-name">{{ query }}</h1>
+      <p class="profile__sidebar-meta">
         <span class="badge badge--category" id="category-badge">
           <i class="fa-solid fa-circle-nodes" aria-hidden="true"></i>
           <span class="badge__label">Pending…</span>
         </span>
-        <span class="subject__synth mono muted">
-          synthesized <time id="synth-time">—</time>
-        </span>
+      </p>
+      <div class="profile__panel" id="subject-compass">
+        <header class="profile__panel-head">
+          <span><i class="fa-solid fa-compass" aria-hidden="true"></i> Subject compass</span>
+        </header>
+        <div class="assessment-gauges"></div>
       </div>
-    </header>
-    <p class="subject__summary" id="summary">
-      <span class="muted">Researching…</span>
-    </p>
-  </article>
-  <ol class="progress-strip"
-      id="progress-strip"
-      aria-label="Pipeline progress">
-    <li class="progress-step is-active" data-stage="categorized">
-      <span class="progress-step__dot" aria-hidden="true"></span>
-      <span class="progress-step__label">Categorize</span>
-    </li>
-    <li class="progress-step" data-stage="queries">
-      <span class="progress-step__dot" aria-hidden="true"></span>
-      <span class="progress-step__label">Plan queries</span>
-    </li>
-    <li class="progress-step" data-stage="searching">
-      <span class="progress-step__dot" aria-hidden="true"></span>
-      <span class="progress-step__label">Search</span>
-    </li>
-    <li class="progress-step" data-stage="fetching">
-      <span class="progress-step__dot" aria-hidden="true"></span>
-      <span class="progress-step__label">Fetch</span>
-    </li>
-    <li class="progress-step" data-stage="profile">
-      <span class="progress-step__dot" aria-hidden="true"></span>
-      <span class="progress-step__label">Synthesize</span>
-    </li>
-  </ol>
-  <section id="card-grid" class="card-grid">
-    <article class="card card--span-6" id="card-subject-compass">
-      <header class="card__header">
-        <h2>
-          <i class="fa-solid fa-compass" aria-hidden="true"></i> Subject Compass
-        </h2>
-      </header>
-      <div class="assessment-gauges"></div>
-    </article>
-    <article class="card card--span-6" id="card-source-audit">
-      <header class="card__header">
-        <h2>
-          <i class="fa-solid fa-magnifying-glass-chart" aria-hidden="true"></i> Source Audit
-        </h2>
-      </header>
-      <div class="assessment-gauges"></div>
-      <h3 class="assessment-caveats__title">Caveats</h3>
-      <ul class="caveats-list" data-empty="No caveats reported.">
-      </ul>
-    </article>
-    <article class="card card--span-6" id="card-highlights">
-      <header class="card__header">
-        <h2>
-          <i class="fa-solid fa-star" aria-hidden="true"></i> Highlights
-        </h2>
-      </header>
-      <ul class="hl-list hl-list--up" data-empty="No highlights identified.">
-      </ul>
-    </article>
-    <article class="card card--span-6" id="card-lowlights">
-      <header class="card__header">
-        <h2>
-          <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> Lowlights
-        </h2>
-      </header>
-      <ul class="hl-list hl-list--down" data-empty="No lowlights identified.">
-      </ul>
-    </article>
-    <article class="card card--span-12" id="card-timeline">
-      <header class="card__header">
-        <h2>
-          <i class="fa-solid fa-timeline" aria-hidden="true"></i> Timeline
-        </h2>
-      </header>
-      <ol class="timeline" data-empty="No timeline data available.">
-      </ol>
-    </article>
-    <article class="card card--span-12" id="card-sources">
-      <header class="card__header">
-        <h2>
-          <i class="fa-solid fa-link" aria-hidden="true"></i> Sources &amp; Citations
-        </h2>
-      </header>
-      <ul class="sources-list" data-empty="No sources cited.">
-      </ul>
-    </article>
-  </section>
+      <div class="profile__panel" id="source-audit">
+        <header class="profile__panel-head">
+          <span><i class="fa-solid fa-magnifying-glass-chart" aria-hidden="true"></i> Source audit</span>
+          <span class="profile__panel-pct" id="audit-pct"></span>
+        </header>
+        <div class="assessment-gauges"></div>
+        <ul class="profile__caveats" data-empty="No caveats reported.">
+        </ul>
+      </div>
+    </aside>
+  </div>
 {% endblock %}
 {% block scripts %}<script src="/static/js/profile.js" defer></script>{% endblock %}

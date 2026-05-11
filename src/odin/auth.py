@@ -25,6 +25,14 @@ class MagicTokenClaims:
     exp: int
 
 
+@dataclass(frozen=True)
+class SessionUser:
+    """Authenticated session payload — email and the IP captured at link verify."""
+
+    email: str
+    ip: str | None
+
+
 def generate_csrf_token() -> str:
     """Return an unguessable CSRF token suitable for the double-submit pattern."""
     return secrets.token_urlsafe(32)
@@ -97,19 +105,24 @@ def verify_magic_token(token: str, secret: bytes) -> MagicTokenClaims:
     return MagicTokenClaims(email=email, jti=jti, exp=int(payload["exp"]))
 
 
-def create_session_value(email: str, secret: bytes) -> str:
-    """Return a signed session cookie value encoding the given email."""
+def create_session_value(email: str, secret: bytes, ip: str | None = None) -> str:
+    """Return a signed session cookie value encoding the email and login-time IP."""
     payload: dict[str, Any] = {"email": email, "exp": int(time.time()) + _SESSION_TTL}
+    if ip:
+        payload["ip"] = ip
     return _sign(payload, secret)
 
 
-def verify_session_value(value: str, secret: bytes) -> str:
-    """Verify a session cookie value and return the encoded email, or raise ValueError."""
-    return _check_expiry(_verify(value, secret), "session")
+def verify_session_value(value: str, secret: bytes) -> SessionUser:
+    """Verify a session cookie value and return its decoded SessionUser, or raise ValueError."""
+    payload = _verify(value, secret)
+    email = _check_expiry(payload, "session")
+    ip = payload.get("ip")
+    return SessionUser(email=email, ip=ip if isinstance(ip, str) else None)
 
 
-def get_current_user(request: Request) -> str | None:
-    """Return the authenticated user's email from the session cookie, or None."""
+def get_current_user(request: Request) -> SessionUser | None:
+    """Return the authenticated session (email + login IP) from the cookie, or None."""
     value = request.cookies.get(_SESSION_COOKIE)
     if not value:
         return None

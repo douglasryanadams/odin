@@ -1,5 +1,6 @@
 """Tests for HMAC-signed magic link and session cookie auth."""
 
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -47,7 +48,26 @@ def test_magic_token_jti_is_unique() -> None:
 
 def test_session_roundtrip() -> None:
     value = auth.create_session_value("user@example.com", _SECRET)
-    assert auth.verify_session_value(value, _SECRET) == "user@example.com"
+    session = auth.verify_session_value(value, _SECRET)
+    assert session.email == "user@example.com"
+    assert session.ip is None
+
+
+def test_session_roundtrip_includes_ip() -> None:
+    """A session value created with an IP carries that IP through to verify."""
+    value = auth.create_session_value("user@example.com", _SECRET, ip="1.2.3.4")
+    session = auth.verify_session_value(value, _SECRET)
+    assert session.email == "user@example.com"
+    assert session.ip == "1.2.3.4"
+
+
+def test_session_legacy_payload_without_ip_still_verifies() -> None:
+    """Cookies issued before IP-pinning still decode with ip=None (no forced logout)."""
+    legacy_payload = {"email": "user@example.com", "exp": int(time.time()) + 3600}
+    legacy_value = auth._sign(legacy_payload, _SECRET)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    session = auth.verify_session_value(legacy_value, _SECRET)
+    assert session.email == "user@example.com"
+    assert session.ip is None
 
 
 def test_session_expired_raises() -> None:
@@ -70,7 +90,19 @@ def _mock_request(cookie_value: str | None) -> MagicMock:
 def test_get_current_user_returns_email_for_valid_session() -> None:
     value = auth.create_session_value("user@example.com", _SECRET)
     request = _mock_request(value)
-    assert auth.get_current_user(request) == "user@example.com"
+    session = auth.get_current_user(request)
+    assert session is not None
+    assert session.email == "user@example.com"
+    assert session.ip is None
+
+
+def test_get_current_user_returns_session_with_email_and_ip() -> None:
+    value = auth.create_session_value("user@example.com", _SECRET, ip="10.0.0.1")
+    request = _mock_request(value)
+    session = auth.get_current_user(request)
+    assert session is not None
+    assert session.email == "user@example.com"
+    assert session.ip == "10.0.0.1"
 
 
 def test_get_current_user_returns_none_when_no_cookie() -> None:

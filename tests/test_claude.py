@@ -12,12 +12,37 @@ from odin.searxng import SearchResult
 _PROFILE_DATA = {
     "name": "Marie Curie",
     "category": "person",
-    "summary": "A pioneering physicist.",
-    "highlights": [{"title": "Nobel Prize", "description": "Won twice."}],
+    "summary": "A pioneering physicist.\n\nWon two Nobel Prizes.",
+    "highlights": [
+        {
+            "title": "Nobel Prize",
+            "description": "Won the Nobel Prize twice, in Physics and Chemistry.",
+            "detail": (
+                "First woman to win a Nobel Prize and the only person to win one in two sciences."
+            ),
+        }
+    ],
     "lowlights": [],
     "timeline": [{"date": "1903", "event": "First Nobel Prize in Physics"}],
     "citations": ["https://example.com"],
 }
+
+
+def test_create_profile_tool_schema_requires_detail_on_each_highlight() -> None:
+    """The synthesize tool schema asks Claude for `detail` as well as title + description."""
+    items = claude._CREATE_PROFILE_TOOL["input_schema"]["properties"]["highlights"]["items"]  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    assert set(items["required"]) >= {"title", "description", "detail"}
+    assert items["properties"]["detail"]["type"] == "string"
+    low_items = claude._CREATE_PROFILE_TOOL["input_schema"]["properties"]["lowlights"]["items"]  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    assert set(low_items["required"]) >= {"title", "description", "detail"}
+
+
+def test_assess_tool_schema_caveats_are_brief_detail_objects() -> None:
+    """The assess tool schema asks Claude for caveats as {brief, detail} objects."""
+    caveat_schema = claude._ASSESS_TOOL["input_schema"]["properties"]["caveats"]  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    item = caveat_schema["items"]
+    assert item["type"] == "object"
+    assert set(item["required"]) == {"brief", "detail"}
 
 
 @pytest.fixture

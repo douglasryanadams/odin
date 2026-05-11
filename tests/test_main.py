@@ -315,7 +315,9 @@ _MOCK_ASSESSMENT_INPUT: Mapping[str, object] = {
     "source_political_bias": 0.0,
     "law_chaos": 0.0,
     "good_evil": 0.0,
-    "caveats": ["Limited sources."],
+    "caveats": [
+        {"brief": "Limited sources.", "detail": "Only one page returned a usable snippet."}
+    ],
 }
 
 
@@ -340,11 +342,10 @@ def mock_anthropic() -> Iterator[MagicMock]:
     app.dependency_overrides.pop(get_anthropic_client, None)
 
 
-def test_profile_page_renders_grid_skeleton(client: TestClient) -> None:
-    """Profile page renders the card grid skeleton and references the static JS."""
+def test_profile_page_loads_static_js(client: TestClient) -> None:
+    """Profile page references the static JS bundle so streamed events have a renderer."""
     response = client.get("/profile?q=foo")
     assert response.status_code == 200
-    assert 'id="card-grid"' in response.text
     assert "/static/js/profile.js" in response.text
 
 
@@ -640,7 +641,9 @@ def test_profile_stream_emits_assessment_after_profile(
     assert types.index("assessment") > types.index("profile")
     assess_event = next(e for e in events if e["type"] == "assessment")
     assert assess_event["confidence"] == 0.5
-    assert assess_event["caveats"] == ["Limited sources."]
+    assert assess_event["caveats"] == [
+        {"brief": "Limited sources.", "detail": "Only one page returned a usable snippet."}
+    ]
 
 
 @respx.mock
@@ -819,6 +822,39 @@ def test_auth_verify_sets_session_cookie_and_redirects(client: TestClient) -> No
     assert response.status_code == 303
     assert response.headers["location"] == "/"
     assert "odin_session" in response.cookies
+
+
+def test_auth_verify_captures_login_ip_into_session(client: TestClient) -> None:
+    """The /auth/verify response stores the link-clicker's IP in the session payload."""
+    token = _auth.generate_magic_token("user@example.com", _TEST_SECRET)
+    response = client.get(f"/auth/verify?token={token}", follow_redirects=False)
+    cookie = response.cookies.get("odin_session")
+    assert cookie is not None
+    session = _auth.verify_session_value(cookie, _TEST_SECRET)
+    assert session.email == "user@example.com"
+    # Starlette's TestClient defaults the client host to "testclient"; we just want a value.
+    assert session.ip
+
+
+def test_status_bar_renders_email_and_ip_for_authenticated_pages(client: TestClient) -> None:
+    """The base layout's status bar shows PILOT email and NODE IP when signed in."""
+    session = _auth.create_session_value("user@example.com", _TEST_SECRET, ip="203.0.113.5")
+    response = client.get("/dashboard", cookies={"odin_session": session})
+    assert response.status_code == 200
+    body = response.text
+    assert "status-bar" in body
+    assert "PILOT" in body
+    assert "user@example.com" in body
+    assert "NODE" in body
+    assert "203.0.113.5" in body
+
+
+def test_status_bar_absent_for_anonymous_pages(client: TestClient) -> None:
+    """Status bar is hidden when no session cookie is present."""
+    response = client.get("/login")
+    assert response.status_code == 200
+    assert "status-bar" not in response.text
+    assert "PILOT" not in response.text
 
 
 def test_auth_verify_invalid_token_renders_error(client: TestClient) -> None:
