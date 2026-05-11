@@ -745,7 +745,7 @@ ECR retains all image tags by SHA, so any prior deploy is recoverable as long as
 
 ## SearXNG limiter
 
-Pre-configured in `searxng/limiter.toml` and enabled via `searxng/settings.yml` (`server.limiter: true`). The Odin client at `src/odin/searxng.py` spoofs `X-Forwarded-For: 127.0.0.1` so internal calls from `web` to `searxng` bypass bot detection. External traffic — which should not exist (SearXNG is internal-only, port 8080 is not exposed past the docker network) — would be subject to the limiter as defense-in-depth.
+Disabled via `searxng/settings.yml` (`server.limiter: false`). SearXNG is reachable only on the Docker bridge (port 8080 is not exposed past it) and the EC2 security group, so the limiter was redundant defense-in-depth and its botdetection PASSLIST logger fired a `WARNING` on every Odin request. The Odin client at `src/odin/searxng.py` still sets `X-Forwarded-For: 127.0.0.1` because SearXNG rejects requests with no forwarded address.
 
 No deploy-time action required.
 

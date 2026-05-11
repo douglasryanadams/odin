@@ -23,8 +23,6 @@ Concurrency limiting (`asyncio.Semaphore(SEARXNG_MAX_CONCURRENCY=2)`) and dedup-
 - **Outgoing:** `request_timeout: 6`, HTTP/2, pool `100` / per-host `20`, `retries: 1`.
 - **Valkey:** `redis://searxng-valkey:6379/0`.
 
-`limiter.toml` is an empty stub; the limiter is off.
-
 ## Verify
 
 With the dev stack running:

@@ -72,7 +72,6 @@ One multi-stage Dockerfile; two images (`odin-prod`, `odin-dev`).
 ## `searxng/`
 
 - `settings.yml` — engines, dev secret key, `limiter: false`, `image_proxy: true`, JSON format, outgoing-pool tuning. Details in [`searxng.md`](./searxng.md).
-- `limiter.toml` — empty stub; exists only to suppress SearXNG's missing-config warning.
 
 ## Environment variables
 

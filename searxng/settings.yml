@@ -12,7 +12,10 @@ use_default_settings:
 server:
   # Override in production via SEARXNG_SECRET environment variable
   secret_key: "dev-secret-key-not-for-production"
-  limiter: true
+  # Disabled: SearXNG is reachable only on the Docker bridge and EC2 security
+  # group, and the botdetection PASSLIST logger fires a WARNING on every
+  # request from a passlisted IP — which is every Odin request.
+  limiter: false
   image_proxy: true
 
 search:
