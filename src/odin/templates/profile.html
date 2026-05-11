@@ -24,9 +24,10 @@
         <button type="submit" class="header-nav__link header-nav__link--button">Sign out</button>
       </form>
     </nav>
-  {% elif used >= 1 %}
+  {% else %}
     <span class="header-quota">
-      {{ limit - used }}/{{ limit }} free · <a href="/login">sign in</a> for {{ auth_limit }}/day
+      {% if used >= 1 %}{{ limit - used }}/{{ limit }} free ·{% endif %}
+      <a href="/login">sign in</a> for {{ auth_limit }}/day
     </span>
   {% endif %}
 {% endblock %}

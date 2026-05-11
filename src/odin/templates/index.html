@@ -40,9 +40,9 @@
           <button type="submit" class="hero__quota-link">sign out</button>
         </form>
       </p>
-    {% elif used >= 1 %}
+    {% else %}
       <p class="hero__quota">
-        {{ limit - used }} of {{ limit }} free searches remaining ·
+        {% if used >= 1 %}{{ limit - used }} of {{ limit }} free searches remaining ·{% endif %}
         <a href="/login">sign in</a> for {{ auth_limit }}/day
       </p>
     {% endif %}

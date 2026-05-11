@@ -285,6 +285,13 @@ def test_index_signed_in_links_to_dashboard_without_searches(client: TestClient)
     assert 'href="/dashboard"' in response.text
 
 
+def test_index_anonymous_first_visit_links_to_login(client: TestClient) -> None:
+    """Anonymous visitors see a Sign in link on the home page even before their first search."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert 'href="/login"' in response.text
+
+
 def test_index_redirects_to_login_when_anon_rate_limited(
     client: TestClient, mock_valkey: MagicMock
 ) -> None:
@@ -392,6 +399,13 @@ def test_profile_page_signed_in_has_signout(client: TestClient) -> None:
     response = client.get("/profile?q=foo", cookies={"odin_session": session})
     assert response.status_code == 200
     assert 'action="/auth/logout"' in response.text
+
+
+def test_profile_page_anonymous_first_visit_links_to_login(client: TestClient) -> None:
+    """Anonymous visitors see a Sign in link on the profile page even before their first search."""
+    response = client.get("/profile?q=foo")
+    assert response.status_code == 200
+    assert 'href="/login"' in response.text
 
 
 def _parse_sse_events(body: str) -> list[dict[str, object]]:
