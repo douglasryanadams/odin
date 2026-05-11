@@ -41,6 +41,26 @@ Region: **us-west-2**.
 
 **Note this:** the repository URI and the 12-digit AWS account ID embedded in it. You'll need both later.
 
+### 1a. Lifecycle policy
+
+ECR storage is $0.10/GB-month and never auto-cleans. Every GitHub Actions deploy pushes a fresh `:<sha>` tag plus updates `:latest`, so without a policy the repository grows monotonically. A typical image is a few hundred MB; daily deploys over a year add up to real money and a cluttered tag list.
+
+1. Open the `odin` repository → **Lifecycle policy** (left nav under the repo) → **Create rule**.
+2. Rule 1 — expire untagged images:
+   - Rule priority: `1`
+   - Description: `Expire untagged after 1 day`
+   - Image status: **Untagged**
+   - Match criteria: **Since image pushed**, `1` day
+   - **Save**.
+3. **Create rule** again. Rule 2 — keep the last 10 tagged images:
+   - Rule priority: `2`
+   - Description: `Keep last 10 tagged`
+   - Image status: **Any**
+   - Match criteria: **Image count more than**, `10`
+   - **Save**.
+
+The "keep 10" count includes `:latest`, so you retain roughly the nine most recent SHA-tagged builds for rollback. Bump the count if you ever need a deeper rollback window.
+
 ---
 
 ## 2. Route 53 Hosted Zone
