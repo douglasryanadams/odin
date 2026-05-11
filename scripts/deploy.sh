@@ -35,3 +35,5 @@ docker compose \
   -f docker-compose.prod.yml \
   -f docker-compose.awslogs.yml \
   up -d --no-deps web
+
+docker image prune -af
