@@ -16,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 from playwright.async_api import async_playwright
 from valkey.asyncio import Valkey
 
-from odin import auth, cache, fetch, log, pipeline, store
+from odin import auth, cache, curl_fetch, fetch, log, pipeline, store
 from odin.config import settings
 from odin.email import send_magic_link
 
@@ -45,11 +45,21 @@ _BASE_SECURITY_HEADERS = {
 _HSTS = "max-age=31536000; includeSubDomains"
 
 
+_HARDENED_LAUNCH_ARGS = [
+    "--disable-blink-features=AutomationControlled",
+    "--disable-features=IsolateOrigins,site-per-process",
+]
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Launch Chromium and connect Valkey on startup; close both on shutdown."""
+    """Launch hardened Chrome and connect Valkey on startup; close both on shutdown."""
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=settings.playwright_headless)
+        browser = await playwright.chromium.launch(
+            channel=settings.playwright_channel,
+            headless=settings.playwright_headless,
+            args=_HARDENED_LAUNCH_ARGS,
+        )
         valkey_client = Valkey.from_url(settings.odin_valkey_url)
         app.state.browser = browser
         app.state.valkey = valkey_client
@@ -95,8 +105,16 @@ def get_anthropic_client() -> AsyncAnthropic:
 
 
 def get_page_fetcher(request: Request) -> fetch.PageFetcher:
-    """Return a PlaywrightPageFetcher wrapping the per-worker Browser."""
-    return fetch.PlaywrightPageFetcher(browser=request.app.state.browser)
+    """Return a tiered fetcher: curl_cffi first, hardened Playwright as fallback."""
+    playwright = fetch.PlaywrightPageFetcher(
+        browser=request.app.state.browser,
+        storage_state_path=settings.playwright_storage_state_path,
+    )
+    return fetch.TieredPageFetcher(
+        curl=curl_fetch.CurlCffiPageFetcher(),
+        playwright=playwright,
+        curl_enabled=settings.fetch_curl_cffi_enabled,
+    )
 
 
 def get_valkey_client(request: Request) -> Valkey:

@@ -8,6 +8,8 @@ services:
       - SECRET_KEY
       - APP_URL
       - COOKIE_SECURE
+    volumes:
+      - playwright-state:/var/lib/odin/playwright-state
     depends_on:
       - odin-valkey
     healthcheck:
@@ -54,3 +56,4 @@ services:
 volumes:
   searxng-valkey-data:
   odin-valkey-data:
+  playwright-state:

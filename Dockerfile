@@ -17,8 +17,17 @@ COPY src/ src/
 
 RUN uv sync --frozen --no-dev
 
+# Bundled Chromium with hardened launch args from main.py:lifespan. The other
+# anti-fingerprinting measures (--disable-blink-features=AutomationControlled,
+# navigator.webdriver init script, viewport jitter, locale/timezone,
+# Accept-Language) all work identically on Chromium. Swap to a real-Chrome
+# channel here once Google ships a native arm64 build.
 RUN uv run playwright install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/*
+
+# Shared storage_state lives here; compose mounts a named volume on top so the
+# directory persists across container restarts.
+RUN mkdir -p /var/lib/odin/playwright-state
 
 EXPOSE 8000
 
