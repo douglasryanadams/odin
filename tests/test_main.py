@@ -277,6 +277,14 @@ def test_index_hides_quota_on_first_visit(client: TestClient) -> None:
     assert "remaining" not in response.text
 
 
+def test_index_signed_in_links_to_dashboard_without_searches(client: TestClient) -> None:
+    """Signed-in users can reach /dashboard from the home page even before their first search."""
+    session = _auth.create_session_value("user@example.com", _TEST_SECRET)
+    response = client.get("/", cookies={"odin_session": session})
+    assert response.status_code == 200
+    assert 'href="/dashboard"' in response.text
+
+
 def test_index_redirects_to_login_when_anon_rate_limited(
     client: TestClient, mock_valkey: MagicMock
 ) -> None:
@@ -368,6 +376,22 @@ def test_profile_page_sets_anon_cookie_on_first_visit(client: TestClient) -> Non
     """Profile page sets odin_anon cookie when not already present."""
     response = client.get("/profile?q=foo", cookies={})
     assert "odin_anon" in response.cookies
+
+
+def test_profile_page_signed_in_links_to_dashboard(client: TestClient) -> None:
+    """Profile header exposes a Dashboard link for signed-in users."""
+    session = _auth.create_session_value("user@example.com", _TEST_SECRET)
+    response = client.get("/profile?q=foo", cookies={"odin_session": session})
+    assert response.status_code == 200
+    assert 'href="/dashboard"' in response.text
+
+
+def test_profile_page_signed_in_has_signout(client: TestClient) -> None:
+    """Profile header exposes a POST sign-out form for signed-in users."""
+    session = _auth.create_session_value("user@example.com", _TEST_SECRET)
+    response = client.get("/profile?q=foo", cookies={"odin_session": session})
+    assert response.status_code == 200
+    assert 'action="/auth/logout"' in response.text
 
 
 def _parse_sse_events(body: str) -> list[dict[str, object]]:
@@ -891,6 +915,15 @@ def test_dashboard_renders_for_authenticated_user(client: TestClient) -> None:
     assert response.status_code == 200
     assert "user@example.com" in response.text
     assert "searches used today" in response.text
+
+
+def test_dashboard_signout_uses_post_form(client: TestClient) -> None:
+    """Sign out on the dashboard is a POST form, not a GET link, since /auth/logout is POST-only."""
+    session = _auth.create_session_value("user@example.com", _TEST_SECRET)
+    response = client.get("/dashboard", cookies={"odin_session": session})
+    assert response.status_code == 200
+    assert 'href="/auth/logout"' not in response.text
+    assert 'action="/auth/logout"' in response.text
 
 
 def test_privacy_page_renders(client: TestClient) -> None:
