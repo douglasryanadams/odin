@@ -11,7 +11,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from odin.curl_fetch import CurlCffiPageFetcher, should_fall_back
+from odin.curl_fetch import (
+    MAX_RESPONSE_BYTES,
+    CurlCffiPageFetcher,
+    should_fall_back,
+)
 
 if TYPE_CHECKING:
     from pytest_httpserver import HTTPServer
@@ -110,6 +114,71 @@ async def test_curl_cffi_marks_fallback_on_network_error() -> None:
 
     assert results[url].fall_back is True
     assert results[url].text == ""
+
+
+async def test_curl_cffi_rejects_pdf_content_type(httpserver: HTTPServer) -> None:
+    """A PDF response is discarded with no fallback: the URL is fundamentally not text."""
+    httpserver.expect_request("/doc").respond_with_data(
+        b"%PDF-1.4 ...", content_type="application/pdf"
+    )
+    url = httpserver.url_for("/doc")
+
+    fetcher = CurlCffiPageFetcher()
+    results = await fetcher.fetch_pages([url])
+
+    assert results[url].text == ""
+    assert results[url].fall_back is False
+
+
+async def test_curl_cffi_rejects_image_content_type(httpserver: HTTPServer) -> None:
+    """A binary image response is discarded; Playwright will not be retried."""
+    httpserver.expect_request("/img").respond_with_data(b"\x89PNG\r\n", content_type="image/png")
+    url = httpserver.url_for("/img")
+
+    fetcher = CurlCffiPageFetcher()
+    results = await fetcher.fetch_pages([url])
+
+    assert results[url].text == ""
+    assert results[url].fall_back is False
+
+
+async def test_curl_cffi_rejects_missing_content_type(httpserver: HTTPServer) -> None:
+    """A response without any Content-Type header is treated as not-text and discarded."""
+    httpserver.expect_request("/raw").respond_with_data(b"raw bytes", content_type="")
+    url = httpserver.url_for("/raw")
+
+    fetcher = CurlCffiPageFetcher()
+    results = await fetcher.fetch_pages([url])
+
+    assert results[url].text == ""
+    assert results[url].fall_back is False
+
+
+async def test_curl_cffi_accepts_text_html_with_charset(httpserver: HTTPServer) -> None:
+    """Charset suffixes on text/html do not trip the content-type check."""
+    httpserver.expect_request("/article").respond_with_data(
+        _LONG_ARTICLE, content_type="text/html; charset=utf-8"
+    )
+    url = httpserver.url_for("/article")
+
+    fetcher = CurlCffiPageFetcher()
+    results = await fetcher.fetch_pages([url])
+
+    assert "quick brown fox" in results[url].text
+    assert results[url].fall_back is False
+
+
+async def test_curl_cffi_rejects_oversized_content_length(httpserver: HTTPServer) -> None:
+    """A response that advertises more than MAX_RESPONSE_BYTES is discarded without fallback."""
+    oversized = b"x" * (MAX_RESPONSE_BYTES + 1)
+    httpserver.expect_request("/huge").respond_with_data(oversized, content_type="text/html")
+    url = httpserver.url_for("/huge")
+
+    fetcher = CurlCffiPageFetcher()
+    results = await fetcher.fetch_pages([url])
+
+    assert results[url].text == ""
+    assert results[url].fall_back is False
 
 
 async def test_curl_cffi_caps_text_at_content_limit(httpserver: HTTPServer) -> None:

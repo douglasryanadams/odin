@@ -28,10 +28,39 @@ _FALLBACK_STATUS = 400
 _LOW_EXTRACTION_CHARS = 200
 _HEAVY_HTML_CHARS = 5000
 
+# Allowlist for response Content-Type. Anything else (PDF, image, archive,
+# octet-stream, missing header) is rejected outright — Claude can only
+# usefully consume prose, and binary payloads widen the prompt-injection
+# surface without any upside.
+ALLOWED_CONTENT_TYPES: frozenset[str] = frozenset(
+    {"text/html", "text/plain", "application/xhtml+xml"}
+)
+
+# Ceiling on the raw response body, well above any legitimate text article
+# and well below "the URL is serving us a binary blob in disguise". An
+# advertised Content-Length above this discards the response before any
+# extraction work; a server that omits the header still gets capped after
+# read.
+MAX_RESPONSE_BYTES = 2_000_000
+
 _BOT_WALL_PATTERN = re.compile(
     r"just a moment|enable javascript|access denied|attention required|verify you are human",
     re.IGNORECASE,
 )
+
+
+def _content_type_allowed(header_value: str) -> bool:
+    primary = header_value.split(";", 1)[0].strip().lower()
+    return primary in ALLOWED_CONTENT_TYPES
+
+
+def _content_length_oversized(header_value: str | None) -> bool:
+    if not header_value:
+        return False
+    try:
+        return int(header_value) > MAX_RESPONSE_BYTES
+    except ValueError:
+        return False
 
 
 @dataclass(frozen=True)
@@ -80,6 +109,27 @@ class CurlCffiPageFetcher:
                 except RequestException as exc:
                     logger.debug("curl_cffi error url={!r} error={}", url, exc)
                     return url, CurlFetchResult(text="", fall_back=True)
+                if _content_length_oversized(response.headers.get("content-length")):
+                    logger.debug(
+                        "curl_cffi oversized url={!r} content_length={}",
+                        url,
+                        response.headers.get("content-length"),
+                    )
+                    return url, CurlFetchResult(text="", fall_back=False)
+                if not _content_type_allowed(response.headers.get("content-type", "")):
+                    logger.debug(
+                        "curl_cffi disallowed content-type url={!r} content_type={!r}",
+                        url,
+                        response.headers.get("content-type", ""),
+                    )
+                    return url, CurlFetchResult(text="", fall_back=False)
+                if len(response.content or b"") > MAX_RESPONSE_BYTES:
+                    logger.debug(
+                        "curl_cffi response body exceeded cap url={!r} bytes={}",
+                        url,
+                        len(response.content or b""),
+                    )
+                    return url, CurlFetchResult(text="", fall_back=False)
                 html: str = response.text or ""
                 extracted = trafilatura.extract(html) or ""
                 text = (extracted or html)[:CONTENT_LIMIT]

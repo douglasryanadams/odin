@@ -8,7 +8,8 @@ from typing import Any, cast
 from anthropic import AsyncAnthropic, BadRequestError, RateLimitError
 from loguru import logger
 
-from odin import claude, fetch, searxng
+from odin import claude, fetch, searxng, url_filter
+from odin.config import settings
 
 SEARXNG_MAX_CONCURRENCY = 2
 
@@ -87,10 +88,16 @@ async def _run_pipeline(
             if r.url not in seen:
                 seen.add(r.url)
                 unique_results.append(r)
-    logger.debug("search complete unique_results={}", len(unique_results))
-    yield StageEvent(stage="searching", data={"result_count": len(unique_results)})
+    allowed_results = url_filter.filter_search_results(
+        unique_results, blocked_domains=settings.url_domain_blocklist
+    )
+    dropped = len(unique_results) - len(allowed_results)
+    if dropped:
+        logger.debug("url_filter dropped count={} kept={}", dropped, len(allowed_results))
+    logger.debug("search complete unique_results={}", len(allowed_results))
+    yield StageEvent(stage="searching", data={"result_count": len(allowed_results)})
 
-    selected_urls = await claude.select_urls(anthropic_client, query, unique_results)
+    selected_urls = await claude.select_urls(anthropic_client, query, allowed_results)
     logger.debug("urls selected count={}", len(selected_urls))
     yield StageEvent(stage="fetching", data={"url_count": len(selected_urls)})
 
@@ -98,7 +105,7 @@ async def _run_pipeline(
     logger.debug("pages fetched count={}", len(content))
     yield StageEvent(stage="synthesizing", data={"page_count": len(content)})
 
-    profile = await claude.synthesize(anthropic_client, query, category, content, unique_results)
+    profile = await claude.synthesize(anthropic_client, query, category, content, allowed_results)
     logger.debug("profile synthesized name={!r} citations={}", profile.name, len(profile.citations))
     yield StageEvent(stage="profile", data=profile.model_dump())
 
