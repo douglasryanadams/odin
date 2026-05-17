@@ -48,6 +48,13 @@ Missing tool block → `RuntimeError`. Errors don't pass silently.
 - Failed page fetch → `fetch._fetch_one` substitutes `f"Error fetching URL: {exc}"` so synthesis sees a deterministic string instead of propagating `httpx.HTTPError`.
 - `trafilatura` returns nothing → fall back to raw `response.text`, capped at `CONTENT_LIMIT = 10_000` chars.
 
+## What gets forwarded to Claude
+
+To narrow the prompt-injection surface, two filters sit between search results and any Claude call:
+
+1. **URL allowlist (`odin.url_filter`)** — runs in `pipeline.py` between dedup and `select_urls`. Drops non-`http(s)` schemes, URLs ending in a known-binary extension (PDFs, archives, executables, media, fonts, CSS/JS), and hosts in `settings.url_domain_blocklist`. The default blocklist covers URL shorteners and public paste hosts; override via the `URL_DOMAIN_BLOCKLIST` env var (comma-separated, empty string disables).
+2. **Response gate (`odin.curl_fetch`)** — Tier 0 inspects the response before extraction. A `Content-Type` outside `ALLOWED_CONTENT_TYPES` or a body larger than `MAX_RESPONSE_BYTES` is discarded with `fall_back=False`, so Playwright is not retried. `synthesize` and `assess` only see text that survived both gates.
+
 ## Upstream docs
 
 <https://platform.claude.com/docs/en/home> — model IDs, the `messages` API, tool-use, prompt caching, pricing.
