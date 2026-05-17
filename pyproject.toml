@@ -61,6 +61,7 @@ max-complexity = 8
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "PLR2004", "D103"]  # assert, magic values, and missing docstrings are idiomatic in tests
 "scripts/**" = ["T201", "BLE001", "INP001"]  # print and broad except are idiomatic in prototype CLIs; scripts/ is not a package
+"config/**" = ["INP001"]  # config/ holds tool configs, not a Python package
 
 [tool.pyright]
 pythonVersion = "3.12"

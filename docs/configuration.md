@@ -15,7 +15,7 @@ The repo-root [`README.md`](../README.md) summarizes Make commands and env vars.
 | `pyright` | Python 3.12, strict mode. |
 | `xenon` | Cyclomatic complexity: absolute ≤ B, per-module avg ≤ A, project avg ≤ A. |
 | `bandit` | Scans `src/`. Severity and confidence both `low`. Excludes `tests/`, `.venv/`. |
-| `detect-secrets` | Scans against `.secrets.baseline`. New unflagged secrets fail. |
+| `detect-secrets` | Scans against `config/.secrets.baseline`. New unflagged secrets fail. |
 | `djlint` | Jinja profile, 2-space indent, 100-char lines. Lints + reformats `src/odin/templates/`. |
 | `pytest` | Coverage on `src/odin`. `--durations=0`. Default filter `-m 'not integration'`. `asyncio_mode = "auto"`. |
 
@@ -27,9 +27,9 @@ Eslint, stylelint, and vitest run inside a `node:20-slim` container that lives i
 |---|---|
 | `package.json` | Pins eslint, stylelint, stylelint-config-standard, vitest, happy-dom, globals. |
 | `package-lock.json` | Locked install graph for `npm ci`. |
-| `eslint.config.js` | Flat config. Targets `src/odin/static/js/**/*.js` as `script` source type with browser globals + `ODIN_QUERY` readonly; `no-undef` error, `no-unused-vars` warn. |
-| `.stylelintrc.json` | Extends `stylelint-config-standard`. BEM-friendly `selector-class-pattern` (`block`, `block__element`, `block--modifier`). Disables a handful of opinionated rules (color/alpha notation, vendor prefixes, media-feature range, shorthand reductions, value keyword case) to match existing CSS. |
-| `vitest.config.js` | `happy-dom` environment; collects `tests/js/**/*.test.js`. |
+| `config/eslint.config.js` | Flat config. Targets `src/odin/static/js/**/*.js` as `script` source type with browser globals + `ODIN_QUERY` readonly; `no-undef` error, `no-unused-vars` warn. |
+| `config/.stylelintrc.json` | Extends `stylelint-config-standard`. BEM-friendly `selector-class-pattern` (`block`, `block__element`, `block--modifier`). Disables a handful of opinionated rules (color/alpha notation, vendor prefixes, media-feature range, shorthand reductions, value keyword case) to match existing CSS. |
+| `config/vitest.config.js` | `happy-dom` environment; collects `tests/js/**/*.test.js`. |
 | `tests/js/loadProfile.js` | Test harness that reads `profile.js` and runs it inside a `node:vm` context whose globals come from happy-dom — lets the script-global file expose helpers to tests without an `export` keyword. |
 
 ## `Makefile`
@@ -38,8 +38,8 @@ Every target runs through `docker-compose` — host needs only Docker + `make`.
 
 | Target | Notes |
 |---|---|
-| `make dev` | `docker-compose up --build` (override applies; uvicorn `--reload`). |
-| `make prod` | Adds `docker-compose.prod.yml`; gunicorn. |
+| `make dev` | `docker compose -f compose/docker-compose.yml -f compose/docker-compose.override.yml up --build` (uvicorn `--reload`). |
+| `make prod` | Swaps the override for `compose/docker-compose.prod.yml`; gunicorn. |
 | `make format` | `ruff format .` plus `djlint --reformat` on the templates. |
 | `make lint` | `format`, `lint-frontend`, then `ruff check`, `ruff format --check`, `pyright`, `xenon`, `bandit`, `detect-secrets scan`. |
 | `make lint-frontend` | Depends on `node_modules`. Runs `djlint --check` on templates, `stylelint` on CSS, and `eslint` on JS. |
@@ -56,16 +56,18 @@ Every target runs through `docker-compose` — host needs only Docker + `make`.
 One multi-stage Dockerfile; two images (`odin-prod`, `odin-dev`).
 
 - **`base`**: `python:3.12-slim` + `uv`. `UV_PROJECT_ENVIRONMENT=/opt/venv`. Venv lives at `/opt/venv` (not `/app/.venv`) so the dev compose bind-mount onto `/app` doesn't shadow it.
-- **`production`** (extends `base`): copies `gunicorn.conf.py` + `src/`, `uv sync --frozen --no-dev`, then `playwright install --with-deps chromium` (~300 MB; brings the prod image to ~600 MB), `CMD gunicorn -c gunicorn.conf.py odin.main:app`.
+- **`production`** (extends `base`): copies `config/gunicorn.conf.py` + `src/`, `uv sync --frozen --no-dev`, then `playwright install --with-deps chromium` (~300 MB; brings the prod image to ~600 MB), `CMD gunicorn -c gunicorn.conf.py odin.main:app`.
 - **`development`** (extends `production`): adds `git`, `libatomic1`; `uv sync --frozen` (with dev deps); `CMD uvicorn ... --reload`. Chromium and its system libraries are inherited from the production stage.
 
 ## Compose
 
-- **`docker-compose.yml`** — `web` (`8000:8000`, `LOG_LEVEL=DEBUG`, `ANTHROPIC_API_KEY` passthrough, `/health` healthcheck), `searxng` (`8080:8080`, mounts `./searxng/`), `searxng-valkey` (named volume), `node` (`node:20-slim`, mounts `.:/workspace`, gated by the `tools` profile so it stays out of `make dev`).
-- **`docker-compose.override.yml`** — auto-applied. Uses `odin-dev`, builds `development`, bind-mounts `.:/app`.
-- **`docker-compose.prod.yml`** — opt-in via `-f`. Uses `odin-prod`, builds `production`, `restart: always` on the SearXNG services.
+Compose files live in [`compose/`](../compose/). Every Make target invokes `docker compose --project-directory . -f compose/...` so relative paths inside the YAML (build context, `./searxng/` mount, `.env` discovery) keep resolving from the project root.
 
-## `gunicorn.conf.py`
+- **`compose/docker-compose.yml`** — `web` (`8000:8000`, `LOG_LEVEL=DEBUG`, `ANTHROPIC_API_KEY` passthrough, `/health` healthcheck), `searxng` (`8080:8080`, mounts `./searxng/`), `searxng-valkey` (named volume), `node` (`node:20-slim`, mounts `.:/workspace`, gated by the `tools` profile so it stays out of `make dev`).
+- **`compose/docker-compose.override.yml`** — paired with the base file via `-f` for dev targets. Uses `odin-dev`, builds `development`, bind-mounts `.:/app`.
+- **`compose/docker-compose.prod.yml`** — paired with the base file for prod targets. Uses `odin-prod`, builds `production`, `restart: always` on the SearXNG services.
+
+## `config/gunicorn.conf.py`
 
 `bind = "0.0.0.0:8000"`, `workers = WORKERS env || (cpu_count * 2) + 1`, `worker_class = "uvicorn.workers.UvicornWorker"`, access + error logs to stdout. Each worker holds its own Chromium (~200 MB resident) launched in the FastAPI lifespan, so on small boxes set `WORKERS` explicitly — rule of thumb: 1 worker per ~350 MB of headroom.
 
@@ -82,7 +84,7 @@ One multi-stage Dockerfile; two images (`odin-prod`, `odin-dev`).
 | `LOG_LEVEL` | `setup()` in `log.py` | `INFO` (compose sets `DEBUG`) |
 | `PLAYWRIGHT_HEADLESS` | `lifespan()` in `main.py` | `true` (set `false` to launch a visible Chromium — only useful on a host with a display server) |
 | `PLAYWRIGHT_TRACE_DIR` | `_fetch_pages_playwright()` in `fetch.py` | unset (when set, each `fetch_pages` call writes a `.zip` trace; view with `uvx playwright show-trace`) |
-| `WORKERS` | `gunicorn.conf.py` | `(cpu_count * 2) + 1` |
+| `WORKERS` | `config/gunicorn.conf.py` | `(cpu_count * 2) + 1` |
 | `SEARXNG_SECRET` | `searxng/settings.yml` via SearXNG env | unset (required in production — overrides `secret_key`) |
 | `SMTP_HOST` | `Settings` in `config.py`, used by `email.py` | `smtp.purelymail.com` |
 | `SMTP_FROM` | `Settings` in `config.py`, used by `email.py` | `odin@odinseye.info` |
@@ -90,16 +92,16 @@ One multi-stage Dockerfile; two images (`odin-prod`, `odin-dev`).
 | `SMTP_PASS` | `Settings` in `config.py`, used by `email.py` | unset (required when `SMTP_USER` is set) |
 | `SMTP_TEST_RECIPIENT` | `tests/integration/test_email_smtp.py` | unset (required for the SMTP integration test; set to your own address so devs don't share an inbox) |
 
-`.env` is gitignored and is the conventional place for secrets. `.env.example` documents all variables. `traces/` is gitignored for `PLAYWRIGHT_TRACE_DIR` output.
+`.env` is gitignored and is the conventional place for secrets. `config/.env.example` documents all variables. `traces/` is gitignored for `PLAYWRIGHT_TRACE_DIR` output.
 
-In production these must be set as host environment variables before `make prod`; `docker-compose.prod.yml` forwards them into the container. The `.env` file is not mounted in production (only the dev override mounts it).
+In production these must be set as host environment variables before `make prod`; `compose/docker-compose.prod.yml` forwards them into the container. The `.env` file is not mounted in production (only the dev override mounts it).
 
 ## Secrets baseline
 
-`detect-secrets` runs on every `make lint` against `.secrets.baseline`. Accept a new finding with:
+`detect-secrets` runs on every `make lint` against `config/.secrets.baseline`. Accept a new finding with:
 
 ```sh
-uv run detect-secrets audit .secrets.baseline
+uv run detect-secrets audit config/.secrets.baseline
 ```
 
 Commit the updated baseline.
