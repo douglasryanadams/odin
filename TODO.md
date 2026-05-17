@@ -7,15 +7,14 @@ Tracking outstanding work that we want to address but haven't scheduled yet. Ite
 Security exposure, broken operational visibility, accumulating cost, and user-fairness bugs. Most are small changes with disproportionate impact.
 
 1. **Constrain media types and sources sent to Claude API.** Add an allowlist for the kinds of content we'll fetch and forward to Claude (e.g., text/HTML only, size caps, drop binaries/executables, domain blocklist). Primary motivation is reducing prompt-injection surface from adversarial pages in search results; a secondary benefit is avoiding Claude refusals on clearly harmful content. Keep the list permissive enough that legitimate research queries still work.
-2. **UptimeRobot health checks return 405.** UptimeRobot is reporting 405 Method Not Allowed against the health endpoint even though the site is up and `curl -I` (HEAD) succeeds locally. Investigate what UptimeRobot is actually sending (likely GET, or different path/User-Agent) and make the health endpoint accept it cleanly.
-3. **CloudFront usage approaching free-tier limit.** AWS notified us we've consumed 50% of the CloudFront free tier this billing period, so at the current trajectory we'll start incurring real CDN cost soon. Start by opening the CloudFront usage report to see whether request count or egress bytes is the dominant driver, since the right fix differs. Likely levers, in rough order of expected impact:
+2. **CloudFront usage approaching free-tier limit.** AWS notified us we've consumed 50% of the CloudFront free tier this billing period, so at the current trajectory we'll start incurring real CDN cost soon. Start by opening the CloudFront usage report to see whether request count or egress bytes is the dominant driver, since the right fix differs. Likely levers, in rough order of expected impact:
    1. Configure Custom Error Responses so 404/403/5xx responses are cached at the edge for several minutes — bot probes for paths like `/wp-admin` or `.php` otherwise hit origin on every request.
    2. Audit `Cache-Control` headers from the Flask app so hashed static assets are `public, max-age=31536000, immutable`, semi-static pages (home, about, terms) get a short edge cache, and authenticated or search responses remain no-cache.
    3. Add a `robots.txt` and consider a CloudFront Function or WAF rule that turns away the noisiest scrapers and known-bad user agents before they reach origin.
 
    Decide the strategy after reading the usage report — don't guess which lever matters most.
-4. **Apply the ECR lifecycle policy.** The `odin` ECR repository has no retention rules, so every deploy adds a new `:<sha>` tag that lives forever and storage cost grows monotonically. Follow `docs/aws-setup.md` § 1a to add the two-rule policy (expire untagged after 1 day, keep last 10 tagged).
-5. **Cached query hits should not count against the daily search quota.** Serving a query from cache costs us nothing (no upstream search, no Claude call), so it shouldn't decrement the user's daily search allowance. Only count quota when we actually run a fresh search.
+3. **Apply the ECR lifecycle policy.** The `odin` ECR repository has no retention rules, so every deploy adds a new `:<sha>` tag that lives forever and storage cost grows monotonically. Follow `docs/aws-setup.md` § 1a to add the two-rule policy (expire untagged after 1 day, keep last 10 tagged).
+4. **Cached query hits should not count against the daily search quota.** Serving a query from cache costs us nothing (no upstream search, no Claude call), so it shouldn't decrement the user's daily search allowance. Only count quota when we actually run a fresh search.
 
 ## Medium priority
 
