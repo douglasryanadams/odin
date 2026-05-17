@@ -12,7 +12,7 @@ COPY pyproject.toml uv.lock README.md ./
 
 FROM base AS production
 
-COPY gunicorn.conf.py ./
+COPY config/gunicorn.conf.py ./
 COPY src/ src/
 
 RUN uv sync --frozen --no-dev

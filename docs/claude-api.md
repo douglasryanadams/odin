@@ -39,7 +39,7 @@ Missing tool block → `RuntimeError`. Errors don't pass silently.
 
 ## Auth
 
-`AsyncAnthropic()` reads `ANTHROPIC_API_KEY` from the environment automatically. `docker-compose.yml` declares the variable in `web.environment` (no value), passing through whatever the host has set — typically from `.env`. Tests override `get_anthropic_client` via `app.dependency_overrides`.
+`AsyncAnthropic()` reads `ANTHROPIC_API_KEY` from the environment automatically. `compose/docker-compose.yml` declares the variable in `web.environment` (no value), passing through whatever the host has set — typically from `.env`. Tests override `get_anthropic_client` via `app.dependency_overrides`.
 
 ## Failure modes handled
 

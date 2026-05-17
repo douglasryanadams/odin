@@ -1,74 +1,74 @@
 .PHONY: dev prod prod-logs down lint lint-frontend format metrics test test-smoke test-unit test-integration test-js
 
 dev:
-	docker compose up --build
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml up --build
 
 prod:
-	docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.prod.yml up --build
 
 prod-logs: ## Tail logs from the running prod compose stack
-	docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.prod.yml logs -f
 
 down: ## Tear down this worktree's dev and prod compose stacks
-	docker compose -f docker-compose.yml -f docker-compose.prod.yml down --remove-orphans
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.prod.yml down --remove-orphans
 
 format:
-	docker compose run --rm web uv run ruff format .
-	-docker compose run --rm web uv run djlint src/odin/templates --reformat
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run ruff format .
+	-docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run djlint src/odin/templates --reformat
 
 lint: format lint-frontend
-	docker compose run --rm web uv run ruff check .
-	docker compose run --rm web uv run ruff format --check .
-	docker compose run --rm web uv run pyright
-	docker compose run --rm web uv run xenon --max-absolute B --max-modules A --max-average A src/
-	docker compose run --rm web uv run bandit -r src/ -c pyproject.toml
-	docker compose run --rm web sh -c "\
-	  cp .secrets.baseline /tmp/.secrets.orig && \
-	  uv run detect-secrets scan --baseline .secrets.baseline && \
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run ruff check .
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run ruff format --check .
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run pyright
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run xenon --max-absolute B --max-modules A --max-average A src/
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run bandit -r src/ -c pyproject.toml
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web sh -c "\
+	  cp config/.secrets.baseline /tmp/.secrets.orig && \
+	  uv run detect-secrets scan --baseline config/.secrets.baseline --exclude-files '^config/\.secrets\.baseline$$' && \
 	  python3 -c \"\
-	import json, shutil; \
-	a=json.load(open('/tmp/.secrets.orig')); b=json.load(open('.secrets.baseline')); \
-	a.pop('generated_at',None); b.pop('generated_at',None); \
-	(shutil.copy('/tmp/.secrets.orig', '.secrets.baseline') if a==b else None)\""
+import json, shutil; \
+a=json.load(open('/tmp/.secrets.orig')); b=json.load(open('config/.secrets.baseline')); \
+a.pop('generated_at',None); b.pop('generated_at',None); \
+(shutil.copy('/tmp/.secrets.orig', 'config/.secrets.baseline') if a==b else None)\""
 
 node_modules: package.json package-lock.json
-	docker compose run --rm node sh -c "npm ci && touch node_modules"
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node sh -c "npm ci && touch node_modules"
 
 lint-frontend: node_modules
-	docker compose run --rm web uv run djlint src/odin/templates --check
-	docker compose run --rm node npx stylelint "src/odin/static/css/**/*.css"
-	docker compose run --rm node npx eslint "src/odin/static/js/**/*.js"
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run djlint src/odin/templates --check
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node npx stylelint --config config/.stylelintrc.json "src/odin/static/css/**/*.css"
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node npx eslint --config config/eslint.config.js "src/odin/static/js/**/*.js"
 
 metrics:
-	docker compose run --rm web uv run radon raw -s .
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run radon raw -s .
 
 test: test-unit test-smoke test-integration
 
 test-smoke:
-	docker compose -f docker-compose.yml -f docker-compose.prod.yml build web
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.prod.yml build web
 	SECRET_KEY=$${SECRET_KEY:-smoke-test-only-dummy-secret-key-32chars} \
 	APP_URL=$${APP_URL:-http://localhost:8000} \
 	ANTHROPIC_API_KEY=$${ANTHROPIC_API_KEY:-smoke-dummy} \
 	SEARXNG_SECRET=$${SEARXNG_SECRET:-smoke-dummy} \
-	docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --wait web; \
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.prod.yml up -d --wait web; \
 	EXIT=$$?; \
-	docker compose -f docker-compose.yml -f docker-compose.prod.yml stop web; \
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.prod.yml stop web; \
 	exit $$EXIT
 
 test-unit:
-	docker compose run --rm web uv run pytest
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run pytest
 	$(MAKE) test-js
 
 test-js: node_modules
-	docker compose run --rm node npx vitest run
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node npx vitest run --config config/vitest.config.js
 
 test-integration:
 	START=$$(date -u +"%Y-%m-%dT%H:%M:%SZ"); \
-	docker compose up -d --wait searxng searxng-valkey odin-valkey; \
-	docker compose run --rm -e SMTP_TEST_RECIPIENT web uv run pytest -m integration; \
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml up -d --wait searxng searxng-valkey odin-valkey; \
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm -e SMTP_TEST_RECIPIENT web uv run pytest -m integration; \
 	TEST_EXIT=$$?; \
-	docker compose stop searxng searxng-valkey odin-valkey; \
-	ERROR_LOGS=$$(docker compose logs --no-color --since "$$START" 2>&1 | grep -E "ERROR|CRITICAL" | grep -v "searx.botdetection" | grep -v "searx.engines" | grep -v "searx.search.processor" || true); \
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml stop searxng searxng-valkey odin-valkey; \
+	ERROR_LOGS=$$(docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml logs --no-color --since "$$START" 2>&1 | grep -E "ERROR|CRITICAL" | grep -v "searx.botdetection" | grep -v "searx.engines" | grep -v "searx.search.processor" || true); \
 	if [ -n "$$ERROR_LOGS" ]; then \
 		echo ""; \
 		echo "Errors detected in service logs during integration tests:"; \

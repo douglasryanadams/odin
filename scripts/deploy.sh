@@ -31,9 +31,10 @@ chown ec2-user:ec2-user .env
 unset SECRETS_JSON
 
 docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.prod.yml \
-  -f docker-compose.awslogs.yml \
+  --project-directory . \
+  -f compose/docker-compose.yml \
+  -f compose/docker-compose.prod.yml \
+  -f compose/docker-compose.awslogs.yml \
   up -d --no-deps web
 
 docker image prune -af

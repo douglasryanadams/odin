@@ -51,8 +51,8 @@ All four front-end gates run via `make lint` / `make test` inside Docker:
 | Tool | Scope | Config |
 |---|---|---|
 | `djlint` | `src/odin/templates/` | `[tool.djlint]` in `pyproject.toml` (jinja profile, 2-space indent, 100-char lines). |
-| `stylelint` | `src/odin/static/css/**/*.css` | `.stylelintrc.json` — `stylelint-config-standard` plus a BEM `selector-class-pattern`. |
-| `eslint` | `src/odin/static/js/**/*.js` | `eslint.config.js` — flat config, browser globals, `ODIN_QUERY` readonly, `no-undef` error. |
-| `vitest` | `tests/js/**/*.test.js` (happy-dom env) | `vitest.config.js`. Helpers reach the test scope via `tests/js/loadProfile.js`, which runs `profile.js` in a `node:vm` context. |
+| `stylelint` | `src/odin/static/css/**/*.css` | `config/.stylelintrc.json` — `stylelint-config-standard` plus a BEM `selector-class-pattern`. |
+| `eslint` | `src/odin/static/js/**/*.js` | `config/eslint.config.js` — flat config, browser globals, `ODIN_QUERY` readonly, `no-undef` error. |
+| `vitest` | `tests/js/**/*.test.js` (happy-dom env) | `config/vitest.config.js`. Helpers reach the test scope via `tests/js/loadProfile.js`, which runs `profile.js` in a `node:vm` context. |
 
 `stylelint`, `eslint`, and `vitest` run in the `node:20-slim` sidecar (compose `tools` profile). `djlint` runs in the existing `web` container alongside ruff. The `node_modules` Make target is a sentinel that re-runs `npm ci` only when `package.json` / `package-lock.json` change.
