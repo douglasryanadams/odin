@@ -24,7 +24,7 @@ lint: format lint-frontend
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run bandit -r src/ -c pyproject.toml
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web sh -c "\
 	  cp config/.secrets.baseline /tmp/.secrets.orig && \
-	  uv run detect-secrets scan --baseline config/.secrets.baseline && \
+	  uv run detect-secrets scan --baseline config/.secrets.baseline --exclude-files '^config/\.secrets\.baseline$$' && \
 	  python3 -c \"\
 import json, shutil; \
 a=json.load(open('/tmp/.secrets.orig')); b=json.load(open('config/.secrets.baseline')); \
