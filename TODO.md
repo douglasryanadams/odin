@@ -8,10 +8,6 @@ Security exposure, broken operational visibility, accumulating cost, and user-fa
 
 1. **Apply the ECR lifecycle policy.** The `odin` ECR repository has no retention rules, so every deploy adds a new `:<sha>` tag that lives forever and storage cost grows monotonically. Follow `docs/aws-setup.md` § 1a to add the two-rule policy (expire untagged after 1 day, keep last 10 tagged).
 2. **Cached query hits should not count against the daily search quota.** Serving a query from cache costs us nothing (no upstream search, no Claude call), so it shouldn't decrement the user's daily search allowance. Only count quota when we actually run a fresh search.
-3. **CloudFront operational tuning (post pay-as-you-go switch).** Switched to Pay-as-you-go after the Free-plan trajectory looked tight — 10M req + 1TB/mo free, so the cap pressure is resolved. But WAF/Shield are unbundled on pay-as-you-go, so request volume now translates to WAF cost (rule inspection scales with traffic). The May 9–17 audit found 99.4% of traffic is bots, dominated by ~44.7K/day "Verified" crawlers (search engines, monitoring services, archives) that WAF managed rules intentionally allow; only ~47/day are "Unverified" (vulnerability scanners). Already shipped: `robots.txt` (Disallow non-content paths, `Crawl-delay: 10`) and `/favicon.ico` to stop default-location 404s. Open work:
-   1. **Operator action: flip WAF Core protections out of monitor mode** (`docs/aws-setup.md` § 9b). On pay-as-you-go, rate limiting can also be flipped (no longer Free-plan-gated).
-   2. **Operator action: configure CloudFront Custom Error Responses** (`docs/aws-setup.md` § 9c). Origin protection lever — reduces EC2 load even though request count is no longer the binding constraint.
-   3. **If WAF cost stays elevated:** identify which Verified bots dominate via CloudFront standard logs (S3 + Athena, now available without the Pro-plan gate). Then tighten `Crawl-delay`, add User-Agent WAF block rules, or use Google Search Console crawl-rate controls for Googlebot specifically.
 
 ## Medium priority
 
@@ -22,7 +18,7 @@ Reliability work, UX bugs in normal flows, and provisioning that unblocks new se
    1. Write a concise About page (what the tool does, what it doesn't, why this approach) — no marketing fluff.
    2. Add per-route `<title>` and `<meta name="description">` to home, about, and the results page.
    3. Add Open Graph and Twitter Card tags so shared links unfurl with a sensible title, description, and image.
-   4. Add a `robots.txt` and a basic `sitemap.xml` listing the public pages.
+   4. Add a basic `sitemap.xml` listing the public pages, plus a `Sitemap:` reference in the existing `robots.txt`. (`robots.txt` itself was added in the CloudFront bot-traffic work; it currently only has `Disallow` and `Crawl-delay` directives.)
    5. Confirm each public page has a single `<h1>` and clear semantic structure for crawlers.
 
    Defer blog or content-marketing additions — keep the surface area small and the focus on search.
