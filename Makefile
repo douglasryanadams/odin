@@ -28,8 +28,8 @@ node_modules: package.json package-lock.json
 
 lint-frontend: node_modules
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run djlint src/odin/templates --check
-	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node npx stylelint --config config/.stylelintrc.json "src/odin/static/css/**/*.css"
-	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node npx eslint --config config/eslint.config.js "src/odin/static/js/**/*.js"
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node npx stylelint --config config/.stylelintrc.json "static/css/**/*.css"
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node npx eslint --config config/eslint.config.js "static/js/**/*.js"
 
 lint-markdown: node_modules
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node npx markdownlint-cli2 --config config/.markdownlint.jsonc "**/*.md" "!node_modules" "!.git" "!.ruff_cache" "!.pytest_cache" "!.notes.md"

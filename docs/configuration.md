@@ -26,7 +26,7 @@ Eslint, stylelint, vitest, markdownlint-cli2, and markdown-link-check all run in
 |---|---|
 | `package.json` | Pins eslint, stylelint, stylelint-config-standard, vitest, happy-dom, globals, markdownlint-cli2, markdown-link-check. |
 | `package-lock.json` | Locked install graph for `npm ci`. |
-| `config/eslint.config.js` | Flat config. Targets `src/odin/static/js/**/*.js` as `script` source type with browser globals + `ODIN_QUERY` readonly; `no-undef` error, `no-unused-vars` warn. |
+| `config/eslint.config.js` | Flat config. Targets `static/js/**/*.js` as `script` source type with browser globals + `ODIN_QUERY` readonly; `no-undef` error, `no-unused-vars` warn. |
 | `config/.stylelintrc.json` | Extends `stylelint-config-standard`. BEM-friendly `selector-class-pattern` (`block`, `block__element`, `block--modifier`). Disables a handful of opinionated rules (color/alpha notation, vendor prefixes, media-feature range, shorthand reductions, value keyword case) to match existing CSS. |
 | `config/vitest.config.js` | `happy-dom` environment; collects `tests/js/**/*.test.js`. |
 | `config/.markdownlint.jsonc` | markdownlint-cli2 rules. Defaults enabled, with overrides: disable MD013 (line length), MD025 (single H1 — CLAUDE.md is flat), MD033 (inline HTML), MD036 (emphasis-as-heading); pin emphasis to `*asterisk*` and `**asterisk**` to match existing files; fenced code blocks only, backtick fences, ATX headings. |
@@ -68,7 +68,7 @@ One multi-stage Dockerfile; two images (`odin-prod`, `odin-dev`).
 
 Compose files live in [`compose/`](../compose/). Every Make target invokes `docker compose --project-directory . -f compose/...` so relative paths inside the YAML (build context, `./searxng/` mount, `.env` discovery) keep resolving from the project root.
 
-- **`compose/docker-compose.yml`** — `nginx` (`8000:8000`, serves `/static/*`, `/favicon.ico`, `/robots.txt` directly and proxies everything else to `web`), `web` (gunicorn on `8000` inside the network only — no host publish, `LOG_LEVEL=DEBUG`, `ANTHROPIC_API_KEY` passthrough, `/health` healthcheck), `searxng` (`8080:8080`, mounts `./searxng/`), `searxng-valkey` (named volume), `odin-valkey` (named volume), `node` (`node:20-slim`, mounts `.:/workspace`, gated by the `tools` profile so it stays out of `make dev`). `nginx` mounts `./src/odin/static` and `./config/nginx.conf` read-only so static-file edits are picked up live without an image rebuild.
+- **`compose/docker-compose.yml`** — `nginx` (`8000:8000`, serves `/static/*`, `/favicon.ico`, `/robots.txt` directly and proxies everything else to `web`), `web` (gunicorn on `8000` inside the network only — no host publish, `LOG_LEVEL=DEBUG`, `ANTHROPIC_API_KEY` passthrough, `/health` healthcheck), `searxng` (`8080:8080`, mounts `./searxng/`), `searxng-valkey` (named volume), `odin-valkey` (named volume), `node` (`node:20-slim`, mounts `.:/workspace`, gated by the `tools` profile so it stays out of `make dev`). `nginx` mounts `./static` and `./config/nginx.conf` read-only so static-file edits are picked up live without an image rebuild.
 - **`compose/docker-compose.override.yml`** — paired with the base file via `-f` for dev targets. Uses `odin-dev`, builds `development`, bind-mounts `.:/app`.
 - **`compose/docker-compose.prod.yml`** — paired with the base file for prod targets. Uses `odin-prod`, builds `production`, `restart: always` on `nginx` and the SearXNG services.
 - **`compose/docker-compose.awslogs.yml`** — production-only overlay applied on EC2; routes container stdout/stderr to CloudWatch log groups `/odin/web`, `/odin/nginx`, `/odin/searxng`, `/odin/searxng-valkey`, `/odin/odin-valkey`.
@@ -81,7 +81,7 @@ The `web` container does not publish port 8000 to the host; Nginx is the only pa
 
 ## `config/nginx.conf`
 
-Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/default.conf`. Listens on `8000`, serves `/static/*`, `/favicon.ico`, and `/robots.txt` directly from the bind-mounted `src/odin/static/` tree with `Cache-Control: public, max-age=86400`, and proxies everything else to `http://web:8000`. `proxy_buffering off`, `X-Accel-Buffering: no`, and `proxy_read_timeout 130s` (just above CloudFront's 120s SSE origin timeout) keep `/profile/stream` flowing. `gzip on` is enabled for text and image/x-icon at `gzip_min_length 256`.
+Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/default.conf`. Listens on `8000`, serves `/static/*`, `/favicon.ico`, and `/robots.txt` directly from the bind-mounted `./static/` tree at the repo root with `Cache-Control: public, max-age=86400`, and proxies everything else to `http://web:8000`. `proxy_buffering off`, `X-Accel-Buffering: no`, and `proxy_read_timeout 130s` (just above CloudFront's 120s SSE origin timeout) keep `/profile/stream` flowing. `gzip on` is enabled for text and image/x-icon at `gzip_min_length 256`.
 
 ## `searxng/`
 

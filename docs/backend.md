@@ -68,7 +68,7 @@ async def event_generator() -> AsyncGenerator[str, None]:
 return StreamingResponse(event_generator(), media_type="text/event-stream")
 ```
 
-Each event is one JSON object on a single SSE `data:` line. The browser consumes it with `EventSource` ([`profile.js`](../src/odin/static/js/profile.js)).
+Each event is one JSON object on a single SSE `data:` line. The browser consumes it with `EventSource` ([`profile.js`](../static/js/profile.js)).
 
 ## Integrations
 

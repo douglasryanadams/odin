@@ -1,6 +1,6 @@
 # Frontend
 
-Three Jinja2 templates, one CSS file, one JavaScript file, no build step. Served by FastAPI directly from `src/odin/`. Style rules for JS / CSS / Jinja live in [`coding-standards.md`](./coding-standards.md); tooling configuration lives in [`configuration.md`](./configuration.md).
+Three Jinja2 templates, one CSS file, one JavaScript file, no build step. Templates render from `src/odin/templates/`; static assets live at the repo-root `static/` and are served by the Nginx sidecar (not Python). Style rules for JS / CSS / Jinja live in [`coding-standards.md`](./coding-standards.md); tooling configuration lives in [`configuration.md`](./configuration.md).
 
 ## Files
 
@@ -14,7 +14,7 @@ Three Jinja2 templates, one CSS file, one JavaScript file, no build step. Served
 
 ## FastAPI wiring
 
-`main.py` mounts `/static` from `src/odin/static/` and configures `Jinja2Templates` from `src/odin/templates/`. The query string is passed to `profile.html` as `query`, emitted into the page (`{{ query }}`) and the script bootstrap (`{{ query | tojson }}`).
+`main.py` configures `Jinja2Templates` from `src/odin/templates/`. Static assets (`/static/*`, `/favicon.ico`, `/robots.txt`) are served by the Nginx sidecar directly from the repo-root `static/` directory — Python does not mount them. The query string is passed to `profile.html` as `query`, emitted into the page (`{{ query }}`) and the script bootstrap (`{{ query | tojson }}`).
 
 ## SSE consumer (`profile.js`)
 
@@ -51,8 +51,8 @@ All four front-end gates run via `make lint` / `make test` inside Docker:
 | Tool | Scope | Config |
 |---|---|---|
 | `djlint` | `src/odin/templates/` | `[tool.djlint]` in `pyproject.toml` (jinja profile, 2-space indent, 100-char lines). |
-| `stylelint` | `src/odin/static/css/**/*.css` | `config/.stylelintrc.json` — `stylelint-config-standard` plus a BEM `selector-class-pattern`. |
-| `eslint` | `src/odin/static/js/**/*.js` | `config/eslint.config.js` — flat config, browser globals, `ODIN_QUERY` readonly, `no-undef` error. |
+| `stylelint` | `static/css/**/*.css` | `config/.stylelintrc.json` — `stylelint-config-standard` plus a BEM `selector-class-pattern`. |
+| `eslint` | `static/js/**/*.js` | `config/eslint.config.js` — flat config, browser globals, `ODIN_QUERY` readonly, `no-undef` error. |
 | `vitest` | `tests/js/**/*.test.js` (happy-dom env) | `config/vitest.config.js`. Helpers reach the test scope via `tests/js/loadProfile.js`, which runs `profile.js` in a `node:vm` context. |
 
 `stylelint`, `eslint`, and `vitest` run in the `node:20-slim` sidecar (compose `tools` profile). `djlint` runs in the existing `web` container alongside ruff. The `node_modules` Make target is a sentinel that re-runs `npm ci` only when `package.json` / `package-lock.json` change.
