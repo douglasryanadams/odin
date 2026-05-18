@@ -775,11 +775,19 @@ ECR retains all image tags by SHA, so any prior deploy is recoverable as long as
 
 ---
 
+## Deploy semantics
+
+`scripts/deploy.sh` runs `docker compose up -d --pull always --force-recreate --wait` against the full stack on every push to main. Three things follow:
+
+1. **Bind-mounted config changes take effect on every deploy.** `searxng/settings.yml` is mounted from disk; without `--force-recreate`, the running container keeps its in-memory copy and config edits silently no-op until the container restarts.
+2. **Image tags are refreshed.** Both `searxng` (see [`searxng.md`](./searxng.md)) and `valkey` are pinned to specific tags; `--pull always` is harmless on a pinned tag but means anything still on a moving tag would auto-update on every deploy.
+3. **`--wait` makes deploy failures visible.** It blocks until every container reports healthy and exits non-zero if any container never does. `web.depends_on.searxng.condition: service_healthy` just orders startup so `web` doesn't come up before searxng is reachable.
+
+This is not a graceful cutover — there is no blue/green. Every deploy briefly takes the site offline: `web` is recreated like the other services, and CloudFront sees 5xx for the ~10–20s it takes the new `web` container to reach healthy. `--wait` only tells the deploy script when to declare success or failure; it does not eliminate that gap. Acceptable today because traffic is low. If that changes, the fix is a second instance behind a target group, not a compose flag.
+
 ## SearXNG limiter
 
 Disabled via `searxng/settings.yml` (`server.limiter: false`). SearXNG is reachable only on the Docker bridge (port 8080 is not exposed past it) and the EC2 security group, so the limiter was redundant defense-in-depth and its botdetection PASSLIST logger fired a `WARNING` on every Odin request. The Odin client at `src/odin/searxng.py` still sets `X-Forwarded-For: 127.0.0.1` because SearXNG rejects requests with no forwarded address.
-
-No deploy-time action required.
 
 ---
 

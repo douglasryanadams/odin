@@ -35,6 +35,6 @@ docker compose \
   -f compose/docker-compose.yml \
   -f compose/docker-compose.prod.yml \
   -f compose/docker-compose.awslogs.yml \
-  up -d --no-deps web
+  up -d --pull always --force-recreate --wait
 
 docker image prune -af

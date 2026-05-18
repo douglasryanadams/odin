@@ -22,14 +22,6 @@ lint: format lint-frontend lint-markdown lint-links
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run pyright
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run xenon --max-absolute B --max-modules A --max-average A src/
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run bandit -r src/ -c pyproject.toml
-	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web sh -c "\
-	  cp config/.secrets.baseline /tmp/.secrets.orig && \
-	  uv run detect-secrets scan --baseline config/.secrets.baseline --exclude-files '^config/\.secrets\.baseline$$' && \
-	  python3 -c \"\
-import json, shutil; \
-a=json.load(open('/tmp/.secrets.orig')); b=json.load(open('config/.secrets.baseline')); \
-a.pop('generated_at',None); b.pop('generated_at',None); \
-(shutil.copy('/tmp/.secrets.orig', 'config/.secrets.baseline') if a==b else None)\""
 
 node_modules: package.json package-lock.json
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node sh -c "npm ci && touch node_modules"

@@ -32,6 +32,7 @@ Reliability work, UX bugs in normal flows, and provisioning that unblocks new se
 4. **Add a Google Search API key.** Provision a Google Search API key and wire it into the configuration (env var / Secrets Manager) so the Google backend can be enabled.
 5. **Add a Brave Search API key.** Provision a Brave Search API key and wire it into the configuration (env var / Secrets Manager) so the Brave backend can be enabled.
 6. **Delete account: friendly error when email does not match.** Submitting an email that is not the logged-in user's to the delete account form returns a raw JSON body in the browser instead of a formatted, useful error message. Render the error inline on the account page (or equivalent) the same way other validation errors are shown.
+7. **Replace the removed `detect-secrets` lint step.** We pulled `detect-secrets` out of `make lint` because it shells out to `git` from inside the container, and a worktree's `.git` pointer escapes the bind mount, so the step fails any time someone lints from a worktree. We still want a pre-merge secret-scan signal — evaluate alternatives that don't depend on container-internal git: a GitHub Actions job using `trufflehog` or `gitleaks` over the PR diff, `git-secrets` pre-commit, or a host-side wrapper that runs detect-secrets outside Docker. Pick one, wire it into CI, document the audit workflow in `docs/configuration.md`.
 
 ## Low priority / backlog
 

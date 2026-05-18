@@ -14,6 +14,10 @@ It issues `GET {base_url}/search?q=<query>&format=json` (`httpx`, 30s timeout) w
 
 Concurrency limiting (`asyncio.Semaphore(SEARXNG_MAX_CONCURRENCY=2)`) and dedup-by-URL live in `pipeline.py`, not here.
 
+## Image pin
+
+`compose/docker-compose.yml` pins `searxng/searxng` to a specific dated tag rather than `:latest`. Deploys auto-`--pull always`, so a moving tag would adopt upstream changes the next time main is pushed. Bump the pin in the same PR that exercises the new version.
+
 ## Local configuration (`searxng/`)
 
 `settings.yml`:

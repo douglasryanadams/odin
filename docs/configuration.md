@@ -6,7 +6,7 @@ The repo-root [`README.md`](../README.md) is the orientation page. This doc is t
 
 - **Python:** `>= 3.12`. Built with `hatchling`.
 - **Runtime deps:** `anthropic`, `fastapi`, `gunicorn`, `httpx`, `jinja2`, `loguru`, `playwright`, `trafilatura`, `uvicorn[standard]`.
-- **Dev deps:** `bandit`, `detect-secrets`, `djlint`, `respx`, `pyright`, `pytest` (`-asyncio`, `-cov`, `-httpserver`), `radon`, `ruff`, `xenon`.
+- **Dev deps:** `bandit`, `djlint`, `respx`, `pyright`, `pytest` (`-asyncio`, `-cov`, `-httpserver`), `radon`, `ruff`, `xenon`.
 
 | Tool | Configured to enforce |
 |---|---|
@@ -15,7 +15,6 @@ The repo-root [`README.md`](../README.md) is the orientation page. This doc is t
 | `pyright` | Python 3.12, strict mode. |
 | `xenon` | Cyclomatic complexity: absolute ≤ B, per-module avg ≤ A, project avg ≤ A. |
 | `bandit` | Scans `src/`. Severity and confidence both `low`. Excludes `tests/`, `.venv/`. |
-| `detect-secrets` | Scans against `config/.secrets.baseline`. New unflagged secrets fail. |
 | `djlint` | Jinja profile, 2-space indent, 100-char lines. Lints + reformats `src/odin/templates/`. |
 | `pytest` | Coverage on `src/odin`. `--durations=0`. Default filter `-m 'not integration'`. `asyncio_mode = "auto"`. |
 
@@ -45,7 +44,7 @@ Every target runs through `docker-compose` — host needs only Docker + `make`.
 | `make dev` | `docker compose -f compose/docker-compose.yml -f compose/docker-compose.override.yml up --build` (uvicorn `--reload`). |
 | `make prod` | Swaps the override for `compose/docker-compose.prod.yml`; gunicorn. |
 | `make format` | `ruff format .` plus `djlint --reformat` on the templates. |
-| `make lint` | `format`, `lint-frontend`, `lint-markdown`, `lint-links`, then `ruff check`, `ruff format --check`, `pyright`, `xenon`, `bandit`, `detect-secrets scan`. |
+| `make lint` | `format`, `lint-frontend`, `lint-markdown`, `lint-links`, then `ruff check`, `ruff format --check`, `pyright`, `xenon`, `bandit`. |
 | `make lint-frontend` | Depends on `node_modules`. Runs `djlint --check` on templates, `stylelint` on CSS, and `eslint` on JS. |
 | `make lint-markdown` | Depends on `node_modules`. Runs `markdownlint-cli2` over every `*.md` outside `node_modules`, `.git`, the lint caches, and `.notes.md`. |
 | `make lint-links` | Depends on `node_modules`. Runs `markdown-link-check` over the same set of files. Validates relative file references only; external URLs are skipped by config so the run stays offline. |
@@ -152,16 +151,6 @@ uv run playwright install chromium
 PLAYWRIGHT_HEADLESS=false SEARXNG_URL=http://localhost:8080 \
   uv run uvicorn odin.main:app --reload --port 8000
 ```
-
-## Secrets baseline
-
-`detect-secrets` runs on every `make lint` against `config/.secrets.baseline`. Accept a new finding with:
-
-```sh
-uv run detect-secrets audit config/.secrets.baseline
-```
-
-Commit the updated baseline.
 
 ## CI/CD
 
