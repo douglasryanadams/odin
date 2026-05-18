@@ -413,7 +413,7 @@ If the **Connect** button is disabled, the agent hasn't registered yet — wait 
 Region: not applicable (CloudFront is global; the console may keep showing N. Virginia).
 
 1. Open the **CloudFront** console → **Distributions** → **Create distribution**.
-2. **Choose a plan**: pick **Free** ($0/month, 1M requests + 100 GB transfer + 5 GB S3 storage). For Odin's launch traffic that's ~33k requests/day of headroom. AWS WAF and DDoS protection are bundled into every plan, including Free, at no extra charge.
+2. **Choose a plan**: pick **Free** ($0/month, 1M requests + 100 GB transfer + 5 GB S3 storage). For Odin's launch traffic that's ~33k requests/day of headroom. AWS WAF and DDoS protection are bundled into every plan, including Free, at no extra charge. See § 9d for when to switch to Pay-as-you-go (Odin's production distribution is already on it).
 3. **Specify origin** page:
    - **Origin type**: pick **Other** (publicly resolvable URL). (VPC origin is the cleaner long-term option since it removes the EIP requirement, but it's gated behind extra setup; punt on it for P0.)
    - **Origin domain**: the EC2 instance's **Public IPv4 DNS** (e.g. `ec2-44-230-41-145.us-west-2.compute.amazonaws.com`), shown on the EC2 instance detail page. The **Other** origin type requires a hostname, not a raw IP. The public DNS is stable as long as the EIP stays attached; if the EIP ever changes, update this field to the new EC2 public DNS.
@@ -432,7 +432,7 @@ Region: not applicable (CloudFront is global; the console may keep showing N. Vi
    - **Next**.
 4. **Enable security** page (WAF):
    - The three "Included security protections" (common-vulnerability rules, vulnerability-discovery blocking, IP threat-intel) are always on at the Free plan — no toggle.
-   - **Use monitor mode**: ✅ check. Counts what would be blocked without actually blocking. Leave it on for a few days post-launch, scan the WAF logs for false positives on magic-link redemptions and SSE streams, then uncheck to start blocking.
+   - **Use monitor mode**: ✅ check. Counts what would be blocked without actually blocking. Leave it on for a few days post-launch, scan the WAF logs for false positives on magic-link redemptions and SSE streams, then turn blocking on per § 9b.
    - **Rate limiting** (Recommended): ✅ enable. Cheap flood protection.
    - **SQL protections**: skip — Pro plan only, and Odin doesn't use SQL.
    - **Layer 7 DDoS**: skip — Business plan only.
@@ -467,6 +467,75 @@ CloudFront only lets you create one behavior at a time, so the static-asset rule
 Distributions take ~5–10 minutes to deploy. The status column shows **Deploying** → **Enabled**.
 
 **Note this:** the distribution **Domain name** (e.g. `d1234abcd.cloudfront.net`) shown on the distribution detail page. Step 10 needs it.
+
+### 9b. Take WAF out of monitor mode (post-launch)
+
+Step 9.4 enables WAF in **monitor mode**: rules fire and log matches, but the action is **Count** rather than **Block**. Once you've watched a few days of WAF logs and confirmed legitimate traffic (magic-link redemptions, SSE streams, anonymous home-page loads) isn't being matched, switch the action to Block. The reason this matters for the Free plan is direct, and quoted from the [CloudFront pricing page](https://aws.amazon.com/cloudfront/pricing/):
+
+> Blocked DDoS attacks and requests blocked by AWS WAF never count against your usage allowance.
+
+A vulnerability-scanner request for `/wp-admin`, `/.env`, or `*.php` that WAF blocks does not count toward the request cap (or, on Pay-as-you-go, toward the 10M free allowance). For a site whose baseline traffic is unverified bot probes, this is a useful hygiene lever. It does **not** address verified bot crawl (search-engine indexers, monitoring services, archives), which the managed rule groups intentionally allow — that traffic dominates request volume on a new domain and is addressed by `robots.txt` instead.
+
+**On Pay-as-you-go** (see § 9d), the Free-plan constraints below lift: rate limiting can be flipped to Block, per-rule action overrides are exposed in the AWS WAF console, and WAF request logs become available. The steps in this section still apply for the Core protections toggle, but you'll have finer-grained controls available.
+
+The wizard configures two protections:
+
+- **Core protections** — the managed rule groups for common vulnerabilities, malicious-actor discovery blocking, and AWS threat intelligence. Governed by the single "Use monitor mode" checkbox.
+- **Rate limiting** — flood protection on a per-IP basis. **On the Free plan this stays in monitor mode by design.** The Edit security dialog says so explicitly: *"Rate limiting will initially be placed in monitor mode and not block traffic. … You can use that metric to adjust the rate and enable blocking when ready."* A CloudWatch metric records when the threshold is exceeded; flipping rate limiting to Block requires the Pro plan (or editing the underlying Web ACL directly in the WAF console). The threshold itself (default 300 requests/IP/5 minutes) is editable in this dialog.
+
+Steps to take Core protections out of monitor mode:
+
+1. Open the **CloudFront** console → your distribution → **Security** tab.
+2. Click **Manage protections** (top-right of the WAF section). The "Edit security" dialog opens.
+3. Under **Included security protections**, uncheck **Use monitor mode**.
+4. Leave Rate limiting as-is (the rate threshold can be tuned here later based on the CloudWatch metric, but the Block/Monitor state is not user-controllable from this dialog on Free).
+5. Click **Save changes**.
+
+Verification — give it an hour, then return to the Security tab:
+
+- The "Security trends" chart should show a non-zero **Blocked requests** line (the difference between "All requests" and "Allowed requests").
+- CloudFront → **Reports & analytics** → **Usage** report. Expect the daily request count to drop by however many requests the rules caught — for a typical new domain whose visible attackers are vulnerability scanners, this is on the order of dozens per day, not thousands. Don't expect this lever alone to bring an over-quota distribution under cap; combine it with `robots.txt` for the verified-bot volume.
+
+If a legitimate path is being blocked, re-open Manage protections and re-check **Use monitor mode** to revert. Per-rule action overrides are gated behind the Pro plan (WAF request logs) and the Business plan (bot-category controls); on the Free plan it's monitor-or-block at the protection level.
+
+### 9c. Cache error responses at the edge
+
+This is an **origin protection** lever, not a quota lever — a CloudFront request still counts whether the response comes from edge cache or origin. What edge-caching errors does is stop every probe from waking the EC2 instance: with a 5-minute TTL on 404s, a single probe path is forwarded to origin once per 5 minutes regardless of how many viewers hit it. For the EC2 t4g.small, that's measurable headroom — less CPU spent on FastAPI returning "Not Found," less network from origin to edge, less log volume.
+
+Steps:
+
+1. Open the **CloudFront** console → your distribution → **Error pages** tab → **Create custom error response**.
+2. Configure three responses, one at a time. For each, set **Customize error response** to **No** and **Error caching minimum TTL** to the value below:
+   - **404** — TTL `300` (5 minutes)
+   - **403** — TTL `300` (5 minutes)
+   - **500** — TTL `10` (10 seconds)
+
+   Leave **Response page path** and **HTTP response code** blank — we're not overriding the body, only setting the cache TTL. Repeat for 502, 503, 504 if you want the 5xx group all covered (10s TTL on each).
+3. **Save changes** for each entry. CloudFront takes a few minutes to deploy.
+
+Two trade-offs to know about:
+
+- **Stale failures during incidents.** If origin briefly 5xx's during a deploy or transient bug, the 10-second TTL means edge serves the failure for up to 10 seconds after origin recovers. That's intentionally short. Don't extend it.
+- **Default CloudFront error body.** With "Customize error response: No," CloudFront returns its own minimal HTML — generic, unbranded. Fine for probes; users won't see this on legitimate paths. If you later want a styled 404 for real visitors, host a static page (e.g., `/static/errors/404.html`), switch the response to "Customize: Yes," and point at it.
+
+Verification: after deployment, hit a non-existent path repeatedly (e.g., `curl https://yourdomain.com/wp-admin`). The first request reaches origin (EC2 logs show it); subsequent requests within the TTL window return the same 404 without an origin log entry. The response should carry an `X-Cache: Hit from cloudfront` header.
+
+### 9d. When to migrate to Pay-as-you-go
+
+The Free plan ($0/mo) is the right starter — no upfront cost, no surprises, WAF and Shield Standard bundled. Migrate to Pay-as-you-go when one of these happens:
+
+- Monthly requests trend over 1M (Pay-as-you-go includes 10M free).
+- You need to flip rate limiting out of monitor mode, or want WAF request logs without paying for the Pro plan (both are unlocked on Pay-as-you-go without going to Pro).
+
+The migration is non-disruptive: CloudFront console → distribution → **Manage plan** (button next to the billing summary at the top of the distribution detail page) → **Switch to Pay-as-you-go**. Same distribution, same domain, same TLS cert.
+
+Cost trade-off after migration:
+
+- CloudFront requests and egress: only billed when you exceed 10M req/mo or 1TB transfer/mo. For Odin's traffic profile (projected ~1.4M req/mo, ~1 GB transfer/mo), the CloudFront line item itself is $0.
+- WAF and Shield are no longer bundled. Pricing on Pay-as-you-go is approximately: ~$1/mo per Web ACL, ~$1/mo per managed rule group, ~$0.60 per million inspected requests. For Odin's volume this lands at roughly $3–5/mo total WAF cost.
+- Shield Standard remains free (it's free for all AWS customers regardless of plan).
+
+After migration the § 9b constraints lift: rate limiting can be set to Block in the AWS WAF console (**WAF & Shield** → **Web ACLs** → region "Global - CloudFront" → your ACL → **Rules**), per-rule action overrides become available, and you can route WAF logs to S3 or CloudWatch for ad-hoc analysis.
 
 ---
 

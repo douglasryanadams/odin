@@ -1,0 +1,8 @@
+User-agent: *
+Disallow: /auth/
+Disallow: /account/
+Disallow: /notice/
+Disallow: /profile
+Disallow: /dashboard
+Disallow: /health
+Crawl-delay: 10
