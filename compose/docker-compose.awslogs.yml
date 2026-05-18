@@ -21,6 +21,15 @@ services:
         awslogs-create-group: "true"
         awslogs-stream: web
 
+  nginx:
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-west-2
+        awslogs-group: /odin/nginx
+        awslogs-create-group: "true"
+        awslogs-stream: nginx
+
   searxng:
     logging:
       driver: awslogs

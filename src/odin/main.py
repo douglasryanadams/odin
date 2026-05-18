@@ -11,13 +11,11 @@ from typing import Annotated, Any
 from anthropic import AsyncAnthropic
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import (
-    FileResponse,
     HTMLResponse,
     RedirectResponse,
     Response,
     StreamingResponse,
 )
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from playwright.async_api import async_playwright
 from valkey.asyncio import Valkey
@@ -78,11 +76,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 app = FastAPI(lifespan=lifespan)
-app.mount(
-    "/static",
-    StaticFiles(directory=Path(__file__).parent / "static"),
-    name="static",
-)
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 
@@ -205,30 +198,6 @@ async def index(
 def health() -> dict[str, str]:
     """Return service health status."""
     return {"status": "ok"}
-
-
-_STATIC_DIR = Path(__file__).parent / "static"
-_WELL_KNOWN_CACHE = "public, max-age=86400"
-
-
-@app.get("/robots.txt", include_in_schema=False)
-def robots_txt() -> FileResponse:
-    """Serve robots.txt at the well-known root location."""
-    return FileResponse(
-        _STATIC_DIR / "robots.txt",
-        media_type="text/plain",
-        headers={"Cache-Control": _WELL_KNOWN_CACHE},
-    )
-
-
-@app.get("/favicon.ico", include_in_schema=False)
-def favicon_ico() -> FileResponse:
-    """Serve favicon.ico at the well-known root location."""
-    return FileResponse(
-        _STATIC_DIR / "favicon.ico",
-        media_type="image/vnd.microsoft.icon",
-        headers={"Cache-Control": _WELL_KNOWN_CACHE},
-    )
 
 
 _NOTICE_COOKIE = "odin_seen_notice"

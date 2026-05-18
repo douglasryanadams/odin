@@ -53,7 +53,7 @@ Every target runs through `docker-compose` — host needs only Docker + `make`.
 | `make test` | `test-unit` → `test-smoke` → `test-integration`. |
 | `make test-unit` | `pytest` (with the default `not integration` filter), then `make test-js`. |
 | `make test-js` | `npx vitest run` in the `node` sidecar; covers `profile.js` helpers. |
-| `make test-smoke` | Builds the prod image; passes if its `/health` healthcheck reaches healthy. |
+| `make test-smoke` | Brings up the full prod compose stack (`web` + `nginx` + dependencies) via `scripts/test-smoke.sh`, then asserts: `/health` proxied, `/static/css/odin.css` served by Nginx with `Cache-Control: public, max-age=86400`, `/favicon.ico` and `/robots.txt` served by Nginx, zero `GET /static/` lines in the `web` log, and `/profile/stream` responses are chunked (proves `proxy_buffering off`). Tears the stack down on exit. |
 | `make test-integration` | Brings up `searxng` + `searxng-valkey`, runs `pytest -m integration`, then fails the run if service logs contain `ERROR` / `CRITICAL` (a few SearXNG-internal lines are filtered out). |
 
 ## `Dockerfile`
@@ -68,13 +68,20 @@ One multi-stage Dockerfile; two images (`odin-prod`, `odin-dev`).
 
 Compose files live in [`compose/`](../compose/). Every Make target invokes `docker compose --project-directory . -f compose/...` so relative paths inside the YAML (build context, `./searxng/` mount, `.env` discovery) keep resolving from the project root.
 
-- **`compose/docker-compose.yml`** — `web` (`8000:8000`, `LOG_LEVEL=DEBUG`, `ANTHROPIC_API_KEY` passthrough, `/health` healthcheck), `searxng` (`8080:8080`, mounts `./searxng/`), `searxng-valkey` (named volume), `node` (`node:20-slim`, mounts `.:/workspace`, gated by the `tools` profile so it stays out of `make dev`).
+- **`compose/docker-compose.yml`** — `nginx` (`8000:8000`, serves `/static/*`, `/favicon.ico`, `/robots.txt` directly and proxies everything else to `web`), `web` (gunicorn on `8000` inside the network only — no host publish, `LOG_LEVEL=DEBUG`, `ANTHROPIC_API_KEY` passthrough, `/health` healthcheck), `searxng` (`8080:8080`, mounts `./searxng/`), `searxng-valkey` (named volume), `odin-valkey` (named volume), `node` (`node:20-slim`, mounts `.:/workspace`, gated by the `tools` profile so it stays out of `make dev`). `nginx` mounts `./src/odin/static` and `./config/nginx.conf` read-only so static-file edits are picked up live without an image rebuild.
 - **`compose/docker-compose.override.yml`** — paired with the base file via `-f` for dev targets. Uses `odin-dev`, builds `development`, bind-mounts `.:/app`.
-- **`compose/docker-compose.prod.yml`** — paired with the base file for prod targets. Uses `odin-prod`, builds `production`, `restart: always` on the SearXNG services.
+- **`compose/docker-compose.prod.yml`** — paired with the base file for prod targets. Uses `odin-prod`, builds `production`, `restart: always` on `nginx` and the SearXNG services.
+- **`compose/docker-compose.awslogs.yml`** — production-only overlay applied on EC2; routes container stdout/stderr to CloudWatch log groups `/odin/web`, `/odin/nginx`, `/odin/searxng`, `/odin/searxng-valkey`, `/odin/odin-valkey`.
 
 ## `config/gunicorn.conf.py`
 
 `bind = "0.0.0.0:8000"`, `workers = WORKERS env || (cpu_count * 2) + 1`, `worker_class = "uvicorn.workers.UvicornWorker"`, access + error logs to stdout. Each worker holds its own Chromium (~200 MB resident) launched in the FastAPI lifespan, so on small boxes set `WORKERS` explicitly — rule of thumb: 1 worker per ~350 MB of headroom.
+
+The `web` container does not publish port 8000 to the host; Nginx is the only path in. To bypass Nginx for debugging from the host, use `docker compose exec nginx wget -O- http://web:8000/health` or attach to the compose network directly.
+
+## `config/nginx.conf`
+
+Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/default.conf`. Listens on `8000`, serves `/static/*`, `/favicon.ico`, and `/robots.txt` directly from the bind-mounted `src/odin/static/` tree with `Cache-Control: public, max-age=86400`, and proxies everything else to `http://web:8000`. `proxy_buffering off`, `X-Accel-Buffering: no`, and `proxy_read_timeout 130s` (just above CloudFront's 120s SSE origin timeout) keep `/profile/stream` flowing. `gzip on` is enabled for text and image/x-icon at `gzip_min_length 256`.
 
 ## `searxng/`
 
@@ -143,7 +150,7 @@ PLAYWRIGHT_TRACE_DIR=traces make dev
 uvx playwright show-trace traces/<file>.zip
 ```
 
-If you really want a live, visible Chromium window, run uvicorn directly on the macOS host (SearXNG stays in Docker via `8080:8080`):
+If you really want a live, visible Chromium window, run uvicorn directly on the macOS host (SearXNG stays in Docker via `8080:8080`). Note that this bypasses Nginx entirely, so `/static/*`, `/favicon.ico`, and `/robots.txt` will 404 — only use this mode for headed Playwright debugging, not full-app verification:
 
 ```sh
 uv sync

@@ -6,7 +6,7 @@ Python lives under `src/odin/` as one flat package — no subpackages. Front-end
 
 | File | Responsibility |
 |---|---|
-| `main.py` | FastAPI app, routes, dependency providers, static + template wiring. |
+| `main.py` | FastAPI app, routes, dependency providers, template wiring. |
 | `pipeline.py` | Orchestrates the profile build as an async generator. |
 | `claude.py` | Anthropic API calls — one function per stage. |
 | `searxng.py` | Async SearXNG client; defines `SearchResult`. |
@@ -18,7 +18,7 @@ Python lives under `src/odin/` as one flat package — no subpackages. Front-end
 
 ## FastAPI app
 
-`main.py` calls `log.setup()` at import, instantiates `app = FastAPI(lifespan=lifespan)`, mounts `/static`, configures Jinja2 templates. The `lifespan` async-context-manager launches one hardened Chromium per worker on startup (headless unless `PLAYWRIGHT_HEADLESS=false`, with `--disable-blink-features=AutomationControlled` and `--disable-features=IsolateOrigins,site-per-process`) and stores it on `app.state.browser`; it closes on shutdown. `PLAYWRIGHT_CHANNEL` can swap in a system-installed browser channel when one is available; we'll revisit a `chrome` channel default once Google ships a native arm64 Chrome build. An ungraceful kill (`SIGKILL`) leaves the Chromium subprocess to be reaped by the OS.
+`main.py` calls `log.setup()` at import, instantiates `app = FastAPI(lifespan=lifespan)`, and configures Jinja2 templates. Static assets (`/static/*`, `/favicon.ico`, `/robots.txt`) are not served by Python — the Nginx sidecar handles them directly. The `lifespan` async-context-manager launches one hardened Chromium per worker on startup (headless unless `PLAYWRIGHT_HEADLESS=false`, with `--disable-blink-features=AutomationControlled` and `--disable-features=IsolateOrigins,site-per-process`) and stores it on `app.state.browser`; it closes on shutdown. `PLAYWRIGHT_CHANNEL` can swap in a system-installed browser channel when one is available; we'll revisit a `chrome` channel default once Google ships a native arm64 Chrome build. An ungraceful kill (`SIGKILL`) leaves the Chromium subprocess to be reaped by the OS.
 
 | Route | Handler | Notes |
 |---|---|---|
