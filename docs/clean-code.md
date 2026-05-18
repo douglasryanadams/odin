@@ -9,6 +9,7 @@ Based on *Clean Code* by Robert C. Martin.
 ## When writing code, check each item
 
 **Names**
+
 - [ ] Does every name reveal intent without needing a comment to explain it?
 - [ ] One word per concept — no mixing `fetch`, `get`, and `retrieve` for the same operation.
 - [ ] No type or scope encodings (`m_`, `i_`, Hungarian notation).
@@ -16,6 +17,7 @@ Based on *Clean Code* by Robert C. Martin.
 - [ ] Does the name describe what the function does *including its side effects*?
 
 **Functions**
+
 - [ ] Does this function do exactly one thing? Can you extract another meaningful function from it?
 - [ ] Do all statements inside operate at the same level of abstraction?
 - [ ] Fewer than three arguments; if more, group them into an object.
@@ -25,28 +27,33 @@ Based on *Clean Code* by Robert C. Martin.
 - [ ] Is error handling extracted into its own function?
 
 **Comments**
+
 - [ ] Can the comment be eliminated by renaming or extracting?
 - [ ] Is this comment explaining *why* rather than *what*?
 - [ ] No commented-out code (version control holds the history).
 
 **Classes**
+
 - [ ] Can you describe this class without using "and" or "or"?
 - [ ] Does each method use most of the class's instance variables (high cohesion)?
 - [ ] Does adding a new behavior require editing this class, or adding a new one (OCP)?
 - [ ] Does this class construct its own dependencies, or receive them (DIP)?
 
 **Error handling**
+
 - [ ] Exceptions, not return codes or sentinel values.
 - [ ] Does every exception message include enough context to locate the failure?
 - [ ] No null returns and no null arguments — use a Special Case object or throw.
 
 **Tests**
+
 - [ ] Do tests exist before or alongside this code?
 - [ ] Does each test cover one concept?
 - [ ] Are tests fast, independent, and self-validating (no manual log-reading)?
 - [ ] Are boundary conditions tested explicitly?
 
 **Before finishing**
+
 - [ ] Is any code duplicated? Every piece of knowledge has one authoritative representation.
 - [ ] Is there dead code (unreachable branches, unused functions, commented-out blocks)? Delete it.
 - [ ] Can the system's behavior still be verified — does it run all tests?

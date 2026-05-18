@@ -1,4 +1,4 @@
-.PHONY: dev prod prod-logs down lint lint-frontend format metrics test test-smoke test-unit test-integration test-js
+.PHONY: dev prod prod-logs down lint lint-frontend lint-markdown lint-links format metrics test test-smoke test-unit test-integration test-js
 
 dev:
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml up --build
@@ -16,7 +16,7 @@ format:
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run ruff format .
 	-docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run djlint src/odin/templates --reformat
 
-lint: format lint-frontend
+lint: format lint-frontend lint-markdown lint-links
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run ruff check .
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run ruff format --check .
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run pyright
@@ -38,6 +38,12 @@ lint-frontend: node_modules
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run djlint src/odin/templates --check
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node npx stylelint --config config/.stylelintrc.json "src/odin/static/css/**/*.css"
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node npx eslint --config config/eslint.config.js "src/odin/static/js/**/*.js"
+
+lint-markdown: node_modules
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node npx markdownlint-cli2 --config config/.markdownlint.jsonc "**/*.md" "!node_modules" "!.git" "!.ruff_cache" "!.pytest_cache" "!.notes.md"
+
+lint-links: node_modules
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node sh -c "find . -name '*.md' -not -path './node_modules/*' -not -path './.git/*' -not -path './.ruff_cache/*' -not -path './.pytest_cache/*' -not -name '.notes.md' -print0 | xargs -0 -n1 npx markdown-link-check --quiet --config config/.markdown-link-check.json"
 
 metrics:
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run radon raw -s .

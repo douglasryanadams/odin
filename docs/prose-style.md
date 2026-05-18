@@ -9,22 +9,26 @@ Based on *The Elements of Style* by Strunk & White (4th ed.).
 ## Core rules
 
 **Active voice.** Say who does what.
+
 - Weak: `The token is validated by the server.`
 - Strong: `The server validates the token.`
 
 **Positive form.** State what is, not what is not.
+
 - Weak: `The method does not return null.`
 - Strong: `The method always returns a value.`
 
 **Omit needless words.** Cut on sight: `the fact that`, `in order to`, `at this point in time`, `it is important to note that`, `currently` (with present tense), `respective(ly)`, `and/or`.
 
 **Concrete over vague.** Replace generalities with specifics.
+
 - Vague: `There may be performance issues.`
 - Specific: `Requests over 10 MB time out after 30 seconds.`
 
 **Emphatic words at the end.** The end of a sentence carries the most weight. Put the key point there.
 
 **Parallel construction.** Items in a list or pair must share the same grammatical form.
+
 - Wrong: `Supports parsing, to validate, and running tests.`
 - Right: `Supports parsing, validating, and running tests.`
 
