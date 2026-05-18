@@ -15,6 +15,7 @@
 - Think thoroughly; keep output concise.
 - Write git commit subjects that make history easy to read. Do not use dashes to decorate commit messages.
 - When adding new components, dependencies, or tools, review existing documentation and update it as needed. When unsure what to add, ask.
+- When a change resolves, rescopes, or makes obsolete an item tracked in `TODO.md`, update `TODO.md` in the same change. Drop completed items, re-rank within the High/Medium/Low tiers as needed, and keep the entries reflecting what's actually outstanding.
 
 # Configuration defaults
 
