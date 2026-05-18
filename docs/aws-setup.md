@@ -5,12 +5,13 @@ Manual steps to provision the production environment. Update this file as you go
 ## Architecture
 
 ```text
-Browser → CloudFront (HTTPS, ACM cert) → EC2 t4g.small (HTTP:8000)
-               └─ /static/* cached           └─ docker-compose
-               └─ /* pass-through                 ├─ web:8000
-                  (120s SSE timeout)              ├─ searxng:8080
-                                                  ├─ searxng-valkey
-                                                  └─ odin-valkey
+Browser → CloudFront (HTTPS, ACM cert) → EC2 t4g.small (HTTP:8000) → docker-compose
+               └─ /static/* cached           └─ nginx (publishes :8000)    ├─ nginx
+               └─ /* pass-through                 ├─ serves /static/*,     ├─ web (gunicorn, network-only)
+                  (120s SSE timeout)              │  /favicon.ico,         ├─ searxng:8080
+                                                  │  /robots.txt           ├─ searxng-valkey
+                                                  └─ proxies / to web      └─ odin-valkey
+                                                     (proxy_buffering off)
 
 Magic link emails → Purelymail (SMTP relay, port 587)
 ```
