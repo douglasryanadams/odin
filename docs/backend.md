@@ -11,7 +11,8 @@ Python lives under `src/odin/` as one flat package — no subpackages. Front-end
 | `claude.py` | Anthropic API calls — one function per stage. |
 | `searxng.py` | Async SearXNG client; defines `SearchResult`. |
 | `fetch.py` | Tiered page fetch: hardened Playwright (Tier 1) plus orchestration via `TieredPageFetcher`. Defines the `PageFetcher` Protocol and `PlaywrightPageFetcher`. |
-| `curl_fetch.py` | Tier 0 fetcher: `curl_cffi` with Chrome TLS impersonation. Defines `CurlCffiPageFetcher`, `CurlFetchResult`, and the `_should_fall_back` predicate. |
+| `curl_fetch.py` | Tier 0 fetcher: `curl_cffi` with Chrome TLS impersonation. Defines `CurlCffiPageFetcher`, `CurlFetchResult`, the `_should_fall_back` predicate, and the response-shape gates (`ALLOWED_CONTENT_TYPES`, `MAX_RESPONSE_BYTES`). |
+| `url_filter.py` | Pure allowlist for URLs sent to Claude. Rejects non-`http(s)` schemes, known-binary extensions, and hosts in the configured domain blocklist. Applied by `pipeline.py` before `select_urls`. |
 | `models.py` | `Profile`, `ProfileHighlight`, `TimelineEntry`, `Citation`, `Assessment`, the `Category` literal. |
 | `log.py` | `loguru` setup, stdlib bridging, `/health` access-log filter. |
 
@@ -25,6 +26,14 @@ Python lives under `src/odin/` as one flat package — no subpackages. Front-end
 | `GET /health` | `health()` | Returns `{"status": "ok"}`. |
 | `GET /profile?q=` | `profile_page()` | Renders `profile.html`. |
 | `GET /profile/stream?q=` | `profile_stream()` | SSE endpoint that drives the pipeline. |
+| `GET /privacy`, `GET /terms` | `privacy()`, `terms()` | Static policy pages; render the `CONTACT_EMAIL` setting. |
+| `POST /notice/dismiss` | `dismiss_notice()` | CSRF-protected; sets a cookie that hides the beta/privacy banner. |
+| `GET /login` | `login_page()` | Magic-link sign-in form. |
+| `POST /auth/send-link` | `send_link()` | Issues and emails (or logs) a one-time login token. |
+| `GET /auth/verify` | `auth_verify()` | Consumes a token and starts a session. |
+| `POST /auth/logout` | `logout()` | Clears the session cookie. |
+| `GET /dashboard` | `dashboard()` | Signed-in user dashboard (quota, account controls). |
+| `POST /account/delete` | `account_delete()` | Deletes the signed-in user's account. |
 
 Three dependency providers, used with `Annotated[..., Depends(...)]` and overridden in tests:
 
@@ -38,9 +47,9 @@ Three dependency providers, used with `Annotated[..., Depends(...)]` and overrid
 
 1. **`categorized`** — `claude.categorize()` → `person | place | event | other` (Haiku).
 2. **`queries`** — `claude.generate_queries()` → 3–5 search strings (Haiku).
-3. **`searching`** — Run queries against SearXNG, gated by `asyncio.Semaphore(SEARXNG_MAX_CONCURRENCY=2)`. Dedupe by URL, preserving first-seen order.
+3. **`searching`** — Run queries against SearXNG, gated by `asyncio.Semaphore(SEARXNG_MAX_CONCURRENCY=2)`. Dedupe by URL, preserving first-seen order. Then apply `url_filter.filter_search_results()` against `settings.url_domain_blocklist` to drop results with non-`http(s)` schemes, known-binary extensions, or hosts in the blocklist. Only the filtered set is forwarded to `select_urls` and used as the citation-candidate pool for `synthesize`.
 4. **`fetching`** — `claude.select_urls()` picks ≤ 5 URLs (Haiku); the event carries the count.
-5. **`profile`** — `fetcher.fetch_pages()` runs each URL through Tier 0 (`curl_cffi` with `impersonate="chrome"`, 8 s timeout, `trafilatura.extract`); any URL whose result has `fall_back=True` is then rendered in a fresh Playwright `BrowserContext` with locale `en-US`, timezone `America/Los_Angeles`, an `Accept-Language` header, a randomized viewport drawn from `(1366, 768)`, `(1536, 864)`, or `(1440, 900)` ±20 px, an init script that hides `navigator.webdriver`, and an optional shared `storage_state` JSON file persisted under an `fcntl` lock. The first `domcontentloaded` attempt is retried once with `wait_until="load"` if the extraction is too short. Each result is capped at `CONTENT_LIMIT = 10_000` chars. `claude.synthesize()` then builds the `Profile` (Sonnet); yielded as `Profile.model_dump()`. Page-level errors are mapped to `"Error fetching URL: <exc>"` so a single bad URL does not fail the batch.
+5. **`profile`** — `fetcher.fetch_pages()` runs each URL through Tier 0 (`curl_cffi` with `impersonate="chrome"`, 8 s timeout, `trafilatura.extract`). The Tier 0 response is gated by `ALLOWED_CONTENT_TYPES` (`text/html`, `text/plain`, `application/xhtml+xml`) and `MAX_RESPONSE_BYTES` (2 MB); a response that fails either check is discarded with `fall_back=False` so Playwright is not retried. Otherwise, any URL whose result has `fall_back=True` is rendered in a fresh Playwright `BrowserContext` with locale `en-US`, timezone `America/Los_Angeles`, an `Accept-Language` header, a randomized viewport drawn from `(1366, 768)`, `(1536, 864)`, or `(1440, 900)` ±20 px, an init script that hides `navigator.webdriver`, and an optional shared `storage_state` JSON file persisted under an `fcntl` lock. The first `domcontentloaded` attempt is retried once with `wait_until="load"` if the extraction is too short. Each result is capped at `CONTENT_LIMIT = 10_000` chars. `claude.synthesize()` then builds the `Profile` (Sonnet); yielded as `Profile.model_dump()`. Page-level errors are mapped to `"Error fetching URL: <exc>"` so a single bad URL does not fail the batch.
 6. **`assessment`** — `claude.assess()` scores the profile + sources on confidence, sentiment, subject/source political bias, D&D law-chaos / good-evil, and a short caveats list (Sonnet). If the call raises, the stage is skipped and a warning is logged so the profile still reaches the user.
 
 `profile_stream` emits a terminal `{"type": "done"}` SSE event after the generator is exhausted.

@@ -70,3 +70,33 @@ def test_contact_email_override() -> None:
         contact_email="hi@example.org",
     )
     assert settings.contact_email == "hi@example.org"
+
+
+def test_url_domain_blocklist_parses_comma_separated_string() -> None:
+    """Operators can override via a comma-separated env-var-style string."""
+    settings = Settings(
+        secret_key=_VALID_SECRET,
+        app_url=_APP_URL,
+        url_domain_blocklist="evil.example.com, another-bad.example.org",  # type: ignore[arg-type]
+    )
+    assert settings.url_domain_blocklist == ("evil.example.com", "another-bad.example.org")
+
+
+def test_url_domain_blocklist_normalizes_case_and_strips_whitespace() -> None:
+    """Mixed case and whitespace in the override are normalized to lowercase, trimmed entries."""
+    settings = Settings(
+        secret_key=_VALID_SECRET,
+        app_url=_APP_URL,
+        url_domain_blocklist="  EVIL.example.com  ,  Other.Site  ",  # type: ignore[arg-type]
+    )
+    assert settings.url_domain_blocklist == ("evil.example.com", "other.site")
+
+
+def test_url_domain_blocklist_empty_string_yields_empty_tuple() -> None:
+    """Setting the env var to the empty string disables the seeded list entirely."""
+    settings = Settings(
+        secret_key=_VALID_SECRET,
+        app_url=_APP_URL,
+        url_domain_blocklist="",  # type: ignore[arg-type]
+    )
+    assert settings.url_domain_blocklist == ()

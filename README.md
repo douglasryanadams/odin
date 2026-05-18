@@ -1,121 +1,48 @@
 # ODIN
 
-> _profiles synthesized from the web._
+## Live at **[odinseye.info](https://odinseye.info)** — try it in the browser
 
-A FastAPI service that turns a search term — a person, place, event, or topic — into a structured profile (summary, highlights, lowlights, timeline). It classifies the term, plans search queries, runs them in parallel against a self-hosted [SearXNG](https://docs.searxng.org/), picks the most informative pages, and synthesizes the result with the [Anthropic API](https://platform.claude.com/docs/en/home). Progress streams to the browser as Server-Sent Events.
+> *profiles synthesized from the web.*
+
+Type a name, place, event, or topic and ODIN returns a structured profile: a short summary, highlights and lowlights, a timeline, citations, and an assessment of how confident and how biased the underlying sources look. Each stage of the build streams to the page as it happens, so you watch the profile assemble in real time instead of staring at a spinner.
+
+The hosted site is free. Anonymous visitors get 3 searches per day; signing in (magic link, no password) lifts that to 20.
+
+This repository contains the full service: pipeline, search infrastructure, fetcher, web UI, auth, and deployment scripts.
 
 ---
 
 ## Quick start
 
-You'll need [Docker](https://docs.docker.com/get-docker/), `make`, and an [Anthropic API key](https://console.anthropic.com/) — the only secret required. `.env` is gitignored.
+You'll need [Docker](https://docs.docker.com/get-docker/), `make`, and two secrets:
+
+| Key | How to get it |
+|---|---|
+| `ANTHROPIC_API_KEY` | Create one at <https://console.anthropic.com/>. |
+| `SECRET_KEY` | 32+ random bytes that sign session and CSRF cookies. Generate with `python -c 'import secrets; print(secrets.token_urlsafe(48))'`. |
+
+The example file has dev-safe defaults for everything else. Copy it, paste the two secrets in, and start the stack:
 
 ```sh
-echo 'ANTHROPIC_API_KEY=sk-ant-...' > .env
+cp config/.env.example .env
+# edit .env: paste your ANTHROPIC_API_KEY and a generated SECRET_KEY
 make dev
 ```
 
-The first `make dev` builds the Docker images and pulls SearXNG + Valkey (a few minutes). Subsequent runs reuse the cache.
-
-Open <http://localhost:8000>, search for something — _Marie Curie_, _Reykjavik_, _the Apollo program_ — and watch each stage light up:
-
-```
-●─── Categorize ───●─── Plan queries ───●─── Search ───●─── Fetch ───●─── Synthesize
-```
-
-A first profile takes ~15–30 seconds end-to-end; SearXNG and Anthropic each do real work.
+The first `make dev` builds the Docker images and pulls SearXNG + Valkey (a few minutes). Subsequent runs reuse the cache. Open <http://localhost:8000>, search for something — *Marie Curie*, *Reykjavik*, *the Apollo program* — and watch each stage light up. A first profile takes ~15–30 seconds end-to-end.
 
 ---
 
-## Pipeline
+## Where to go next
 
-`/profile/stream` runs an async pipeline and emits SSE progress at each stage:
-
-1. **Categorize** the term (person / place / event / other) — Haiku
-2. **Plan queries** — generate 3–5 targeted search queries — Haiku
-3. **Search** SearXNG in parallel and deduplicate — capped at 2 concurrent
-4. **Fetch** the best pages — URL selection by Haiku, rendering by Playwright (headless Chromium)
-5. **Synthesize** the structured profile — Sonnet
-
-The browser consumes the SSE stream and renders each card progressively.
-
----
-
-## Routes
-
-| Route | Description |
+| If you want to… | Read |
 |---|---|
-| `GET /` | Search page; accepts `?q=`. |
-| `GET /health` | Health check. |
-| `GET /profile?q=` | Profile page for a query. |
-| `GET /profile/stream?q=` | SSE stream of pipeline progress. |
+| Understand the pipeline, routes, and module layout | [`docs/backend.md`](./docs/backend.md) |
+| Look up every env var, Make target, or linter setting | [`docs/configuration.md`](./docs/configuration.md) |
+| Touch templates, CSS, JS, or the SSE consumer | [`docs/frontend.md`](./docs/frontend.md) |
+| Add or change an Anthropic API call | [`docs/claude-api.md`](./docs/claude-api.md) |
+| Debug or extend SearXNG | [`docs/searxng.md`](./docs/searxng.md) |
 
----
+New here? Start with [`docs/backend.md`](./docs/backend.md) — the async pipeline is the heart of the project.
 
-## Make commands
-
-| Command | Description |
-|---|---|
-| `make dev` | Start the development server with hot reload. |
-| `make prod` | Start a production-like server using gunicorn. |
-| `make format` | Apply ruff and djlint formatting. |
-| `make lint` | Format then run the full linting suite (Python + frontend). |
-| `make test` | Run unit (pytest + vitest), smoke, and integration tests with coverage. |
-| `make metrics` | Print lines-of-code statistics (informational). |
-
-All commands run inside Docker. See [`docs/configuration.md`](./docs/configuration.md) for what each linter and test target enforces.
-
----
-
-## Environment variables
-
-| Variable | Required | Description |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | Yes | Anthropic API key. |
-| `SEARXNG_URL` | No | SearXNG base URL (default: `http://searxng:8080`). |
-| `LOG_LEVEL` | No | Loguru level (default: `INFO`; compose sets `DEBUG`). |
-| `PLAYWRIGHT_HEADLESS` | No | `true` (default) launches headless Chromium; `false` opens a visible window — only useful on a host with a display server. |
-| `PLAYWRIGHT_TRACE_DIR` | No | When set, each fetch writes a Playwright trace `.zip` here. View with `uvx playwright show-trace <path>`. |
-| `WORKERS` | No | Override gunicorn worker count. Each worker holds ~200 MB Chromium; tune for box size. |
-
----
-
-## Watching the browser in dev
-
-Headless is the default — and Trace Viewer is the recommended way to see what Playwright is doing inside the dev container, since Docker has no display:
-
-```sh
-PLAYWRIGHT_TRACE_DIR=traces make dev
-# trigger one /profile/stream request, then:
-uvx playwright show-trace traces/<file>.zip
-```
-
-If you really want a live, visible Chromium window, run uvicorn directly on the macOS host (SearXNG stays in Docker via `8080:8080`):
-
-```sh
-uv sync
-uv run playwright install chromium
-PLAYWRIGHT_HEADLESS=false SEARXNG_URL=http://localhost:8080 \
-  uv run uvicorn odin.main:app --reload --port 8000
-```
-
----
-
-## Stack
-
-| Layer | Tools |
-|---|---|
-| Web | FastAPI · gunicorn (prod) · uvicorn (dev) · loguru |
-| Fetch | Playwright (Chromium, headless) · trafilatura |
-| Front-end | Vanilla CSS + JS · Jinja2 · EventSource — Orbitron / Inter / JetBrains Mono |
-| Search | SearXNG · Valkey |
-| Models | Anthropic Claude — Haiku 4.5 · Sonnet 4.6 |
-| Container | Multi-stage Dockerfile · docker-compose (Node sidecar for JS/CSS tooling) |
-| Python QA | ruff · pyright · xenon · bandit · detect-secrets · djlint · pytest |
-| JS / CSS QA | eslint · stylelint · vitest (happy-dom) |
-
----
-
-## Contributor docs
-
-For "where do I find what" in the codebase, start at [`docs/README.md`](./docs/README.md). Coding standards live in [`docs/coding-standards.md`](./docs/coding-standards.md).
+Coding standards are in [`docs/coding-standards.md`](./docs/coding-standards.md); prose style in [`docs/prose-style.md`](./docs/prose-style.md); design notes in [`docs/clean-code.md`](./docs/clean-code.md).

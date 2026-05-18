@@ -1,7 +1,29 @@
 """Application settings loaded from environment variables at startup."""
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Seed for the URL domain blocklist. Targets the channels adversaries can
+# trivially drop attacker-controlled text into without owning a domain:
+# URL shorteners (which also hide the destination from select_urls) and
+# public paste/snippet hosts. Operators can extend or replace via the
+# URL_DOMAIN_BLOCKLIST env var.
+_DEFAULT_URL_DOMAIN_BLOCKLIST: tuple[str, ...] = (
+    # URL shorteners
+    "bit.ly",
+    "tinyurl.com",
+    "t.co",
+    "goo.gl",
+    "ow.ly",
+    "is.gd",
+    "buff.ly",
+    # Public paste / snippet hosts
+    "pastebin.com",
+    "paste.ee",
+    "hastebin.com",
+    "ghostbin.com",
+    "rentry.co",
+)
 
 
 class Settings(BaseSettings):
@@ -39,6 +61,21 @@ class Settings(BaseSettings):
     smtp_pass: str | None = None
 
     contact_email: str = "odin@odinseye.info"
+
+    # Hosts whose URLs are dropped from search results before they reach
+    # Claude. See _DEFAULT_URL_DOMAIN_BLOCKLIST for the seeded set. Override
+    # via URL_DOMAIN_BLOCKLIST as a comma-separated list; the empty string
+    # clears the list entirely.
+    url_domain_blocklist: tuple[str, ...] = _DEFAULT_URL_DOMAIN_BLOCKLIST
+
+    @field_validator("url_domain_blocklist", mode="before")
+    @classmethod
+    def _parse_url_domain_blocklist(cls, value: object) -> object:
+        # Only intercept the env-var (string) path; tuples/lists go through
+        # pydantic's normal validation. The seeded default is already lowercase.
+        if isinstance(value, str):
+            return tuple(part.strip().lower() for part in value.split(",") if part.strip())
+        return value
 
 
 settings = Settings()  # pyright: ignore[reportCallIssue]

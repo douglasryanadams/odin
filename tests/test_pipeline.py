@@ -4,6 +4,8 @@ import asyncio
 from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from odin import pipeline
 from odin.models import Assessment, Profile
 from odin.searxng import SearchResult
@@ -149,3 +151,51 @@ async def test_pipeline_emits_synthesizing_and_assessing_events_at_phase_boundar
     assert trace.index("yield:synthesizing") < trace.index("call:synthesize")
     assert trace.index("yield:assessing") > trace.index("call:synthesize")
     assert trace.index("yield:assessing") < trace.index("call:assess")
+
+
+async def test_pipeline_filters_disallowed_urls_before_select(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Search results with blocked extensions or blocked domains are stripped before select_urls."""
+    monkeypatch.setattr(pipeline.settings, "url_domain_blocklist", ("bit.ly",))
+
+    async def fake_search(q: str, _url: str) -> list[SearchResult]:  # noqa: ARG001
+        return [
+            SearchResult(url="https://example.com/article", title="ok"),
+            SearchResult(url="https://example.com/whitepaper.pdf", title="pdf"),
+            SearchResult(url="https://bit.ly/abc123", title="short"),
+            SearchResult(url="https://example.org/page", title="ok2"),
+        ]
+
+    received: list[list[SearchResult]] = []
+
+    async def capture_select_urls(
+        _client: object, _query: str, results: list[SearchResult]
+    ) -> list[str]:
+        received.append(results)
+        return [r.url for r in results]
+
+    profile = Profile(
+        name="n",
+        category="other",
+        summary="s",
+        highlights=[],
+        lowlights=[],
+        timeline=[],
+        citations=[],
+    )
+
+    with (
+        patch.object(pipeline.claude, "categorize", AsyncMock(return_value="other")),
+        patch.object(pipeline.claude, "generate_queries", AsyncMock(return_value=["q1"])),
+        patch.object(pipeline.claude, "select_urls", side_effect=capture_select_urls),
+        patch.object(pipeline.claude, "synthesize", AsyncMock(return_value=profile)),
+        patch.object(pipeline.claude, "assess", AsyncMock(side_effect=Exception("skip"))),
+        patch.object(pipeline.searxng, "search", side_effect=fake_search),
+    ):
+        async for _ in pipeline.build_profile("foo", "http://t", MagicMock(), _FakeFetcher()):
+            pass
+
+    assert len(received) == 1
+    forwarded = [r.url for r in received[0]]
+    assert forwarded == ["https://example.com/article", "https://example.org/page"]

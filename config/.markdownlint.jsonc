@@ -1,0 +1,34 @@
+{
+  // markdownlint-cli2 config for this repo.
+  // Rule reference: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+  "default": true,
+
+  // Line length: docs intentionally wrap at semantic breaks, not at a hard column.
+  "MD013": false,
+
+  // Allow inline HTML — used sparingly for layout we can't express in plain markdown.
+  "MD033": false,
+
+  // Permit duplicate headings under different parents (e.g. multiple "Why:" sections).
+  "MD024": { "siblings_only": true },
+
+  // First line need not be H1 — front matter or admonition blocks may precede it.
+  // (Every current file does lead with H1; this stays loose for future use.)
+  "MD041": false,
+
+  // Emphasis used as a visual heading (e.g. "**Names**" leading a checklist)
+  // is intentional in clean-code.md and prose-style.md.
+  "MD036": false,
+
+  // CLAUDE.md uses multiple top-level # headings as flat top-level sections.
+  "MD025": false,
+
+  // Style choices that match existing files.
+  "MD003": { "style": "atx" },           // ATX-style headings (#, not underline)
+  "MD004": { "style": "dash" },          // unordered list marker is "-"
+  "MD007": { "indent": 2 },              // 2-space indent for nested lists
+  "MD046": { "style": "fenced" },        // fenced code blocks only
+  "MD048": { "style": "backtick" },      // ``` fences, not ~~~
+  "MD049": { "style": "asterisk" },      // *italic*
+  "MD050": { "style": "asterisk" }       // **bold**
+}
