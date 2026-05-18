@@ -26,6 +26,14 @@ Python lives under `src/odin/` as one flat package — no subpackages. Front-end
 | `GET /health` | `health()` | Returns `{"status": "ok"}`. |
 | `GET /profile?q=` | `profile_page()` | Renders `profile.html`. |
 | `GET /profile/stream?q=` | `profile_stream()` | SSE endpoint that drives the pipeline. |
+| `GET /privacy`, `GET /terms` | `privacy()`, `terms()` | Static policy pages; render the `CONTACT_EMAIL` setting. |
+| `POST /notice/dismiss` | `dismiss_notice()` | CSRF-protected; sets a cookie that hides the beta/privacy banner. |
+| `GET /login` | `login_page()` | Magic-link sign-in form. |
+| `POST /auth/send-link` | `send_link()` | Issues and emails (or logs) a one-time login token. |
+| `GET /auth/verify` | `auth_verify()` | Consumes a token and starts a session. |
+| `POST /auth/logout` | `logout()` | Clears the session cookie. |
+| `GET /dashboard` | `dashboard()` | Signed-in user dashboard (quota, account controls). |
+| `POST /account/delete` | `account_delete()` | Deletes the signed-in user's account. |
 
 Three dependency providers, used with `Annotated[..., Depends(...)]` and overridden in tests:
 

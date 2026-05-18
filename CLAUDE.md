@@ -38,4 +38,4 @@ For prose in documentation, summaries, and commit messages, follow [`docs/prose-
 
 For design decisions — naming, function design, class structure, error handling, and testing — follow [`docs/clean-code.md`](./docs/clean-code.md).
 
-For "where do I find what" in the codebase — back-end, front-end, configuration, SearXNG, the Anthropic API — start at [`docs/README.md`](./docs/README.md).
+For "where do I find what" in the codebase — back-end, front-end, configuration, SearXNG, the Anthropic API — see the "Where to go next" table in the repo-root [`README.md`](./README.md).

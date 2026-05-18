@@ -17,6 +17,7 @@ Concurrency limiting (`asyncio.Semaphore(SEARXNG_MAX_CONCURRENCY=2)`) and dedup-
 ## Local configuration (`searxng/`)
 
 `settings.yml`:
+
 - **Engines:** removes `ahmia`, `torch`, `wikidata`; enables `brave`, `startpage`, `qwant`, `mojeek`.
 - **Server:** `limiter: false`, `image_proxy: true`, dev `secret_key`.
 - **Search formats:** `html` + `json` (Odin uses JSON).

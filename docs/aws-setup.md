@@ -4,7 +4,7 @@ Manual steps to provision the production environment. Update this file as you go
 
 ## Architecture
 
-```
+```text
 Browser → CloudFront (HTTPS, ACM cert) → EC2 t4g.small (HTTP:8000)
                └─ /static/* cached           └─ docker-compose
                └─ /* pass-through                 ├─ web:8000
@@ -115,6 +115,7 @@ This role lets the EC2 instance (a) be managed by SSM Session Manager, (b) pull 
 
 1. Open the role → **Add permissions** → **Create inline policy** → **JSON** tab.
 2. Paste:
+
    ```json
    {
      "Version": "2012-10-17",
@@ -125,6 +126,7 @@ This role lets the EC2 instance (a) be managed by SSM Session Manager, (b) pull 
      }]
    }
    ```
+
 3. **Next**. Policy name: `ecr-pull`. **Create policy**.
 
 ### 4c. Add the Secrets Manager read inline policy
@@ -185,6 +187,7 @@ The wizard generates a fairly permissive condition. Replace it with one that pin
 
 1. Open the role → **Trust relationships** tab → **Edit trust policy**.
 2. Replace the `Condition` block so the full document looks like this (substitute your account ID):
+
    ```json
    {
      "Version": "2012-10-17",
@@ -199,6 +202,7 @@ The wizard generates a fairly permissive condition. Replace it with one that pin
      }]
    }
    ```
+
 3. **Update policy**.
 
 ### 5d. Add the ECR push inline policy
@@ -256,6 +260,7 @@ A single secret named `odin/app` holds every runtime credential as JSON. One bil
 1. Open the **Secrets Manager** console → **Store a new secret**.
 2. Secret type: **Other type of secret**.
 3. Switch to the **Plaintext** tab and paste this placeholder (you'll fill in real values in steps 7d and 12):
+
    ```json
    {
      "anthropic_api_key": "placeholder",
@@ -268,6 +273,7 @@ A single secret named `odin/app` holds every runtime credential as JSON. One bil
      "smtp_pass": "placeholder"
    }
    ```
+
 4. Encryption key: **aws/secretsmanager** (default).
 5. **Next**.
 6. Secret name: `odin/app`. Description: `Odin runtime credentials — Anthropic, SearXNG, Purelymail SMTP`.
@@ -305,7 +311,7 @@ Use the exact values Purelymail's domain page shows; copy them verbatim. Verific
 2. Set a strong password — this doubles as the SMTP submission password.
 3. Note the SMTP endpoint:
 
-```
+```text
 Host:  smtp.purelymail.com
 Port:  587  (STARTTLS)
 User:  odin@yourdomain.com
@@ -316,6 +322,7 @@ Pass:  <password from step 7c.2>
 
 1. **Secrets Manager** console → open `odin/app` → **Retrieve secret value** → **Edit**.
 2. Switch to the **Plaintext** tab. Replace the four `smtp_*` placeholder values with the real ones from step 7c, leaving the other keys untouched for now:
+
    ```json
    {
      "anthropic_api_key": "placeholder",
@@ -328,6 +335,7 @@ Pass:  <password from step 7c.2>
      "smtp_pass": "<password from step 7c.2>"
    }
    ```
+
 3. **Save**.
 
 ---
@@ -362,6 +370,7 @@ Region: **us-west-2**.
 8. Expand **Advanced details**:
    - **IAM instance profile**: `odinInstanceRole`.
    - **User data**: paste the script below. Leave **User data has been base64 encoded** unchecked.
+
      ```bash
      #!/bin/bash
      dnf install -y docker git jq
@@ -386,6 +395,7 @@ Region: **us-west-2**.
 
      git clone https://github.com/douglasryanadams/odin.git /opt/odin
      ```
+
 9. **Launch instance**.
 
 **Note this:** the **Instance ID** (e.g. `i-0abc123...`) from the launch confirmation. GitHub Actions secrets in step 11 need it.
@@ -749,6 +759,7 @@ Alternatively, push a revert commit to `main`:
 
 1. **EC2** console → select the instance → **Connect** → **Session Manager** → **Connect**.
 2. In the session:
+
    ```bash
    cd /opt/odin
    ECR_URI="<account>.dkr.ecr.us-west-2.amazonaws.com/odin"
@@ -757,6 +768,7 @@ Alternatively, push a revert commit to `main`:
    docker tag $ECR_URI:<previous-sha> odin-prod
    docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.prod.yml -f compose/docker-compose.awslogs.yml up -d --no-deps web
    ```
+
 3. `curl https://yourdomain.com/health` → confirm 200.
 
 ECR retains all image tags by SHA, so any prior deploy is recoverable as long as ECR lifecycle hasn't expired it.
