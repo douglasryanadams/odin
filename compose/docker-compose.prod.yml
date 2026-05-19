@@ -15,6 +15,9 @@ services:
       - SMTP_USER
       - SMTP_PASS
 
+  nginx:
+    restart: always
+
   searxng:
     restart: always
 

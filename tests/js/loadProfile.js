@@ -5,7 +5,7 @@ import vm from "node:vm";
 
 const SOURCE_PATH = join(
   dirname(fileURLToPath(import.meta.url)),
-  "../../src/odin/static/js/profile.js",
+  "../../static/js/profile.js",
 );
 
 // happy-dom (vitest env) provides DOM globals on globalThis. We pass them

@@ -302,13 +302,6 @@ def test_index_redirects_to_login_when_anon_rate_limited(
     assert response.headers["location"] == "/login?reason=limit"
 
 
-def test_static_assets_mounted(client: TestClient) -> None:
-    """The /static mount serves the local stylesheet."""
-    response = client.get("/static/css/odin.css")
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("text/css")
-
-
 # ---------------------------------------------------------------------------
 # Profile routes
 # ---------------------------------------------------------------------------
@@ -1095,21 +1088,3 @@ def test_dashboard_shows_delete_account_form(client: TestClient) -> None:
     response = client.get("/dashboard", cookies={"odin_session": session})
     assert response.status_code == 200
     assert 'action="/account/delete"' in response.text
-
-
-def test_robots_txt_served(client: TestClient) -> None:
-    """/robots.txt returns plaintext with a long-lived Cache-Control header."""
-    response = client.get("/robots.txt")
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("text/plain")
-    assert "User-agent:" in response.text
-    assert "max-age" in response.headers.get("cache-control", "")
-
-
-def test_favicon_ico_served(client: TestClient) -> None:
-    """/favicon.ico returns image bytes with a long-lived Cache-Control header."""
-    response = client.get("/favicon.ico")
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("image/")
-    assert len(response.content) > 0
-    assert "max-age" in response.headers.get("cache-control", "")

@@ -28,8 +28,8 @@ node_modules: package.json package-lock.json
 
 lint-frontend: node_modules
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run djlint src/odin/templates --check
-	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node npx stylelint --config config/.stylelintrc.json "src/odin/static/css/**/*.css"
-	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node npx eslint --config config/eslint.config.js "src/odin/static/js/**/*.js"
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node npx stylelint --config config/.stylelintrc.json "static/css/**/*.css"
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node npx eslint --config config/eslint.config.js "static/js/**/*.js"
 
 lint-markdown: node_modules
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node npx markdownlint-cli2 --config config/.markdownlint.jsonc "**/*.md" "!node_modules" "!.git" "!.ruff_cache" "!.pytest_cache" "!.notes.md"
@@ -43,15 +43,7 @@ metrics:
 test: test-unit test-smoke test-integration
 
 test-smoke:
-	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.prod.yml build web
-	SECRET_KEY=$${SECRET_KEY:-smoke-test-only-dummy-secret-key-32chars} \
-	APP_URL=$${APP_URL:-http://localhost:8000} \
-	ANTHROPIC_API_KEY=$${ANTHROPIC_API_KEY:-smoke-dummy} \
-	SEARXNG_SECRET=$${SEARXNG_SECRET:-smoke-dummy} \
-	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.prod.yml up -d --wait web; \
-	EXIT=$$?; \
-	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.prod.yml stop web; \
-	exit $$EXIT
+	./scripts/test-smoke.sh
 
 test-unit:
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run pytest
