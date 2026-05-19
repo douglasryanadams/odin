@@ -46,18 +46,22 @@ Region: **us-west-2**.
 
 ECR storage is $0.10/GB-month and never auto-cleans. Every GitHub Actions deploy pushes a fresh `:<sha>` tag plus updates `:latest`, so without a policy the repository grows monotonically. A typical image is a few hundred MB; daily deploys over a year add up to real money and a cluttered tag list.
 
+The current ECR Console exposes a **Rule action** field on each rule (Expire vs. Archive). Pick **Expire** for both rules below; Archive moves images to a slower, cheaper storage class but does not free the original tag, which is not what we want.
+
 1. Open the `odin` repository → **Lifecycle policy** (left nav under the repo) → **Create rule**.
 2. Rule 1 — expire untagged images:
    - Rule priority: `1`
    - Description: `Expire untagged after 1 day`
-   - Image status: **Untagged**
-   - Match criteria: **Since image pushed**, `1` day
+   - Image tag status: **Untagged**
+   - Match criteria: **Days since image created**, `1`
+   - Rule action: **Expire**
    - **Save**.
 3. **Create rule** again. Rule 2 — keep the last 10 tagged images:
    - Rule priority: `2`
    - Description: `Keep last 10 tagged`
-   - Image status: **Any**
-   - Match criteria: **Image count more than**, `10`
+   - Image tag status: **Any**
+   - Match criteria: **Image count**, `10`
+   - Rule action: **Expire**
    - **Save**.
 
 The "keep 10" count includes `:latest`, so you retain roughly the nine most recent SHA-tagged builds for rollback. Bump the count if you ever need a deeper rollback window.
