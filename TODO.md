@@ -6,8 +6,6 @@ Tracking outstanding work that we want to address but haven't scheduled yet. Ite
 
 Security exposure, broken operational visibility, accumulating cost, and user-fairness bugs. Most are small changes with disproportionate impact.
 
-_No High priority items currently._
-
 ## Medium priority
 
 Reliability work, UX bugs in normal flows, and provisioning that unblocks new search backends.
