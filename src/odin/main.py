@@ -357,7 +357,13 @@ async def profile_stream(  # noqa: PLR0913
             if not _had_failure(collected):
                 await cache.put(valkey_client, q, collected)
         await _record_completed_query(
-            valkey_client, _user_email(user), cookie_id, ip_address, q, category
+            valkey_client,
+            _user_email(user),
+            cookie_id,
+            ip_address,
+            q,
+            category,
+            count_against_quota=cached is None,
         )
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -402,10 +408,13 @@ async def _record_completed_query(  # noqa: PLR0913
     ip_address: str,
     q: str,
     category: str,
+    *,
+    count_against_quota: bool,
 ) -> None:
-    await store.record_query(
-        valkey_client, user_email=user_email, cookie_id=cookie_id, ip_address=ip_address
-    )
+    if count_against_quota:
+        await store.record_query(
+            valkey_client, user_email=user_email, cookie_id=cookie_id, ip_address=ip_address
+        )
     await store.push_history(
         valkey_client,
         user_email=user_email,

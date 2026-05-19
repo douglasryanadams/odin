@@ -7,7 +7,6 @@ Tracking outstanding work that we want to address but haven't scheduled yet. Ite
 Security exposure, broken operational visibility, accumulating cost, and user-fairness bugs. Most are small changes with disproportionate impact.
 
 1. **Apply the ECR lifecycle policy.** The `odin` ECR repository has no retention rules, so every deploy adds a new `:<sha>` tag that lives forever and storage cost grows monotonically. Follow `docs/aws-setup.md` § 1a to add the two-rule policy (expire untagged after 1 day, keep last 10 tagged).
-2. **Cached query hits should not count against the daily search quota.** Serving a query from cache costs us nothing (no upstream search, no Claude call), so it shouldn't decrement the user's daily search allowance. Only count quota when we actually run a fresh search.
 
 ## Medium priority
 
