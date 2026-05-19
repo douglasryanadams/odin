@@ -505,6 +505,41 @@ def test_profile_stream_cache_normalizes_query(
     assert mock_anthropic.messages.create.call_count == first_call_count
 
 
+@respx.mock
+def test_profile_stream_cache_hit_does_not_count_against_quota(
+    client: TestClient, mock_anthropic: MagicMock, mock_valkey: MagicMock
+) -> None:
+    """Cache hit serves the result without consuming quota, but still records history.
+
+    A cached response costs us nothing upstream, so the quota counter must not
+    advance; the request still belongs in the user's recent-search history.
+    """
+    _setup_page_fetcher()
+    _stateful_kv(mock_valkey)
+    mock_anthropic.messages.create.side_effect = _pipeline_side_effects()
+    respx.get(f"{MOCK_BASE_URL}/search").mock(
+        return_value=httpx.Response(200, json=_MOCK_SEARXNG_RESULTS)
+    )
+
+    def _rate_incr_count() -> int:
+        return sum(
+            1
+            for call in mock_valkey.incr.call_args_list
+            if call.args and str(call.args[0]).startswith("rate:")
+        )
+
+    client.get("/profile/stream?q=einstein", cookies={"odin_anon": "test-cookie"})
+    rate_incrs_after_fresh = _rate_incr_count()
+    lpush_calls_after_fresh = mock_valkey.lpush.call_count
+    assert rate_incrs_after_fresh > 0
+    assert lpush_calls_after_fresh > 0
+
+    client.get("/profile/stream?q=einstein", cookies={"odin_anon": "test-cookie"})
+
+    assert _rate_incr_count() == rate_incrs_after_fresh
+    assert mock_valkey.lpush.call_count > lpush_calls_after_fresh
+
+
 def test_profile_stream_does_not_cache_service_unavailable(
     client: TestClient, mock_anthropic: MagicMock, mock_valkey: MagicMock
 ) -> None:
