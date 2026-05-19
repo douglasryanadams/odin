@@ -1,5 +1,9 @@
 {% extends "_base.html" %}
 {% block title %}{{ query }} — Odin{% endblock %}
+{% block meta_description %}
+  Profile of {{ query }} synthesized from public web sources, with citations.
+{% endblock %}
+{% block social_meta %}{% endblock %}
 {% block body_class %}page-profile{% endblock %}
 {% block head_extra %}<meta name="odin-query" content="{{ query }}" />{% endblock %}
 {% block header_actions %}
@@ -104,7 +108,7 @@
       </section>
     </article>
     <aside class="profile__sidebar">
-      <h1 class="profile__sidebar-title" id="sidebar-name">{{ query }}</h1>
+      <h2 class="profile__sidebar-title" id="sidebar-name">{{ query }}</h2>
       <p class="profile__sidebar-meta">
         <span class="badge badge--category" id="category-badge">
           <i class="fa-solid fa-circle-nodes" aria-hidden="true"></i>

@@ -6,6 +6,29 @@
     <title>
       {% block title %}Odin{% endblock %}
     </title>
+    <meta name="description"
+          content="{% block meta_description %}Odin synthesizes profiles from the web: concise summaries of people, places, and events, with cited sources.{% endblock %}" />
+    <meta name="robots" content="index,follow,max-image-preview:large" />
+    <meta name="theme-color" content="#050b12" />
+    <link rel="canonical" href="{{ app_url }}{{ request.url.path }}" />
+    {% block social_meta %}
+      <meta property="og:site_name" content="Odin" />
+      <meta property="og:locale" content="en_US" />
+      <meta property="og:type" content="{% block og_type %}website{% endblock %}" />
+      <meta property="og:title" content="{{ self.title() |trim }}" />
+      <meta property="og:description"
+            content="{{ self.meta_description() |trim }}" />
+      <meta property="og:url" content="{{ app_url }}{{ request.url.path }}" />
+      <meta name="twitter:card" content="summary" />
+      <meta name="twitter:title" content="{{ self.title() |trim }}" />
+      <meta name="twitter:description"
+            content="{{ self.meta_description() |trim }}" />
+    {% endblock %}
+    {% block json_ld %}
+      <script type="application/ld+json">
+        {"@context":"https://schema.org","@type":"Organization","name":"Odin","url":"{{ app_url }}"}
+      </script>
+    {% endblock %}
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet"
@@ -16,7 +39,16 @@
           crossorigin="anonymous"
           referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="/static/css/odin.css" />
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+    <link rel="icon"
+          type="image/png"
+          sizes="32x32"
+          href="/static/favicon-32x32.png" />
+    <link rel="apple-touch-icon"
+          sizes="180x180"
+          href="/static/apple-touch-icon.png" />
     <link rel="icon" type="image/vnd.microsoft.icon" href="/favicon.ico" />
+    <link rel="manifest" href="/site.webmanifest" />
     {% block head_extra %}{% endblock %}
   </head>
   <body class="{% block body_class %}{% endblock %}">
@@ -80,6 +112,8 @@
       <span class="site-footer__brand">odin</span>
       <span class="site-footer__sep" aria-hidden="true">·</span>
       <span class="site-footer__muted">profiles synthesized from the web</span>
+      <span class="site-footer__sep" aria-hidden="true">·</span>
+      <a class="site-footer__link" href="/about">About</a>
       <span class="site-footer__sep" aria-hidden="true">·</span>
       <a class="site-footer__link" href="/privacy">Privacy</a>
       <span class="site-footer__sep" aria-hidden="true">·</span>

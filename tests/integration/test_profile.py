@@ -12,7 +12,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from helpers import api_response, tool_block
-from odin.main import app, get_anthropic_client, get_searxng_url
+from odin import routes  # noqa: F401  # pyright: ignore[reportUnusedImport]
+from odin.app import app, get_anthropic_client, get_searxng_url
 
 SEARXNG_URL = "http://searxng:8080"
 
