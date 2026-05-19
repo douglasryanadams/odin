@@ -25,3 +25,30 @@ def test_prod_compose_surfaces_smtp_settings() -> None:
     assert not missing, (
         f"compose/docker-compose.prod.yml web.environment missing: {sorted(missing)}"
     )
+
+
+def test_searxng_service_passes_brave_api_key_in_both_compose_files() -> None:
+    """SearXNG's braveapi engine requires BRAVE_API_KEY at container start.
+
+    The base docker-compose.yml overrides the SearXNG entrypoint to render
+    settings.yml from a template that contains `${BRAVE_API_KEY}`; the prod
+    file ships the same env passthrough so the EC2 host's .env reaches the
+    container. If either file is missing the entry, the entrypoint exits 1
+    with the `BRAVE_API_KEY must be set` message before SearXNG starts.
+    """
+    for compose_file in ("docker-compose.yml", "docker-compose.prod.yml"):
+        data = yaml.safe_load((REPO_ROOT / "compose" / compose_file).read_text())
+        env = data["services"]["searxng"]["environment"]
+        names = {entry.split("=", 1)[0] for entry in env}
+        assert "BRAVE_API_KEY" in names, (
+            f"compose/{compose_file} searxng.environment is missing BRAVE_API_KEY"
+        )
+
+
+def test_searxng_service_uses_template_entrypoint() -> None:
+    """SearXNG's container must run our entrypoint so the template is rendered."""
+    data = yaml.safe_load((REPO_ROOT / "compose" / "docker-compose.yml").read_text())
+    entrypoint = data["services"]["searxng"]["entrypoint"]
+    assert "/etc/searxng/entrypoint.sh" in entrypoint, (
+        f"searxng entrypoint must invoke /etc/searxng/entrypoint.sh, got {entrypoint!r}"
+    )

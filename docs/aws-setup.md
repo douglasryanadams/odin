@@ -269,6 +269,7 @@ A single secret named `odin/app` holds every runtime credential as JSON. One bil
    ```json
    {
      "anthropic_api_key": "placeholder",
+     "brave_api_key": "placeholder",
      "secret_key": "placeholder",
      "app_url": "placeholder",
      "searxng_secret": "placeholder",
@@ -281,7 +282,7 @@ A single secret named `odin/app` holds every runtime credential as JSON. One bil
 
 4. Encryption key: **aws/secretsmanager** (default).
 5. **Next**.
-6. Secret name: `odin/app`. Description: `Odin runtime credentials — Anthropic, SearXNG, Purelymail SMTP`.
+6. Secret name: `odin/app`. Description: `Odin runtime credentials — Anthropic, Brave Search, SearXNG, Purelymail SMTP`.
 7. **Next** through automatic rotation (skip — leave **Disable automatic rotation**).
 8. **Next** → **Store**.
 
@@ -590,11 +591,12 @@ The workflow assumes the `GitHubActionsOdinDeploy` role from step 5 via OIDC, so
 Region: **us-west-2**.
 
 1. **Secrets Manager** console → open `odin/app` → **Retrieve secret value** → **Edit** → **Plaintext** tab.
-2. Replace the two remaining placeholders with the real values, then **Save**:
+2. Replace the remaining placeholders with the real values, then **Save**:
 
 | Key | Value |
 |---|---|
 | `anthropic_api_key` | `sk-ant-your-real-key-here` |
+| `brave_api_key` | Provision at <https://api-dashboard.search.brave.com/> (CC required; ~$0.003–$0.005/query metered after $5 prepaid credit). Paste the raw key. |
 | `secret_key` | a 64-character hex string for HMAC cookie/magic-link signing. Generate locally with `openssl rand -hex 32`. Min 32 chars. |
 | `app_url` | the public origin used to build magic-link URLs, e.g. `https://yourdomain.com`. No trailing slash. |
 | `searxng_secret` | a 64-character hex string. Generate one locally with `openssl rand -hex 32` and paste the output. |
@@ -622,6 +624,7 @@ _SECRETS=$(aws secretsmanager get-secret-value \
   --region us-west-2 --secret-id odin/app \
   --query SecretString --output text)
 export ANTHROPIC_API_KEY=$(echo "$_SECRETS" | jq -r '.anthropic_api_key')
+export BRAVE_API_KEY=$(echo "$_SECRETS" | jq -r '.brave_api_key')
 export SECRET_KEY=$(echo "$_SECRETS" | jq -r '.secret_key')
 export APP_URL=$(echo "$_SECRETS" | jq -r '.app_url')
 export SEARXNG_SECRET=$(echo "$_SECRETS" | jq -r '.searxng_secret')

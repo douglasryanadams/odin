@@ -20,13 +20,26 @@ Concurrency limiting (`asyncio.Semaphore(SEARXNG_MAX_CONCURRENCY=2)`) and dedup-
 
 ## Local configuration (`searxng/`)
 
-`settings.yml`:
+`settings.yml.tmpl` (committed; rendered to `settings.yml` at container start by `entrypoint.sh`):
 
-- **Engines:** removes `ahmia`, `torch`, `wikidata`; enables `brave`, `startpage`, `qwant`, `mojeek`.
+- **Engines:** removes `ahmia`, `torch`, `wikidata`, `duckduckgo`, `google`, `bing`, `yahoo` from the upstream defaults; enables `braveapi` (official Brave Search API) and `mojeek` (independent index, cooperative scraper).
 - **Server:** `limiter: false`, `image_proxy: true`, dev `secret_key`.
 - **Search formats:** `html` + `json` (Odin uses JSON).
-- **Outgoing:** `request_timeout: 6`, HTTP/2, pool `100` / per-host `20`, `retries: 1`.
+- **Outgoing:** `request_timeout: 6`, HTTP/2, pool `100` / per-host `20`, `retries: 1`. The commented `source_ips` block can be uncommented on hosts with reachable IPv4 + IPv6 stacks to rotate outbound requests across two source IPs.
 - **Valkey:** `redis://searxng-valkey:6379/0`.
+
+### Brave Search API key
+
+The `braveapi` engine needs an API key. Provision one at <https://api-dashboard.search.brave.com/> (the free tier is gone as of February 2026; metered billing starts at $5 prepaid credit, ~$0.003–$0.005/query). Then expose it as `BRAVE_API_KEY` in the environment that runs `docker compose`:
+
+- **Local dev:** add `BRAVE_API_KEY=...` to `.env` at the repo root.
+- **Prod (EC2):** the deploy script writes it into `.env` on the host alongside the other secrets.
+
+`searxng/entrypoint.sh` runs before the SearXNG image's own entrypoint, substitutes `${BRAVE_API_KEY}` into `settings.yml.tmpl`, writes the result to `/etc/searxng/settings.yml`, and execs the original entrypoint. If `BRAVE_API_KEY` is unset, the entrypoint exits before SearXNG can boot with an unauthenticated engine config.
+
+### Previously enabled engines (removed)
+
+`startpage` and `qwant` were enabled scrapers; both were consistently blocked or rate-limited from a single cloud IP and contributed almost no usable results. They were removed alongside the `braveapi` switch. If we revisit them later it will be through paid SERP-scraping APIs (e.g. Serper), not direct scraping.
 
 ## Verify
 

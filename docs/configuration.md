@@ -85,7 +85,8 @@ Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/defa
 
 ## `searxng/`
 
-- `settings.yml` — engines, dev secret key, `limiter: false`, `image_proxy: true`, JSON format, outgoing-pool tuning. Details in [`searxng.md`](./searxng.md).
+- `settings.yml.tmpl` — engines, dev secret key, `limiter: false`, `image_proxy: true`, JSON format, outgoing-pool tuning. The `braveapi` engine reads `${BRAVE_API_KEY}` from the environment. Details in [`searxng.md`](./searxng.md).
+- `entrypoint.sh` — runs before the SearXNG image's own entrypoint, expands `${BRAVE_API_KEY}` in the template using Python's `string.Template`, writes the rendered file to `/etc/searxng/settings.yml`, and execs the upstream entrypoint. Exits non-zero if `BRAVE_API_KEY` is unset.
 
 ## Environment variables
 
@@ -96,6 +97,7 @@ Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/defa
 | Variable | Read where | Notes |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | `AsyncAnthropic()` via the SDK | Used by every Haiku and Sonnet call in `claude.py`. |
+| `BRAVE_API_KEY` | `searxng/entrypoint.sh` → `settings.yml.tmpl` | Authenticates SearXNG's `braveapi` engine. Provision at <https://api-dashboard.search.brave.com/>. SearXNG fails to start if unset. |
 | `SECRET_KEY` | `Settings` in `config.py` | 32+ random bytes; signs session and CSRF cookies. Generate with `python -c 'import secrets; print(secrets.token_urlsafe(48))'`. |
 | `APP_URL` | `Settings` in `config.py`, used by `email.py` | Public base URL of the deployment; embedded into magic-link emails. |
 

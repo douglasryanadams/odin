@@ -46,18 +46,17 @@ outgoing:
   # extra_proxy_timeout: 10.0
 
 engines:
+  # Brave Search API. Replaces the scraping `brave` engine, which was
+  # consistently blocked. ${BRAVE_API_KEY} is substituted at container start
+  # by searxng/entrypoint.sh; see docs/searxng.md.
   - name: brave
-    engine: brave
+    engine: braveapi
+    api_key: "${BRAVE_API_KEY}"
+    results_per_page: 20
     disabled: false
 
-  - name: startpage
-    engine: startpage
-    disabled: false
-
-  - name: qwant
-    engine: qwant
-    disabled: false
-
+  # Mojeek is an independent index whose scraper is cooperative (no
+  # CAPTCHA / IP-ban regime) and remains our free secondary source.
   - name: mojeek
     engine: mojeek
     disabled: false

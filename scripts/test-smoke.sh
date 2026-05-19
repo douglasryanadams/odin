@@ -9,6 +9,7 @@ export SECRET_KEY=${SECRET_KEY:-smoke-test-only-dummy-secret-key-32chars}
 export APP_URL=${APP_URL:-http://localhost:8000}
 export ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-smoke-dummy}
 export SEARXNG_SECRET=${SEARXNG_SECRET:-smoke-dummy}
+export BRAVE_API_KEY=${BRAVE_API_KEY:-smoke-dummy}
 
 teardown() {
   "${COMPOSE[@]}" down --remove-orphans >/dev/null 2>&1 || true
