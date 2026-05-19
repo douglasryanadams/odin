@@ -6,8 +6,6 @@ Tracking outstanding work that we want to address but haven't scheduled yet. Ite
 
 Security exposure, broken operational visibility, accumulating cost, and user-fairness bugs. Most are small changes with disproportionate impact.
 
-1. **Cached query hits should not count against the daily search quota.** Serving a query from cache costs us nothing (no upstream search, no Claude call), so it shouldn't decrement the user's daily search allowance. Only count quota when we actually run a fresh search.
-
 ## Medium priority
 
 Reliability work, UX bugs in normal flows, and provisioning that unblocks new search backends.

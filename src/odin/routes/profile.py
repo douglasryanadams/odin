@@ -110,6 +110,9 @@ async def profile_stream(  # noqa: PLR0913
             async for chunk in _replay_cached(cached):
                 yield chunk
             category = _category_from(cached)
+            await _record_cached_query(
+                valkey_client, user_email(user), cookie_id, ip_address, q, category
+            )
         else:
             collected: list[dict[str, Any]] = []
             category = "other"
@@ -118,9 +121,9 @@ async def profile_stream(  # noqa: PLR0913
             category = _category_from(collected) or category
             if not _had_failure(collected):
                 await cache.put(valkey_client, q, collected)
-        await _record_completed_query(
-            valkey_client, user_email(user), cookie_id, ip_address, q, category
-        )
+            await _record_fresh_query(
+                valkey_client, user_email(user), cookie_id, ip_address, q, category
+            )
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -157,7 +160,7 @@ def _had_failure(events: list[dict[str, Any]]) -> bool:
     return any(e.get("type") == "service_unavailable" for e in events)
 
 
-async def _record_completed_query(  # noqa: PLR0913
+async def _record_cached_query(  # noqa: PLR0913
     valkey_client: Valkey,
     email: str | None,
     cookie_id: str,
@@ -165,9 +168,7 @@ async def _record_completed_query(  # noqa: PLR0913
     q: str,
     category: str,
 ) -> None:
-    await store.record_query(
-        valkey_client, user_email=email, cookie_id=cookie_id, ip_address=ip_address
-    )
+    """Append the query to search history without consuming quota."""
     await store.push_history(
         valkey_client,
         user_email=email,
@@ -179,3 +180,18 @@ async def _record_completed_query(  # noqa: PLR0913
             "cat": category,
         },
     )
+
+
+async def _record_fresh_query(  # noqa: PLR0913
+    valkey_client: Valkey,
+    email: str | None,
+    cookie_id: str,
+    ip_address: str,
+    q: str,
+    category: str,
+) -> None:
+    """Consume daily quota and append the query to search history."""
+    await store.record_query(
+        valkey_client, user_email=email, cookie_id=cookie_id, ip_address=ip_address
+    )
+    await _record_cached_query(valkey_client, email, cookie_id, ip_address, q, category)
