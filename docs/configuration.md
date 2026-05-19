@@ -86,7 +86,7 @@ Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/defa
 ## `searxng/`
 
 - `settings.yml.tmpl` — engines, dev secret key, `limiter: false`, `image_proxy: true`, JSON format, outgoing-pool tuning. The `braveapi` engine reads `${BRAVE_API_KEY}` from the environment. Details in [`searxng.md`](./searxng.md).
-- `entrypoint.sh` — runs before the SearXNG image's own entrypoint, expands `${BRAVE_API_KEY}` in the template using Python's `string.Template`, writes the rendered file to `/etc/searxng/settings.yml`, and execs the upstream entrypoint. Exits non-zero if `BRAVE_API_KEY` is unset.
+- `entrypoint.sh` — runs before the SearXNG image's own entrypoint, expands `${BRAVE_API_KEY}` in the template using Python's `string.Template`, writes the rendered file to an in-container tmpfs at `/run/searxng/settings.yml` (chmod `0400`, owned by `searxng:searxng`), points SearXNG at it via `__SEARXNG_SETTINGS_PATH`, and execs the upstream entrypoint. The key never touches the host filesystem. Exits non-zero if `BRAVE_API_KEY` is unset.
 
 ## Environment variables
 

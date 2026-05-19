@@ -35,7 +35,7 @@ The `braveapi` engine needs an API key. Provision one at <https://api-dashboard.
 - **Local dev:** add `BRAVE_API_KEY=...` to `.env` at the repo root.
 - **Prod (EC2):** the deploy script writes it into `.env` on the host alongside the other secrets.
 
-`searxng/entrypoint.sh` runs before the SearXNG image's own entrypoint, substitutes `${BRAVE_API_KEY}` into `settings.yml.tmpl`, writes the result to `/etc/searxng/settings.yml`, and execs the original entrypoint. If `BRAVE_API_KEY` is unset, the entrypoint exits before SearXNG can boot with an unauthenticated engine config.
+`searxng/entrypoint.sh` runs before the SearXNG image's own entrypoint, substitutes `${BRAVE_API_KEY}` into `settings.yml.tmpl`, writes the result to a **tmpfs** at `/run/searxng/settings.yml`, points SearXNG at it by exporting `__SEARXNG_SETTINGS_PATH`, then execs the original entrypoint. The rendered file is chmod `0400` owned by `searxng:searxng`, so the key never touches the host filesystem and is unreadable to non-root processes inside the container. If `BRAVE_API_KEY` is unset, the entrypoint exits before SearXNG can boot with an unauthenticated engine config.
 
 ### Previously enabled engines (removed)
 

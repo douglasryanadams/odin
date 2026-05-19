@@ -47,6 +47,10 @@ services:
       - "8080:8080"
     volumes:
       - ./searxng/:/etc/searxng/:Z
+    # In-memory mount for the rendered settings.yml so the BRAVE_API_KEY never
+    # touches the host filesystem; the entrypoint chmods the file to 0400.
+    tmpfs:
+      - /run/searxng
     depends_on:
       - searxng-valkey
     healthcheck:
