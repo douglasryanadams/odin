@@ -3,8 +3,8 @@
   "short_name": "Odin",
   "start_url": "/",
   "display": "browser",
-  "background_color": "#050b12",
-  "theme_color": "#050b12",
+  "background_color": "#050505",
+  "theme_color": "#050505",
   "icons": [
     {
       "src": "/static/favicon-32x32.png",

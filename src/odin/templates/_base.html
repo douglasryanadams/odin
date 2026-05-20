@@ -9,7 +9,7 @@
     <meta name="description"
           content="{% block meta_description %}Odin synthesizes profiles from the web: concise summaries of people, places, and events, with cited sources.{% endblock %}" />
     <meta name="robots" content="index,follow,max-image-preview:large" />
-    <meta name="theme-color" content="#050b12" />
+    <meta name="theme-color" content="#050505" />
     <link rel="canonical" href="{{ app_url }}{{ request.url.path }}" />
     {% block social_meta %}
       <meta property="og:site_name" content="Odin" />
@@ -32,7 +32,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Orbitron:wght@600;700&display=swap" />
+          href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Orbitron:wght@700;800;900&family=Audiowide&display=swap" />
     <link rel="stylesheet"
           href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
           integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A=="
@@ -79,11 +79,12 @@
       <div class="status-bar" role="status" aria-label="Session identity">
         <span class="status-bar__cell">
           <span class="status-bar__key">PILOT</span>
-          <span class="status-bar__value">{{ user.email }}</span>
+          <span class="status-bar__value" data-typewriter-text="{{ user.email }}">{{ user.email }}</span>
         </span>
         <span class="status-bar__cell">
           <span class="status-bar__key">NODE</span>
-          <span class="status-bar__value mono">{{ user.ip or "unknown" }}</span>
+          <span class="status-bar__value mono"
+                data-typewriter-text="{{ user.ip or 'unknown' }}">{{ user.ip or "unknown" }}</span>
         </span>
       </div>
     {% endif %}
@@ -110,15 +111,16 @@
     </main>
     <footer class="site-footer">
       <span class="site-footer__brand">odin</span>
-      <span class="site-footer__sep" aria-hidden="true">·</span>
+      <span class="site-footer__sep" aria-hidden="true">//</span>
       <span class="site-footer__muted">profiles synthesized from the web</span>
-      <span class="site-footer__sep" aria-hidden="true">·</span>
+      <span class="site-footer__sep" aria-hidden="true">//</span>
       <a class="site-footer__link" href="/about">About</a>
-      <span class="site-footer__sep" aria-hidden="true">·</span>
+      <span class="site-footer__sep" aria-hidden="true">//</span>
       <a class="site-footer__link" href="/privacy">Privacy</a>
-      <span class="site-footer__sep" aria-hidden="true">·</span>
+      <span class="site-footer__sep" aria-hidden="true">//</span>
       <a class="site-footer__link" href="/terms">Terms</a>
     </footer>
+    <script src="/static/js/odin.js" defer></script>
     {% block scripts %}{% endblock %}
   </body>
 </html>

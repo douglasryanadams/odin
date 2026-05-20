@@ -2,6 +2,15 @@
 // Layout: anchored sidebar (subject + Subject Compass + Source Audit) plus a
 // longform main article column with exposition, significant events, and
 // click-to-expand findings.
+//
+// Visuals after the Matrix rebrand:
+//   * Pipeline progress is a single-line ASCII bar with six "==========" segments
+//     separated by "·". The active segment fills char-by-char and carries a
+//     blinking "▒/░" cursor at the leading edge. profile.js drives the render
+//     via requestAnimationFrame so the bar feels alive between SSE events.
+//   * Compass + Source-audit gauges are single-line ASCII rules ("···▓···"
+//     for positive gauges, "──·──▓─" for divergent gauges) with a phosphor
+//     "▓" marker glyph at the value position. No filled bars.
 
 const STAGES = [
   "categorized",
@@ -12,12 +21,28 @@ const STAGES = [
   "assessing",
 ];
 
+const STAGE_LABELS = {
+  categorized:  "categorize",
+  queries:      "plan queries",
+  searching:    "search",
+  fetching:     "load pages",
+  synthesizing: "synthesize",
+  assessing:    "audit",
+};
+
 const CATEGORY_ICONS = {
   person: "fa-user",
   place: "fa-location-dot",
   event: "fa-calendar",
   other: "fa-circle-nodes",
 };
+
+// Visual layout for the ASCII progress bar
+const SEG_WIDTH = 10;       // chars per stage segment
+const STAGE_FILL_MS = 2400; // time to visually fill one segment while waiting
+
+// Layout for the ASCII gauges
+const RULE_WIDTH = 24;
 
 function $(id) {
   return document.getElementById(id);
@@ -34,42 +59,148 @@ function setSynthTime() {
   const node = $("synth-time");
   if (!node) return;
   const now = new Date();
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const dd = String(now.getDate()).padStart(2, "0");
-  node.textContent = `${yyyy}-${mm}-${dd}`;
-  node.setAttribute("datetime", node.textContent);
+  const yyyy = now.getUTCFullYear();
+  const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(now.getUTCDate()).padStart(2, "0");
+  const hh = String(now.getUTCHours()).padStart(2, "0");
+  const mi = String(now.getUTCMinutes()).padStart(2, "0");
+  const iso = `${yyyy}-${mm}-${dd}T${hh}:${mi}Z`;
+  node.textContent = `[${iso}]`;
+  node.setAttribute("datetime", iso);
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline progress — ASCII bar
+// ---------------------------------------------------------------------------
+
+let _progressIdx = 0;
+let _progressStart = 0;
+let _progressState = "running"; // "running" | "done" | "failed"
+let _progressFailMsg = null;
+let _progressRAF = null;
+
+function _progressLineEl() {
+  const strip = $("progress-strip");
+  if (!strip) return null;
+  return strip.querySelector(".progress-bar__line");
+}
+
+function _renderProgressBar() {
+  const lineEl = _progressLineEl();
+  if (!lineEl) return;
+
+  const totalSegs = STAGES.length;
+  const failed = _progressState === "failed";
+  const done = _progressState === "done";
+
+  const sub = done
+    ? 0
+    : Math.min(1, (performance.now() - _progressStart) / STAGE_FILL_MS);
+
+  const segs = STAGES.map((_, i) => {
+    if (done) {
+      return '<span class="progress-bar__filled">' + "=".repeat(SEG_WIDTH) + "</span>";
+    }
+    if (failed && i === _progressIdx) {
+      return '<span class="progress-bar__failed">' + "X".repeat(SEG_WIDTH) + "</span>";
+    }
+    if (i < _progressIdx) {
+      return '<span class="progress-bar__filled">' + "=".repeat(SEG_WIDTH) + "</span>";
+    }
+    if (i === _progressIdx && !failed) {
+      const fill = Math.floor(sub * SEG_WIDTH);
+      const blink = Math.floor(performance.now() / 350) % 2 === 0;
+      const cursorChar = blink ? "▒" : "░";
+      const filled = '<span class="progress-bar__filled">' + "=".repeat(fill) + "</span>";
+      const cursor = '<span class="progress-bar__cursor">' + cursorChar + "</span>";
+      const rest = " ".repeat(Math.max(0, SEG_WIDTH - fill - 1));
+      return filled + cursor + rest;
+    }
+    return " ".repeat(SEG_WIDTH);
+  });
+
+  let line = "[" + segs.join("·") + "]";
+  if (failed) {
+    const msg = _progressFailMsg || "failed";
+    line += '<span class="progress-bar__label"> ' + msg + "</span>";
+  } else if (done) {
+    line += '<span class="progress-bar__label">  100%  complete</span>';
+  } else {
+    const stageProgress = (_progressIdx + sub) / totalSegs;
+    const pct = Math.floor(stageProgress * 100);
+    const label = STAGE_LABELS[STAGES[_progressIdx]] || STAGES[_progressIdx];
+    line += '<span class="progress-bar__label"> '
+      + String(pct).padStart(3, " ")
+      + "%  " + label + "</span>";
+  }
+  lineEl.innerHTML = line;
+}
+
+function _scheduleProgressRender() {
+  if (_progressRAF !== null) return;
+  const tick = () => {
+    _progressRAF = null;
+    if (_progressState !== "running") return;
+    _renderProgressBar();
+    // Keep ticking while the current segment is still filling, or to
+    // keep the cursor blinking on the leading edge once it tops out.
+    _progressRAF = requestAnimationFrame(tick);
+  };
+  _progressRAF = requestAnimationFrame(tick);
 }
 
 function advanceProgress(stage) {
-  const strip = $("progress-strip");
-  if (!strip) return;
-  const targetIndex = STAGES.indexOf(stage);
-  if (targetIndex === -1) return;
-  strip.querySelectorAll(".progress-step").forEach((step, i) => {
-    step.classList.remove("is-active", "is-done");
-    if (i < targetIndex) step.classList.add("is-done");
-    else if (i === targetIndex) step.classList.add("is-active");
-  });
+  const idx = STAGES.indexOf(stage);
+  if (idx === -1) return;
+  if (_progressState !== "running") return;
+  if (idx < _progressIdx) return;
+  _progressIdx = idx;
+  _progressStart = performance.now();
+  _renderProgressBar();
+  _scheduleProgressRender();
+}
+
+// Reset the progress-bar internal state. Called by the DOMContentLoaded
+// bootstrap so a navigation back to /profile starts from scratch, and by
+// the vitest suite between describe blocks so module-level state doesn't
+// leak across tests. The eslint disable below silences "unused" — the
+// function is referenced via the vm sandbox from tests/js/loadProfile.js.
+// eslint-disable-next-line no-unused-vars
+function resetProgress() {
+  _progressIdx = 0;
+  _progressStart = performance.now();
+  _progressState = "running";
+  _progressFailMsg = null;
+  if (_progressRAF !== null) {
+    cancelAnimationFrame(_progressRAF);
+    _progressRAF = null;
+  }
 }
 
 function completeProgress() {
+  _progressState = "done";
+  if (_progressRAF !== null) {
+    cancelAnimationFrame(_progressRAF);
+    _progressRAF = null;
+  }
+  _renderProgressBar();
   const strip = $("progress-strip");
-  if (!strip) return;
-  strip.querySelectorAll(".progress-step").forEach((step) => {
-    step.classList.remove("is-active");
-    step.classList.add("is-done");
-  });
-  strip.classList.add("is-complete");
-  strip.hidden = true;
+  if (strip) {
+    strip.classList.add("is-complete");
+    strip.hidden = true;
+  }
 }
 
 function failProgress(message) {
+  _progressState = "failed";
+  _progressFailMsg = message || "failed";
+  if (_progressRAF !== null) {
+    cancelAnimationFrame(_progressRAF);
+    _progressRAF = null;
+  }
+  _renderProgressBar();
   const strip = $("progress-strip");
-  if (!strip) return;
-  strip.classList.add("is-failed");
-  const labels = strip.querySelectorAll(".progress-step__label");
-  if (labels.length) labels[labels.length - 1].textContent = message;
+  if (strip) strip.classList.add("is-failed");
 }
 
 function setCategory(category) {
@@ -86,20 +217,6 @@ function setCategory(category) {
   if (kicker) kicker.textContent = category.charAt(0).toUpperCase() + category.slice(1);
 }
 
-function renderExposition(summary) {
-  const node = $("exposition");
-  if (!node) return;
-  node.replaceChildren();
-  const paragraphs = (summary || "").split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
-  if (!paragraphs.length) {
-    return;
-  }
-  paragraphs.forEach((text, i) => {
-    const p = el("p", i === 0 ? "profile__lede dropcap" : null, text);
-    node.appendChild(p);
-  });
-}
-
 function renderEvents(listEl, items) {
   listEl.replaceChildren();
   if (!items || !items.length) {
@@ -108,7 +225,7 @@ function renderEvents(listEl, items) {
   }
   items.forEach((item) => {
     const li = el("li", "events__item");
-    li.appendChild(el("time", "events__date mono", item.date));
+    li.appendChild(el("time", "events__date mono", `[${item.date}]`));
     const body = el("div", "events__body");
     body.appendChild(el("p", "events__text", item.event));
     li.appendChild(body);
@@ -241,11 +358,11 @@ function renderProfile(data) {
 
   const highlightsHint = $("highlights-hint");
   if (highlightsHint && data.highlights && data.highlights.length) {
-    highlightsHint.textContent = `${data.highlights.length} items · click any for detail`;
+    highlightsHint.textContent = `${data.highlights.length} items // click any for detail`;
   }
   const lowlightsHint = $("lowlights-hint");
   if (lowlightsHint && data.lowlights && data.lowlights.length) {
-    lowlightsHint.textContent = `${data.lowlights.length} items · click any for detail`;
+    lowlightsHint.textContent = `${data.lowlights.length} items // click any for detail`;
   }
 }
 
@@ -293,7 +410,7 @@ function renderAssessment(data) {
   if (sourceGauges) {
     sourceGauges.replaceChildren();
     sourceGauges.appendChild(
-      buildGauge("Profile confidence", Math.round(data.confidence * 100), "gauge--confidence"),
+      buildGauge("Profile confidence", Math.round(data.confidence * 100), "gauge-line--confidence"),
     );
     sourceGauges.appendChild(
       buildSentimentGauge({
@@ -336,38 +453,64 @@ function renderCaveats(listEl, items) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// ASCII gauges (positive-only and divergent)
+// ---------------------------------------------------------------------------
+
+function _markerSpan() {
+  return '<span class="gauge-line__marker">▓</span>';
+}
+
 function buildGauge(label, percent, modifier) {
-  const wrap = el("div", `gauge ${modifier}`);
-  const top = el("div", "gauge__head");
-  top.appendChild(el("span", "gauge__label", label));
-  top.appendChild(el("span", "gauge__value mono", `${percent}%`));
-  wrap.appendChild(top);
-  const track = el("div", "gauge__track");
-  const fill = el("div", "gauge__fill");
-  fill.style.width = `${percent}%`;
-  track.appendChild(fill);
-  wrap.appendChild(track);
+  // percent is 0-100; map to character position in a row of dots.
+  const pos = Math.max(0, Math.min(RULE_WIDTH - 1, Math.floor((percent / 100) * RULE_WIDTH)));
+  const cls = "gauge-line" + (modifier ? ` ${modifier}` : "");
+  const wrap = el("div", cls);
+  wrap.appendChild(el("span", "gauge-line__label", label));
+  wrap.appendChild(el("span", "gauge-line__value mono", `${percent}%`));
+  const rule = document.createElement("span");
+  rule.className = "gauge-line__rule";
+  rule.innerHTML =
+    "·".repeat(pos) + _markerSpan() + "·".repeat(RULE_WIDTH - pos - 1);
+  wrap.appendChild(rule);
   return wrap;
 }
 
 function buildSentimentGauge({ label, leftLabel, rightLabel, value, neutral = false }) {
-  const wrap = el("div", "gauge gauge--sentiment");
-  wrap.appendChild(el("span", "gauge__label", label));
+  const center = Math.floor(RULE_WIDTH / 2);
+  // value is -1..+1; map to char position with center at midpoint.
+  const pos = Math.max(
+    0,
+    Math.min(RULE_WIDTH - 1, center + Math.round(value * center)),
+  );
+
+  let ruleHtml = "";
+  for (let i = 0; i < RULE_WIDTH; i++) {
+    if (i === pos) {
+      ruleHtml += _markerSpan();
+    } else if (i === center && pos !== center) {
+      ruleHtml += "·"; // mark center divider when the marker isn't already there
+    } else {
+      ruleHtml += "─";
+    }
+  }
+
+  const cls =
+    "gauge-line gauge-line--divergent" + (neutral ? " gauge-line--neutral" : "");
+  const wrap = el("div", cls);
+  wrap.appendChild(el("span", "gauge-line__label", label));
   const display =
     value > 0 ? `+${(value * 100).toFixed(0)}` : `${(value * 100).toFixed(0)}`;
-  wrap.appendChild(el("span", "gauge__value mono", display));
-  const barRow = el("div", "gauge__bar-row");
-  barRow.appendChild(el("span", "gauge__end gauge__end--left", leftLabel));
-  const trackClasses = neutral
-    ? "gauge__track gauge__track--diverging gauge__track--neutral"
-    : "gauge__track gauge__track--diverging";
-  const track = el("div", trackClasses);
-  const marker = el("span", "gauge__marker");
-  marker.style.left = `${50 + value * 50}%`;
-  track.appendChild(marker);
-  barRow.appendChild(track);
-  barRow.appendChild(el("span", "gauge__end gauge__end--right", rightLabel));
-  wrap.appendChild(barRow);
+  wrap.appendChild(el("span", "gauge-line__value mono", display));
+
+  const row = el("div", "gauge-line__row");
+  row.appendChild(el("span", "gauge-line__end gauge-line__end--left", leftLabel));
+  const rule = document.createElement("span");
+  rule.className = "gauge-line__rule";
+  rule.innerHTML = ruleHtml;
+  row.appendChild(rule);
+  row.appendChild(el("span", "gauge-line__end gauge-line__end--right", rightLabel));
+  wrap.appendChild(row);
   return wrap;
 }
 

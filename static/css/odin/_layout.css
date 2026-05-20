@@ -1,0 +1,298 @@
+/* =========================================================================
+   Odin — site chrome (header, status bar, footer, disclosure, legal)
+   Status bar is pinned as a sticky terminal footer in the Matrix
+   rebrand; the bracket beta badge and "$" status prompt reinforce the
+   terminal vocabulary.
+   ========================================================================= */
+
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklch, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.site-header__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+/* ----- Status bar — sticky terminal footer ---------------------------- */
+
+/* The bar is pinned to the viewport bottom. Body reserves matching
+   bottom padding via body:has(.status-bar) so the page footer doesn't
+   sit behind it. */
+.status-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-5);
+  padding: 8px var(--sp-5) 8px calc(var(--sp-5) + 14px);
+  background: var(--surface-2);
+  border-top: 1px solid color-mix(in oklch, var(--primary) 35%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+body:has(.status-bar) {
+  padding-bottom: 56px;
+}
+
+/* "$" prompt at the leading edge */
+.status-bar::before {
+  content: "$";
+  position: absolute;
+  left: var(--sp-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--primary);
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.status-bar__cell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* Wrap each cell in [ ... ] brackets via pseudo-elements */
+.status-bar__cell::before {
+  content: "[";
+  color: var(--primary);
+  margin-right: 4px;
+}
+
+.status-bar__cell::after {
+  content: "]";
+  color: var(--primary);
+  margin-left: 4px;
+}
+
+.status-bar__key {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-weight: 500;
+}
+
+.status-bar__key::after {
+  content: ":";
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+
+.status-bar__value {
+  color: var(--text);
+}
+
+/* ----- Beta badge — bracket frame, monotone phosphor ------------------ */
+
+/* The badge becomes "[ BETA ]" in dim phosphor. Brackets are pseudo-
+   elements so we don't need a template change. */
+.beta-badge {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.beta-badge::before {
+  content: "[";
+  margin-right: 4px;
+  color: var(--text-muted);
+}
+
+.beta-badge::after {
+  content: "]";
+  margin-left: 4px;
+  color: var(--text-muted);
+}
+
+.beta-badge--hero {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  transform: translateX(calc(100% + var(--sp-2)));
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+}
+
+/* ----- Site main ------------------------------------------------------ */
+
+.site-main {
+  flex: 1 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ----- Footer with "//" separators ----------------------------------- */
+
+.site-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-5);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.site-footer__brand {
+  color: var(--accent);
+  letter-spacing: 0.08em;
+}
+
+.site-footer__sep {
+  opacity: 0.5;
+}
+
+.site-footer__link {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color var(--t-fast);
+}
+
+.site-footer__link:hover {
+  color: var(--text);
+}
+
+/* ----- Disclosure banner ---------------------------------------------- */
+
+.disclosure-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.disclosure-banner__text {
+  margin: 0;
+  flex: 1;
+}
+
+.disclosure-banner__text a {
+  color: var(--accent);
+}
+
+.disclosure-banner__form {
+  margin: 0;
+}
+
+.disclosure-banner__dismiss {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: var(--sp-1) var(--sp-3);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.disclosure-banner__dismiss:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ----- Legal pages ---------------------------------------------------- */
+
+.legal {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--sp-6) var(--sp-5);
+  line-height: 1.6;
+}
+
+.legal__heading {
+  font-family: var(--font-display);
+  margin-bottom: var(--sp-2);
+}
+
+.legal__updated {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  margin-bottom: var(--sp-5);
+}
+
+.legal h2 {
+  margin-top: var(--sp-5);
+  margin-bottom: var(--sp-2);
+  font-size: 1.125rem;
+}
+
+.legal ul {
+  padding-left: var(--sp-5);
+}
+
+.legal li {
+  margin-bottom: var(--sp-2);
+}
+
+/* ----- Header nav ----------------------------------------------------- */
+
+.header-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.header-nav__link {
+  font-size: 0.9375rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color var(--t-fast);
+}
+
+.header-nav__link:hover {
+  color: var(--text);
+}
+
+.header-nav__logout {
+  display: inline-flex;
+  margin: 0;
+}
+
+.header-nav__link--button {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+@media (min-width: 720px) {
+  .site-header {
+    padding: var(--sp-4) var(--sp-6);
+  }
+}

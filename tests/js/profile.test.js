@@ -5,17 +5,12 @@ const profile = loadProfile();
 
 // ---------------------------------------------------------------------------
 // Minimal DOM scaffolding shared by tests that drive renderProfile / handleEvent.
-// Mirrors the structure of src/odin/templates/profile.html.
+// Mirrors the structure of src/odin/templates/profile.html after the Matrix
+// rebrand: progress is a single .progress-bar element with a .progress-bar__line
+// child that profile.js fills via innerHTML, and gauges use the .gauge-line
+// (single-row ASCII rule) markup instead of the old .gauge / .gauge__fill bars.
 // ---------------------------------------------------------------------------
 function buildProfileDom() {
-  const stages = [
-    "categorized",
-    "queries",
-    "searching",
-    "fetching",
-    "synthesizing",
-    "assessing",
-  ];
   document.body.innerHTML = `
     <span class="badge" id="category-badge">
       <i class="fa-solid fa-circle-nodes" aria-hidden="true"></i>
@@ -27,9 +22,7 @@ function buildProfileDom() {
     <p id="summary"></p>
     <div id="exposition"></div>
     <span id="byline-sources"></span>
-    <ol id="progress-strip">${stages
-      .map((s) => `<li class="progress-step" data-stage="${s}"></li>`)
-      .join("")}</ol>
+    <div id="progress-strip" class="progress-bar"><span class="progress-bar__line"></span></div>
     <section id="section-events"><span id="events-count"></span><ol class="events" data-empty="none"></ol></section>
     <section id="section-highlights"><span id="highlights-hint"></span><ul class="findings" data-empty="none"></ul></section>
     <section id="section-lowlights"><span id="lowlights-hint"></span><ul class="findings" data-empty="none"></ul></section>
@@ -58,12 +51,27 @@ describe("el", () => {
 });
 
 describe("buildGauge", () => {
-  test("renders label, percent value, and fill width", () => {
-    const wrap = profile.buildGauge("Conf", 78, "gauge--confidence");
-    expect(wrap.querySelector(".gauge__label").textContent).toBe("Conf");
-    expect(wrap.querySelector(".gauge__value").textContent).toBe("78%");
-    expect(wrap.querySelector(".gauge__fill").style.width).toBe("78%");
-    expect(wrap.className).toBe("gauge gauge--confidence");
+  test("renders label, percent value, and a marker in the rule", () => {
+    const wrap = profile.buildGauge("Conf", 78, "gauge-line--confidence");
+    expect(wrap.querySelector(".gauge-line__label").textContent).toBe("Conf");
+    expect(wrap.querySelector(".gauge-line__value").textContent).toBe("78%");
+    expect(wrap.querySelector(".gauge-line__marker").textContent).toBe("▓");
+    expect(wrap.className).toBe("gauge-line gauge-line--confidence");
+  });
+
+  test("rule length is the configured RULE_WIDTH and contains exactly one marker", () => {
+    const wrap = profile.buildGauge("X", 50, "");
+    const rule = wrap.querySelector(".gauge-line__rule");
+    // textContent collapses the marker span's "▓" plus the surrounding dots.
+    // RULE_WIDTH (24) chars total: 23 dots + 1 marker = 24.
+    expect(rule.textContent.length).toBe(24);
+    expect(rule.querySelectorAll(".gauge-line__marker").length).toBe(1);
+  });
+
+  test("100% places marker at the right end (last position)", () => {
+    const wrap = profile.buildGauge("X", 100, "");
+    const rule = wrap.querySelector(".gauge-line__rule");
+    expect(rule.textContent[rule.textContent.length - 1]).toBe("▓");
   });
 });
 
@@ -72,31 +80,36 @@ describe("buildSentimentGauge", () => {
 
   test("positive value prefixes with + and renders end labels", () => {
     const wrap = profile.buildSentimentGauge({ ...baseOpts, value: 0.32 });
-    expect(wrap.querySelector(".gauge__value").textContent).toBe("+32");
-    expect(wrap.querySelector(".gauge__marker").style.left).toBe("66%");
-    expect(wrap.querySelector(".gauge__end--left").textContent).toBe("L");
-    expect(wrap.querySelector(".gauge__end--right").textContent).toBe("R");
+    expect(wrap.querySelector(".gauge-line__value").textContent).toBe("+32");
+    expect(wrap.querySelector(".gauge-line__end--left").textContent).toBe("L");
+    expect(wrap.querySelector(".gauge-line__end--right").textContent).toBe("R");
+    expect(wrap.querySelector(".gauge-line__marker").textContent).toBe("▓");
   });
 
-  test("negative value keeps native sign", () => {
+  test("negative value keeps native sign and places marker left of center", () => {
     const wrap = profile.buildSentimentGauge({ ...baseOpts, value: -0.5 });
-    expect(wrap.querySelector(".gauge__value").textContent).toBe("-50");
-    expect(wrap.querySelector(".gauge__marker").style.left).toBe("25%");
+    expect(wrap.querySelector(".gauge-line__value").textContent).toBe("-50");
+    const rule = wrap.querySelector(".gauge-line__rule");
+    // RULE_WIDTH=24, center=12, marker at 12 + round(-0.5*12) = 12 - 6 = 6.
+    // textContent: 6 chars of "─" + "▓" + 5 chars + "·" (center) + 11 chars.
+    expect(rule.textContent[6]).toBe("▓");
   });
 
-  test("zero renders no sign prefix", () => {
+  test("zero renders no sign prefix and marker sits at center", () => {
     const wrap = profile.buildSentimentGauge({ ...baseOpts, value: 0 });
-    expect(wrap.querySelector(".gauge__value").textContent).toBe("0");
+    expect(wrap.querySelector(".gauge-line__value").textContent).toBe("0");
+    const rule = wrap.querySelector(".gauge-line__rule");
+    expect(rule.textContent[12]).toBe("▓");
   });
 
-  test("neutral=true adds the gauge__track--neutral class", () => {
+  test("neutral=true adds the gauge-line--neutral class", () => {
     const wrap = profile.buildSentimentGauge({ ...baseOpts, value: 0, neutral: true });
-    expect(wrap.querySelector(".gauge__track--neutral")).not.toBeNull();
+    expect(wrap.classList.contains("gauge-line--neutral")).toBe(true);
   });
 
   test("neutral defaults to false (no neutral class)", () => {
     const wrap = profile.buildSentimentGauge({ ...baseOpts, value: 0 });
-    expect(wrap.querySelector(".gauge__track--neutral")).toBeNull();
+    expect(wrap.classList.contains("gauge-line--neutral")).toBe(false);
   });
 });
 
@@ -129,56 +142,53 @@ describe("setCategory", () => {
 
 describe("advanceProgress", () => {
   beforeEach(() => {
-    const stages = [
-      "categorized",
-      "queries",
-      "searching",
-      "fetching",
-      "synthesizing",
-      "assessing",
-    ];
-    document.body.innerHTML = `<ol id="progress-strip">${stages
-      .map((s) => `<li class="progress-step" data-stage="${s}"></li>`)
-      .join("")}</ol>`;
+    profile.resetProgress();
+    document.body.innerHTML =
+      '<div id="progress-strip" class="progress-bar"><span class="progress-bar__line"></span></div>';
   });
 
-  test("marks completed steps done and current step active", () => {
+  function lineHtml() {
+    return document.querySelector("#progress-strip .progress-bar__line").innerHTML;
+  }
+
+  test("renders filled segments for completed stages and a cursor on the active one", () => {
     profile.advanceProgress("searching");
-    const steps = [...document.querySelectorAll(".progress-step")];
-    expect(steps[0].className).toBe("progress-step is-done");
-    expect(steps[1].className).toBe("progress-step is-done");
-    expect(steps[2].className).toBe("progress-step is-active");
-    expect(steps[3].className).toBe("progress-step");
+    const html = lineHtml();
+    // Two prior stages should be fully filled
+    expect(html).toContain('<span class="progress-bar__filled">==========</span>');
+    // Active stage shows the blinking cursor
+    expect(html).toMatch(/<span class="progress-bar__cursor">[▒░]<\/span>/);
+    // Label should name the current stage
+    expect(html).toContain("search");
   });
 
   test("invalid stage is a no-op", () => {
-    const before = [...document.querySelectorAll(".progress-step")].map((s) => s.className);
+    profile.advanceProgress("categorized");
+    const before = lineHtml();
     profile.advanceProgress("invalid");
-    const after = [...document.querySelectorAll(".progress-step")].map((s) => s.className);
-    expect(after).toEqual(before);
+    expect(lineHtml()).toBe(before);
   });
 });
 
 describe("handleEvent", () => {
-  beforeEach(buildProfileDom);
+  beforeEach(() => {
+    profile.resetProgress();
+    buildProfileDom();
+  });
 
-  function activeStage() {
-    return document.querySelector(".progress-step.is-active")?.dataset.stage ?? null;
-  }
-  function doneStages() {
-    return [...document.querySelectorAll(".progress-step.is-done")].map((s) => s.dataset.stage);
+  function lineText() {
+    return document.querySelector("#progress-strip .progress-bar__line").textContent;
   }
 
-  test("categorized activates queries and sets the category badge", () => {
+  test("categorized renders the bar at stage 1 (plan queries) and sets the badge", () => {
     profile.handleEvent({ type: "categorized", category: "person" });
-    expect(activeStage()).toBe("queries");
-    expect(doneStages()).toEqual(["categorized"]);
+    expect(lineText()).toContain("plan queries");
     expect(document.querySelector(".badge__label").textContent).toBe("Person");
   });
 
-  test("synthesizing activates the synthesize step", () => {
+  test("synthesizing advances the bar to the synthesize stage", () => {
     profile.handleEvent({ type: "synthesizing" });
-    expect(activeStage()).toBe("synthesizing");
+    expect(lineText()).toContain("synthesize");
   });
 
   test("profile event renders the deck and advances bar to assessing", () => {
@@ -196,7 +206,7 @@ describe("handleEvent", () => {
     expect(document.getElementById("sidebar-name").textContent).toBe("Subject");
     expect(document.getElementById("summary").textContent).toBe("First paragraph.");
     expect(document.querySelectorAll("#exposition p").length).toBe(1);
-    expect(activeStage()).toBe("assessing");
+    expect(lineText()).toContain("audit");
   });
 
   test("assessment event completes the bar and renders gauges + caveats", () => {
@@ -211,7 +221,7 @@ describe("handleEvent", () => {
       caveats: [{ brief: "careful", detail: "note" }],
     });
     expect(document.getElementById("progress-strip").classList.contains("is-complete")).toBe(true);
-    expect(document.querySelectorAll("#subject-compass .gauge__label").length).toBe(4);
+    expect(document.querySelectorAll("#subject-compass .gauge-line__label").length).toBe(4);
     expect(document.getElementById("audit-pct").textContent).toBe("50%");
   });
 
@@ -227,7 +237,10 @@ describe("handleEvent", () => {
 });
 
 describe("renderProfile findings + events", () => {
-  beforeEach(buildProfileDom);
+  beforeEach(() => {
+    profile.resetProgress();
+    buildProfileDom();
+  });
 
   test("highlights render as <details> rows with title, brief and detail", () => {
     profile.renderProfile({
@@ -275,7 +288,7 @@ describe("renderProfile findings + events", () => {
     expect(label.textContent).toBe("− 01");
   });
 
-  test("timeline renders into Significant events with count", () => {
+  test("timeline renders into Significant events with bracketed dates", () => {
     profile.renderProfile({
       name: "x",
       category: "person",
@@ -290,7 +303,9 @@ describe("renderProfile findings + events", () => {
     });
     const events = document.querySelectorAll("#section-events .events .events__item");
     expect(events.length).toBe(2);
-    expect(events[0].querySelector(".events__date").textContent).toBe("1815-12-10");
+    // Dates render bracketed (terminal-log feel) — "[1815-12-10]" not "1815-12-10"
+    expect(events[0].querySelector(".events__date").textContent).toBe("[1815-12-10]");
+    expect(events[1].querySelector(".events__date").textContent).toBe("[1843]");
     expect(document.getElementById("events-count").textContent).toBe("2 events");
   });
 
@@ -313,7 +328,10 @@ describe("renderProfile findings + events", () => {
 });
 
 describe("renderAssessment", () => {
-  beforeEach(buildProfileDom);
+  beforeEach(() => {
+    profile.resetProgress();
+    buildProfileDom();
+  });
 
   const sample = {
     confidence: 0.78,
@@ -331,7 +349,7 @@ describe("renderAssessment", () => {
   test("Subject Compass renders four sentiment gauges with expected labels", () => {
     profile.renderAssessment(sample);
     const labels = [
-      ...document.querySelectorAll("#subject-compass .gauge__label"),
+      ...document.querySelectorAll("#subject-compass .gauge-line__label"),
     ].map((n) => n.textContent);
     expect(labels).toEqual(["Public sentiment", "Political lean", "Order", "Morality"]);
   });
@@ -339,12 +357,12 @@ describe("renderAssessment", () => {
   test("Source Audit renders confidence + source lean, and sets audit-pct", () => {
     profile.renderAssessment(sample);
     const labels = [
-      ...document.querySelectorAll("#source-audit .gauge__label"),
+      ...document.querySelectorAll("#source-audit .gauge-line__label"),
     ].map((n) => n.textContent);
     expect(labels).toEqual(["Profile confidence", "Source political lean"]);
-    expect(document.querySelector("#source-audit .gauge--confidence .gauge__value").textContent).toBe(
-      "78%",
-    );
+    expect(
+      document.querySelector("#source-audit .gauge-line--confidence .gauge-line__value").textContent,
+    ).toBe("78%");
     expect(document.getElementById("audit-pct").textContent).toBe("78%");
   });
 

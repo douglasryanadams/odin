@@ -1,0 +1,54 @@
+/* =========================================================================
+   Odin — design tokens
+   Phosphor-on-CRT-black palette (Matrix rebrand). All colors are OKLCH-
+   first; hex equivalents in comments are for tooling that doesn't yet
+   render OKLCH. Tokens are the only place these values appear — every
+   component file consumes them through var().
+   ========================================================================= */
+
+:root {
+  /* Surfaces — pure CRT black with a subtle cyan-green tint at elevation */
+  --bg:        oklch(8% 0 0deg);          /* #050505 */
+  --surface:   oklch(13% 0 0deg);         /* #1a1a1a */
+  --surface-2: oklch(17% 0.02 155deg);    /* phosphor-tinted card */
+  --border:    oklch(28% 0.06 155deg);    /* phosphor-tinted divider */
+
+  /* Text — dim phosphor at rest, mid phosphor for body, muted for labels */
+  --text:       oklch(78% 0.20 155deg);   /* primary body phosphor */
+  --text-muted: oklch(55% 0.16 155deg);   /* dim phosphor labels */
+
+  /* Active phosphor — what the CRT writes brightly when the system is "lit" */
+  --primary: oklch(82% 0.22 155deg);      /* focus, active, CTA */
+  --accent:  oklch(72% 0.18 150deg);      /* slight hue shift for variety */
+  --glow:    oklch(92% 0.22 155deg);      /* near-white phosphor on hover */
+
+  /* Status */
+  --ok:     oklch(82% 0.22 155deg);       /* same as primary */
+  --warn:   oklch(80% 0.17 80deg);        /* amber, used sparingly */
+  --danger: oklch(60% 0.24 18deg);        /* matrix red-pill red */
+
+  /* Typography — Orbitron for display/wordmark (bloom-friendly at weight
+     900), Courier Prime for body and mono. Audiowide fallback in case
+     Orbitron fails to load. */
+  --font-display: "Orbitron", "Audiowide", ui-monospace, monospace;
+  --font-body:    "Courier Prime", "Courier New", ui-monospace, Menlo, monospace;
+  --font-mono:    "Courier Prime", "Courier New", ui-monospace, Menlo, monospace;
+
+  /* Spacing scale */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+
+  /* Radii — terminal has square pixels; only true-pill chips keep a radius */
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-pill: 999px;
+
+  /* Motion */
+  --t-fast: 150ms ease;
+}

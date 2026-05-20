@@ -30,7 +30,7 @@
     </nav>
   {% else %}
     <span class="header-quota">
-      {% if used >= 1 %}{{ limit - used }}/{{ limit }} free ·{% endif %}
+      {% if used >= 1 %}{{ limit - used }}/{{ limit }} free //{% endif %}
       <a href="/login">sign in</a> for {{ auth_limit }}/day
     </span>
   {% endif %}
@@ -49,34 +49,13 @@
         <span><strong>Synthesized</strong> <time id="synth-time">—</time></span>
         <span><strong>Sources</strong> <span id="byline-sources">…</span></span>
       </div>
-      <ol class="progress-strip"
-          id="progress-strip"
-          aria-label="Pipeline progress">
-        <li class="progress-step is-active" data-stage="categorized">
-          <span class="progress-step__dot" aria-hidden="true"></span>
-          <span class="progress-step__label">Categorize</span>
-        </li>
-        <li class="progress-step" data-stage="queries">
-          <span class="progress-step__dot" aria-hidden="true"></span>
-          <span class="progress-step__label">Plan queries</span>
-        </li>
-        <li class="progress-step" data-stage="searching">
-          <span class="progress-step__dot" aria-hidden="true"></span>
-          <span class="progress-step__label">Search</span>
-        </li>
-        <li class="progress-step" data-stage="fetching">
-          <span class="progress-step__dot" aria-hidden="true"></span>
-          <span class="progress-step__label">Load pages</span>
-        </li>
-        <li class="progress-step" data-stage="synthesizing">
-          <span class="progress-step__dot" aria-hidden="true"></span>
-          <span class="progress-step__label">Synthesize</span>
-        </li>
-        <li class="progress-step" data-stage="assessing">
-          <span class="progress-step__dot" aria-hidden="true"></span>
-          <span class="progress-step__label">Audit</span>
-        </li>
-      </ol>
+      <div class="progress-bar"
+           id="progress-strip"
+           role="status"
+           aria-live="polite"
+           aria-label="Pipeline progress">
+        <span class="progress-bar__line">[          ·          ·          ·          ·          ·          ]   0%  categorize</span>
+      </div>
       <div id="exposition" class="profile__exposition"></div>
       <section id="section-events">
         <h2>

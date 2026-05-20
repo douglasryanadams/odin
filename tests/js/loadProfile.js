@@ -21,6 +21,20 @@ export function loadProfile() {
       close() {}
     },
     console,
+    // The progress bar uses performance.now() + requestAnimationFrame for
+    // the cursor-blink and inter-stage fill animation. Pass these through
+    // from the happy-dom-provided globals (vitest env).
+    performance,
+    requestAnimationFrame:
+      typeof requestAnimationFrame !== "undefined"
+        ? requestAnimationFrame
+        : (cb) => setTimeout(() => cb(performance.now()), 16),
+    cancelAnimationFrame:
+      typeof cancelAnimationFrame !== "undefined"
+        ? cancelAnimationFrame
+        : (id) => clearTimeout(id),
+    setTimeout,
+    clearTimeout,
   };
   vm.createContext(sandbox);
   vm.runInContext(readFileSync(SOURCE_PATH, "utf8"), sandbox);

@@ -1,0 +1,175 @@
+/* =========================================================================
+   Odin — hero / landing page
+   Terminal-styled search box with "> " prompt, [ Return ] wrapped
+   submit button, breathing-room margin above the input, and a
+   first-input quota fade (driven by JS that adds .is-hidden).
+   ========================================================================= */
+
+.page-hero .site-main {
+  justify-content: center;
+  align-items: center;
+  padding: var(--sp-7) var(--sp-5);
+  min-height: 100vh;
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-5);
+  width: 100%;
+  max-width: 640px;
+  text-align: center;
+}
+
+.hero .wordmark--hero {
+  margin: 0;
+  line-height: 1;
+}
+
+.hero__brand {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-end;
+}
+
+.hero__tagline {
+  color: var(--text-muted);
+  font-size: 1.0625rem;
+  letter-spacing: 0.04em;
+}
+
+.hero__quota {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  letter-spacing: 0.04em;
+  font-family: var(--font-mono);
+  transition: opacity 350ms ease-out;
+}
+
+.hero__quota.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hero__quota-logout {
+  display: inline;
+  margin: 0;
+}
+
+.hero__quota-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+}
+
+/* ----- Search form — terminal vocabulary ----------------------------- */
+
+/* "Blank screen" breathing room above the input: the hero opens with
+   the wordmark, the typed-in tagline, then a wide gap, then the prompt. */
+.search-form {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-2);
+  width: 100%;
+  margin-top: var(--sp-8);
+}
+
+.search-form__field {
+  flex: 1 1 auto;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* Hide the magnifying-glass icon — a terminal doesn't carry GUI
+   affordances. The "> " prompt below replaces the visual cue. */
+.search-form__icon {
+  display: none;
+}
+
+.search-form__field::before {
+  content: "> ";
+  position: absolute;
+  left: var(--sp-4);
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  color: var(--primary);
+  letter-spacing: 0.08em;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.search-form__input {
+  width: 100%;
+  min-height: 52px;
+  padding: var(--sp-3) var(--sp-4) var(--sp-3) calc(var(--sp-4) + 24px);
+  font-size: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  caret-color: var(--primary);
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  transition:
+    border-color var(--t-fast),
+    box-shadow var(--t-fast);
+}
+
+.search-form__input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.search-form__input:hover {
+  border-color: var(--glow);
+}
+
+/* Focus is intentionally subtle — a terminal prompt doesn't halo
+   its own input line. Just brighten the border. */
+.search-form__input:focus-visible {
+  border-color: var(--primary);
+  outline: none;
+  box-shadow: none;
+}
+
+/* Submit button reads as a keyboard "Return" key: [ Return ⏎ ] */
+.search-form__submit {
+  min-height: 52px;
+  padding-left: var(--sp-4);
+  padding-right: var(--sp-4);
+}
+
+.search-form__submit::before {
+  content: "[ ";
+  font-family: var(--font-mono);
+}
+
+.search-form__submit::after {
+  content: " ]";
+  font-family: var(--font-mono);
+}
+
+@media (max-width: 519px) {
+  .search-form__submit-label {
+    display: none;
+  }
+
+  .search-form__submit {
+    padding-left: var(--sp-3);
+    padding-right: var(--sp-3);
+  }
+
+  .search-form__submit::before,
+  .search-form__submit::after {
+    /* On mobile the icon stands alone — brackets would crowd it */
+    content: none;
+  }
+}
