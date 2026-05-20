@@ -173,6 +173,24 @@ def test_auth_verify_captures_login_ip_into_session(client: TestClient) -> None:
     assert session.ip
 
 
+def test_auth_verify_honors_x_forwarded_for_for_session_ip(client: TestClient) -> None:
+    """When fronted by a trusted proxy, request_ip resolves to X-Forwarded-For, not the TCP peer.
+
+    Regression for the production symptom where session.ip captured the nginx docker-bridge
+    address (172.21.0.6) instead of the real viewer IP forwarded by CloudFront -> nginx.
+    """
+    token = _auth.generate_magic_token("user@example.com", TEST_SECRET)
+    response = client.get(
+        f"/auth/verify?token={token}",
+        headers={"X-Forwarded-For": "203.0.113.42"},
+        follow_redirects=False,
+    )
+    cookie = response.cookies.get("odin_session")
+    assert cookie is not None
+    session = _auth.verify_session_value(cookie, TEST_SECRET)
+    assert session.ip == "203.0.113.42"
+
+
 def test_auth_verify_invalid_token_renders_error(client: TestClient) -> None:
     """GET /auth/verify with a bad token renders an error on the login page."""
     response = client.get("/auth/verify?token=garbage.token")
