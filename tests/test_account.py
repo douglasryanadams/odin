@@ -60,17 +60,29 @@ def test_dashboard_shows_delete_account_form(client: TestClient) -> None:
     assert 'action="/account/delete"' in response.text
 
 
-def test_status_bar_renders_email_and_ip_for_authenticated_pages(client: TestClient) -> None:
-    """The base layout's status bar shows PILOT email and NODE IP when signed in."""
-    session = _auth.create_session_value("user@example.com", TEST_SECRET, ip="203.0.113.5")
-    response = client.get("/dashboard", cookies={"odin_session": session})
+def test_status_bar_renders_email_and_live_ip_for_authenticated_pages(
+    client: TestClient,
+) -> None:
+    """The status bar shows the live viewer IP from X-Forwarded-For, not a session-baked IP.
+
+    Regression for the production symptom where NODE displayed 172.21.0.6 (the nginx
+    docker-bridge address baked into pre-fix sessions) instead of the real viewer IP.
+    The session below carries that stale value to prove the template ignores it.
+    """
+    session = _auth.create_session_value("user@example.com", TEST_SECRET, ip="172.21.0.6")
+    response = client.get(
+        "/dashboard",
+        cookies={"odin_session": session},
+        headers={"X-Forwarded-For": "198.51.100.7"},
+    )
     assert response.status_code == 200
     body = response.text
     assert "status-bar" in body
     assert "PILOT" in body
     assert "user@example.com" in body
     assert "NODE" in body
-    assert "203.0.113.5" in body
+    assert "198.51.100.7" in body
+    assert "172.21.0.6" not in body
 
 
 # ---------------------------------------------------------------------------
