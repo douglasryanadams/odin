@@ -83,7 +83,7 @@
         </span>
         <span class="status-bar__cell">
           <span class="status-bar__key">NODE</span>
-          <span class="status-bar__value mono">{{ user.ip or "unknown" }}</span>
+          <span class="status-bar__value mono">{{ (request.client.host if request.client else "") or "unknown" }}</span>
         </span>
       </div>
     {% endif %}
