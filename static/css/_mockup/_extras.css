@@ -1,0 +1,243 @@
+/* =========================================================================
+   Mockup B — terminal embellishments (toggleable)
+   Each effect is gated by a data-* attribute on <html>. The mockup switcher
+   widget toggles these attributes; localStorage persists choice. Defaults
+   to ON when the page first loads so the user sees them immediately.
+   Sandbox only.
+   ========================================================================= */
+
+/* ----- Shared blink animation (used by type-on cursor + block cursor) -- */
+@keyframes terminal-blink {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* ----- 1. Type-on tagline --------------------------------------------- */
+
+/* The hero tagline is replaced with typed-on text by inline JS in b.html.
+   The trailing cursor appears via .is-typed class set by that JS.
+   prefers-reduced-motion fallback skips the animation entirely. */
+.hero__tagline[data-typewriter-text].is-typing::after,
+.hero__tagline[data-typewriter-text].is-typed::after {
+  content: "_";
+  display: inline-block;
+  margin-left: 4px;
+  color: var(--primary);
+  font-family: var(--font-mono);
+  animation: terminal-blink 1.1s steps(1) infinite;
+  text-shadow: 0 0 6px color-mix(in oklch, var(--primary) 60%, transparent);
+}
+
+/* ----- 2. Terminal status bar ----------------------------------------- */
+
+/* The mockup adds a faux status bar inside the hero so signed-out users
+   can see how it would look. Default hidden; revealed via data-termstatus
+   on the html root. The bar is intentionally taller and brighter than the
+   production status bar so toggling it is unmistakable. */
+[data-mockup-status] {
+  display: none;
+}
+
+:root[data-termstatus="on"] [data-mockup-status] {
+  display: flex;
+  padding: 10px var(--sp-5) 10px calc(var(--sp-5) + 14px);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  background: var(--surface-2);
+  border-bottom: none;
+  border-top: 1px solid color-mix(in oklch, var(--primary) 35%, transparent);
+}
+
+/* "$ " prompt at the leading edge of the bar */
+:root[data-termstatus="on"] [data-mockup-status]::before {
+  content: "$";
+  position: absolute;
+  left: var(--sp-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--primary);
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+/* Wrap each cell in [ ... ] brackets via pseudo-elements */
+:root[data-termstatus="on"] [data-mockup-status] .status-bar__cell::before {
+  content: "[";
+  color: var(--primary);
+  margin-right: 4px;
+}
+
+:root[data-termstatus="on"] [data-mockup-status] .status-bar__cell::after {
+  content: "]";
+  color: var(--primary);
+  margin-left: 4px;
+}
+
+/* Trailing colon on the key (PILOT:, NODE:, AUTH:) */
+:root[data-termstatus="on"] [data-mockup-status] .status-bar__key::after {
+  content: ":";
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+
+/* When type-on is also active, the values are typed in by JS — give the
+   actively-typing value a trailing cursor so the bar reads as live. */
+[data-mockup-status] .status-bar__value.is-typing::after {
+  content: "_";
+  color: var(--primary);
+  margin-left: 2px;
+  animation: terminal-blink 1.1s steps(1) infinite;
+  text-shadow: 0 0 6px color-mix(in oklch, var(--primary) 60%, transparent);
+}
+
+/* ----- 3. Tracking block cursor in the search input ------------------- */
+
+/* Inline JS (b.html) creates a real .search-form__cursor element and a
+   hidden .search-form__measure element inside .search-form__field, then
+   listens for input/focus/click/keyup events to measure the caret X
+   position and reposition the cursor. Native caret is hidden so only
+   the decorative phosphor block shows — even while you're typing. */
+:root[data-cursor="block"] .search-form__input {
+  caret-color: transparent;
+}
+
+:root[data-cursor="block"] .search-form__input::placeholder {
+  color: transparent;
+}
+
+.search-form__cursor {
+  position: absolute;
+  top: 50%;
+  margin-top: -10px;
+  width: 10px;
+  height: 20px;
+  background: var(--primary);
+  pointer-events: none;
+  animation: terminal-blink 1.1s steps(1) infinite;
+  box-shadow: 0 0 8px color-mix(in oklch, var(--primary) 70%, transparent);
+  z-index: 2;
+  display: none;
+}
+
+:root[data-cursor="block"] .search-form__cursor {
+  display: block;
+}
+
+.search-form__measure {
+  visibility: hidden;
+  position: absolute;
+  top: 0;
+  left: 0;
+  white-space: pre;
+  pointer-events: none;
+}
+
+/* ----- 4. Code-rain overlay (Konami easter egg) ---------------------- */
+
+/* Triggered by the Konami sequence; ~80-96 columns of Katakana-half-
+   width glyphs fall through the viewport for ~6 seconds. Each column
+   contains per-character spans so we can vary alpha and hue along the
+   stream — the leading character (bottom) is bright white, fading
+   upward through bright/mid/dim/faint, with sparse cyan and deep-green
+   accents. This is what sells the Matrix effect; uniform-color streams
+   read as bands, not rain. */
+.code-rain-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2000;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 600ms ease-out;
+}
+
+.code-rain-overlay.is-fading {
+  opacity: 0;
+}
+
+.code-rain-overlay__col {
+  position: absolute;
+  top: -130vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.0;
+  animation: code-rain-fall linear infinite;
+  transform-origin: top center;
+}
+
+.code-rain__glyph {
+  display: block;
+  font-family: var(--font-mono);
+  color: var(--primary);
+  line-height: 1.0;
+}
+
+.code-rain__glyph--lead {
+  color: oklch(98% 0.02 155deg);
+  text-shadow:
+    0 0 2px oklch(98% 0.02 155deg),
+    0 0 10px var(--primary),
+    0 0 22px color-mix(in oklch, var(--primary) 60%, transparent);
+}
+
+.code-rain__glyph--bright {
+  color: var(--glow);
+  text-shadow:
+    0 0 4px var(--glow),
+    0 0 14px color-mix(in oklch, var(--glow) 40%, transparent);
+}
+
+.code-rain__glyph--mid {
+  color: var(--primary);
+  opacity: 0.85;
+}
+
+.code-rain__glyph--dim {
+  color: var(--primary);
+  opacity: 0.45;
+}
+
+.code-rain__glyph--faint {
+  color: var(--primary);
+  opacity: 0.18;
+}
+
+.code-rain__glyph--blue {
+  color: oklch(82% 0.16 200deg);
+}
+
+.code-rain__glyph--deep {
+  color: oklch(60% 0.18 150deg);
+}
+
+@keyframes code-rain-fall {
+  from { transform: translateY(0); }
+  to   { transform: translateY(260vh); }
+}
+
+/* ----- Reduced-motion guards ----------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  /* Type-on cursor stops blinking but stays visible */
+  .hero__tagline[data-typewriter-text].is-typed::after,
+  .hero__tagline[data-typewriter-text].is-typing::after,
+  [data-mockup-status] .status-bar__value.is-typing::after {
+    animation: none;
+    opacity: 1;
+  }
+
+  /* Block cursor stops blinking; stays visible as a static glyph */
+  :root[data-cursor="block"] .search-form__cursor {
+    animation: none;
+    opacity: 1;
+  }
+
+  /* Code-rain falls instantly to its end position (no continuous motion) */
+  .code-rain-overlay__col {
+    animation: none;
+    transform: translateY(50vh);
+  }
+}
