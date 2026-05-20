@@ -13,6 +13,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 from playwright.async_api import async_playwright
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from valkey.asyncio import Valkey
 
 from odin import curl_fetch, fetch, log
@@ -80,6 +81,13 @@ async def _add_security_headers(  # pyright: ignore[reportUnusedFunction]
     if settings.cookie_secure:
         response.headers.setdefault("Strict-Transport-Security", _HSTS)
     return response
+
+
+# Trust X-Forwarded-For / X-Forwarded-Proto from any upstream: the web container
+# is only reachable across the compose network (nginx fronts it; CloudFront fronts
+# nginx), so the TCP peer is always a proxy. Without this, request.client.host
+# resolves to the docker bridge IP of nginx instead of the real viewer.
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 
 def get_searxng_url() -> str:
