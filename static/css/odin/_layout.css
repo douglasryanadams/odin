@@ -226,11 +226,20 @@ body:has(.status-bar) {
 
 /* ----- Legal pages ---------------------------------------------------- */
 
+/* --text and --text-muted are overridden here to the same near-white
+   variants used inside .profile__main, so the About / Privacy / Terms
+   prose stays comfortable to read in long passes. Chrome elements
+   that use --primary or --accent keep their phosphor color. */
 .legal {
   max-width: 720px;
   margin: 0 auto;
   padding: var(--sp-6) var(--sp-5);
   line-height: 1.6;
+
+  --text:       oklch(95% 0.005 155deg);
+  --text-muted: oklch(70% 0.01 155deg);
+
+  color: var(--text);
 }
 
 .legal__heading {
