@@ -21,7 +21,7 @@ A complete visual identity change for Odin — from a Blade Runner homage (amber
    - Five additional blur stops at 6 / 14 / 32 / 68 / 130 px with falling chroma
    - **Specificity-safe selector**: `.wordmark.wordmark--hero` (doubled) so a same-specificity `.wordmark` rule downstream can't clobber the stack. The original cascade trap — where module load order silently decided which `text-shadow` won — is exactly the kind of thing the new `@layer` architecture also prevents.
 
-4. **Drop placeholders, show the cursor.** The hero search input loses its placeholder text; the blinking phosphor block cursor is the only signal that it's an input. The `> ` prompt sits absolute-positioned to the left of the input as the second cue.
+4. **Drop placeholders, show the cursor.** The hero search input loses its placeholder text; the blinking phosphor block cursor is the only signal that it's an input. The `>` prompt sits absolute-positioned to the left of the input as the second cue.
 
 5. **Type-on for one element per page.**
    - Hero page: only `.hero__tagline` types in (locked to *"Decrypt the public record."*)
@@ -41,9 +41,11 @@ A complete visual identity change for Odin — from a Blade Runner homage (amber
 10. **404 as a static C-style segfault.** Served by CloudFront `CustomErrorResponse` or nginx `error_page 404`, not by FastAPI — so the page works even when the upstream is down. Renders the Odin's-eye Norse myth as a fake C traceback (`mimir.draught() → odin.see() → huginn.recall() → muninn.fetch() → yggdrasil.lookup()`), framed with `*** Error ***` markers and an `=== Backtrace ===` header. `404 NOT FOUND` in deep phosphor red with an Orbitron bloom.
 
 11. **Re-architect the CSS for explicit cascade.** The original 1781-line `odin.css` becomes a 37-line index that declares the layer order:
+
     ```css
     @layer reset, tokens, base, components, pages;
     ```
+
     Each per-concern module imports onto a named layer (modules under `static/css/odin/`). Same-specificity surprises across files become impossible — pages always beat components, components always beat base, base always beats tokens.
 
 12. **Document the architecture.** `docs/frontend.md` is rewritten end-to-end with a file map, the cascade explanation, the same-specificity gotcha, the favicon-regeneration recipe, and the new linter+test table noting the vm-sandbox globals (`performance`, `requestAnimationFrame`) needed by `tests/js/loadProfile.js`.
@@ -52,14 +54,14 @@ A complete visual identity change for Odin — from a Blade Runner homage (amber
 
 | Element | Glyph | Where |
 |---|---|---|
-| Search prompt | `> ` | hero + header search field, section h2s |
+| Search prompt | `>` | hero + header search field, section h2s |
 | Submit button frame | `[ Return ⏎ ]` | hero search submit |
 | Status bar cell frame | `[KEY: value]` | sticky-bottom status bar |
 | Status bar leading prompt | `$` | first column of status bar |
 | Badge frame | `[ ... ]` | category badge, beta badge, finding labels |
 | Citation number frame | `[1]` `[2]` ... | numbered citations |
 | Wordmark sigil | trailing blinking `_` | small wordmark only |
-| Section heading prompt | `> ` | profile main section h2s |
+| Section heading prompt | `>` | profile main section h2s |
 | Footer separator | `//` | site footer and inline lists |
 | Synthesis timestamp | `[YYYY-MM-DDThh:mmZ]` | profile byline |
 | Progress segment fill | `==========` | active when filled, blank when pending |
