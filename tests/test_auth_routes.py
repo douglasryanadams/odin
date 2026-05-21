@@ -136,6 +136,31 @@ def test_send_link_rejects_sixth_ip_within_hour(
 
 
 @patch("odin.routes.auth.send_magic_link")
+def test_send_link_keys_ip_rate_limit_by_x_forwarded_for(
+    mock_send: MagicMock, client: TestClient, mock_valkey: MagicMock
+) -> None:
+    """IP-keyed Valkey state uses the same X-Forwarded-For value the NODE cell displays.
+
+    Pins the contract that anything keyed by request_ip(request) — magic-link rate
+    limit, daily quota, anonymous history — flows through request.client.host after
+    ProxyHeadersMiddleware resolves the trusted X-Forwarded-For chain. Without this,
+    a future change that introduced a parallel IP source (e.g. reading the header
+    directly) could silently diverge the display from the keys.
+    """
+    counts = _stateful_incr(mock_valkey)
+    mock_send.return_value = None
+    csrf = _seed_csrf(client)
+
+    client.post(
+        "/auth/send-link",
+        data={"email": "user@example.com", **csrf},
+        headers={"X-Forwarded-For": "198.51.100.7"},
+    )
+
+    assert "linkrate:ip:198.51.100.7" in counts
+
+
+@patch("odin.routes.auth.send_magic_link")
 def test_send_link_rejects_mismatched_csrf(mock_send: MagicMock, client: TestClient) -> None:
     """POST with a CSRF form value that does not match the cookie returns 403."""
     client.cookies.set("csrf_token", "real-token")
@@ -159,36 +184,6 @@ def test_auth_verify_sets_session_cookie_and_redirects(client: TestClient) -> No
     assert response.status_code == 303
     assert response.headers["location"] == "/"
     assert "odin_session" in response.cookies
-
-
-def test_auth_verify_captures_login_ip_into_session(client: TestClient) -> None:
-    """The /auth/verify response stores the link-clicker's IP in the session payload."""
-    token = _auth.generate_magic_token("user@example.com", TEST_SECRET)
-    response = client.get(f"/auth/verify?token={token}", follow_redirects=False)
-    cookie = response.cookies.get("odin_session")
-    assert cookie is not None
-    session = _auth.verify_session_value(cookie, TEST_SECRET)
-    assert session.email == "user@example.com"
-    # Starlette's TestClient defaults the client host to "testclient"; we just want a value.
-    assert session.ip
-
-
-def test_auth_verify_honors_x_forwarded_for_for_session_ip(client: TestClient) -> None:
-    """When fronted by a trusted proxy, request_ip resolves to X-Forwarded-For, not the TCP peer.
-
-    Regression for the production symptom where session.ip captured the nginx docker-bridge
-    address (172.21.0.6) instead of the real viewer IP forwarded by CloudFront -> nginx.
-    """
-    token = _auth.generate_magic_token("user@example.com", TEST_SECRET)
-    response = client.get(
-        f"/auth/verify?token={token}",
-        headers={"X-Forwarded-For": "203.0.113.42"},
-        follow_redirects=False,
-    )
-    cookie = response.cookies.get("odin_session")
-    assert cookie is not None
-    session = _auth.verify_session_value(cookie, TEST_SECRET)
-    assert session.ip == "203.0.113.42"
 
 
 def test_auth_verify_invalid_token_renders_error(client: TestClient) -> None:

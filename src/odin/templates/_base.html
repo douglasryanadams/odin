@@ -76,6 +76,7 @@
       </header>
     {% endblock %}
     {% if user %}
+      {% set node_ip = (request.client.host if request.client else "") or "unknown" %}
       <div class="status-bar" role="status" aria-label="Session identity">
         <span class="status-bar__cell">
           <span class="status-bar__key">PILOT</span>
@@ -83,8 +84,7 @@
         </span>
         <span class="status-bar__cell">
           <span class="status-bar__key">NODE</span>
-          <span class="status-bar__value mono"
-                data-typewriter-text="{{ user.ip or 'unknown' }}">{{ user.ip or "unknown" }}</span>
+          <span class="status-bar__value mono" data-typewriter-text="{{ node_ip }}">{{ node_ip }}</span>
         </span>
       </div>
     {% endif %}

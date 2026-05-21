@@ -75,9 +75,7 @@ async def auth_verify(
         return invalid
     if not await store.consume_magic_jti(valkey_client, claims.jti, claims.exp):
         return invalid
-    session_value = _auth.create_session_value(
-        claims.email, request.app.state.secret_key, ip=request_ip(request)
-    )
+    session_value = _auth.create_session_value(claims.email, request.app.state.secret_key)
     resp = RedirectResponse(url="/", status_code=303)
     resp.set_cookie(
         "odin_session",
