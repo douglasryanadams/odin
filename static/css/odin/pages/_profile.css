@@ -208,8 +208,25 @@
 
 /* ----- Main article column ------------------------------------------- */
 
+/* min-width: 0 lets the grid 1fr column shrink below intrinsic content
+   width (the progress bar's ~67-char mono line is wide); without this,
+   the bar's tail pushes past the right edge of the column and visually
+   slips under the sidebar. Combined with overflow-x:auto on
+   .progress-bar__line, the bar scrolls inside its own scope.
+
+   --text + --text-muted are overridden inside the narrative column so
+   the prose reads as near-white on black instead of dim phosphor on
+   black — the chrome (kicker, badges, section prompts, citations,
+   finding labels) keeps its phosphor color because those use --primary
+   or --accent, not --text. */
 .profile__main {
   max-width: 720px;
+  min-width: 0;
+
+  --text:       oklch(95% 0.005 155deg);
+  --text-muted: oklch(70% 0.01 155deg);
+
+  color: var(--text);
 }
 
 .profile__kicker {

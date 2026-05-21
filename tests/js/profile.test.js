@@ -22,7 +22,7 @@ function buildProfileDom() {
     <p id="summary"></p>
     <div id="exposition"></div>
     <span id="byline-sources"></span>
-    <div id="progress-strip" class="progress-bar"><span class="progress-bar__line"></span></div>
+    <div id="progress-strip" class="progress-bar"></div>
     <section id="section-events"><span id="events-count"></span><ol class="events" data-empty="none"></ol></section>
     <section id="section-highlights"><span id="highlights-hint"></span><ul class="findings" data-empty="none"></ul></section>
     <section id="section-lowlights"><span id="lowlights-hint"></span><ul class="findings" data-empty="none"></ul></section>
@@ -144,29 +144,32 @@ describe("advanceProgress", () => {
   beforeEach(() => {
     profile.resetProgress();
     document.body.innerHTML =
-      '<div id="progress-strip" class="progress-bar"><span class="progress-bar__line"></span></div>';
+      '<div id="progress-strip" class="progress-bar"></div>';
   });
 
-  function lineHtml() {
-    return document.querySelector("#progress-strip .progress-bar__line").innerHTML;
+  function barHtml() {
+    return document.getElementById("progress-strip").innerHTML;
   }
 
   test("renders filled segments for completed stages and a cursor on the active one", () => {
     profile.advanceProgress("searching");
-    const html = lineHtml();
+    const html = barHtml();
     // Two prior stages should be fully filled
     expect(html).toContain('<span class="progress-bar__filled">==========</span>');
     // Active stage shows the blinking cursor
     expect(html).toMatch(/<span class="progress-bar__cursor">[▒░]<\/span>/);
     // Label should name the current stage
     expect(html).toContain("search");
+    // Bar and label render as separate block-level siblings
+    expect(html).toContain('<span class="progress-bar__line">');
+    expect(html).toContain('<span class="progress-bar__label">');
   });
 
   test("invalid stage is a no-op", () => {
     profile.advanceProgress("categorized");
-    const before = lineHtml();
+    const before = barHtml();
     profile.advanceProgress("invalid");
-    expect(lineHtml()).toBe(before);
+    expect(barHtml()).toBe(before);
   });
 });
 
@@ -177,7 +180,7 @@ describe("handleEvent", () => {
   });
 
   function lineText() {
-    return document.querySelector("#progress-strip .progress-bar__line").textContent;
+    return document.getElementById("progress-strip").textContent;
   }
 
   test("categorized renders the bar at stage 1 (plan queries) and sets the badge", () => {

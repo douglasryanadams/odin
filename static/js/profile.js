@@ -79,15 +79,13 @@ let _progressState = "running"; // "running" | "done" | "failed"
 let _progressFailMsg = null;
 let _progressRAF = null;
 
-function _progressLineEl() {
-  const strip = $("progress-strip");
-  if (!strip) return null;
-  return strip.querySelector(".progress-bar__line");
+function _progressBarEl() {
+  return $("progress-strip");
 }
 
 function _renderProgressBar() {
-  const lineEl = _progressLineEl();
-  if (!lineEl) return;
+  const barEl = _progressBarEl();
+  if (!barEl) return;
 
   const totalSegs = STAGES.length;
   const failed = _progressState === "failed";
@@ -119,21 +117,27 @@ function _renderProgressBar() {
     return " ".repeat(SEG_WIDTH);
   });
 
-  let line = "[" + segs.join("·") + "]";
+  const bar = "[" + segs.join("·") + "]";
+
+  let labelText;
   if (failed) {
-    const msg = _progressFailMsg || "failed";
-    line += '<span class="progress-bar__label"> ' + msg + "</span>";
+    labelText = _progressFailMsg || "failed";
   } else if (done) {
-    line += '<span class="progress-bar__label">  100%  complete</span>';
+    labelText = " 100%  complete";
   } else {
     const stageProgress = (_progressIdx + sub) / totalSegs;
     const pct = Math.floor(stageProgress * 100);
-    const label = STAGE_LABELS[STAGES[_progressIdx]] || STAGES[_progressIdx];
-    line += '<span class="progress-bar__label"> '
-      + String(pct).padStart(3, " ")
-      + "%  " + label + "</span>";
+    const stageName = STAGE_LABELS[STAGES[_progressIdx]] || STAGES[_progressIdx];
+    labelText = String(pct).padStart(3, " ") + "%  " + stageName;
   }
-  lineEl.innerHTML = line;
+
+  // Render the bar and label as two block-level siblings so the label
+  // sits on its own line below the bar. Earlier iterations rendered
+  // them on one line, which let the label tail extend past .profile__main
+  // and visually slip behind the sidebar column on narrow viewports.
+  barEl.innerHTML =
+    '<span class="progress-bar__line">' + bar + "</span>" +
+    '<span class="progress-bar__label">' + labelText + "</span>";
 }
 
 function _scheduleProgressRender() {

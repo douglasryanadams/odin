@@ -15,6 +15,10 @@
   letter-spacing: 0;
 }
 
+/* Bar and label render as two block-level siblings so the label sits
+   on its own line below the bar. The bar can scroll horizontally if
+   the viewport is narrower than its intrinsic ~67-char width; the
+   label always stays fully visible inside .profile__main. */
 .progress-bar__line {
   display: block;
   white-space: pre;
@@ -36,8 +40,10 @@
 }
 
 .progress-bar__label {
+  display: block;
   color: var(--text);
-  margin-left: var(--sp-2);
+  margin-top: 2px;
+  line-height: 1.4;
 }
 
 /* Hidden via the `hidden` attribute once completeProgress() fires;
