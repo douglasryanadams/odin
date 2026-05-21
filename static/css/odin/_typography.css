@@ -1,0 +1,142 @@
+/* =========================================================================
+   Odin — typography and wordmark
+   Wordmark bloom recipe: doubled solid 1-2px inner halos visually
+   thicken Orbitron's thin strokes so the larger blur stops have ink
+   to wrap. Without the solid inner ring, the bloom reads as flat.
+   .wordmark.wordmark--hero/--small selectors are doubled for cascade
+   safety — equal-specificity rules elsewhere can otherwise clobber
+   the text-shadow stack.
+   ========================================================================= */
+
+h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin: 0;
+  color: var(--text);
+  font-size: 1.75rem;
+}
+
+h2,
+h3 {
+  font-family: var(--font-body);
+  letter-spacing: 0.04em;
+  margin: 0;
+  color: var(--text);
+}
+
+h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+p {
+  margin: 0;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+/* Mute the bloom on tiny labels so they don't blur into illegibility */
+.status-bar,
+.profile__panel-head,
+.gauge__label,
+.gauge__value,
+.history-item__time {
+  text-shadow: 0 0 2px;
+}
+
+@media (min-width: 720px) {
+  h1 {
+    font-size: 2.25rem;
+  }
+}
+
+/* ----- Wordmark ------------------------------------------------------- */
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--text);
+  text-decoration: none;
+  transition: text-shadow var(--t-fast);
+}
+
+.wordmark--hero {
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
+}
+
+.wordmark--small {
+  font-size: 1.125rem;
+  letter-spacing: 0.10em;
+}
+
+/* Trailing blinking underscore on the small wordmark — reads as
+   "session still attached." The hero wordmark is left alone; its bloom
+   stack is already doing the heavy lifting. */
+.wordmark--small::after {
+  content: "_";
+  color: var(--primary);
+  margin-left: 1px;
+  animation: terminal-blink 1.1s steps(1) infinite;
+}
+
+/* Hero wordmark — 7-stop bloom with doubled solid inner halos.
+   Selector doubled to .wordmark.wordmark--hero so this 7-stop stack
+   beats any 2-stop .wordmark fallback at higher specificity. */
+.wordmark.wordmark--hero {
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-shadow:
+    0 0 1px  var(--primary),
+    0 0 2px  var(--primary),
+    0 0 6px  color-mix(in oklch, var(--primary) 90%, transparent),
+    0 0 14px color-mix(in oklch, var(--primary) 70%, transparent),
+    0 0 32px color-mix(in oklch, var(--primary) 48%, transparent),
+    0 0 68px color-mix(in oklch, var(--primary) 28%, transparent),
+    0 0 130px color-mix(in oklch, var(--primary) 14%, transparent);
+}
+
+.wordmark.wordmark--hero:hover {
+  text-shadow:
+    0 0 1px  var(--glow),
+    0 0 3px  var(--glow),
+    0 0 8px  color-mix(in oklch, var(--glow) 90%, transparent),
+    0 0 18px color-mix(in oklch, var(--glow) 70%, transparent),
+    0 0 40px color-mix(in oklch, var(--glow) 50%, transparent),
+    0 0 80px color-mix(in oklch, var(--glow) 30%, transparent),
+    0 0 150px color-mix(in oklch, var(--glow) 16%, transparent);
+}
+
+.wordmark.wordmark--small {
+  font-weight: 800;
+  text-shadow:
+    0 0 1px  var(--primary),
+    0 0 4px  color-mix(in oklch, var(--primary) 80%, transparent),
+    0 0 10px color-mix(in oklch, var(--primary) 45%, transparent),
+    0 0 22px color-mix(in oklch, var(--primary) 22%, transparent);
+}
+
+/* Shared blink animation used by wordmark sigil, type-on cursor, and
+   the progress bar cursor */
+@keyframes terminal-blink {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wordmark--small::after {
+    animation: none;
+  }
+}

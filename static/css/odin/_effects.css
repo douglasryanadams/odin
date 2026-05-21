@@ -1,0 +1,101 @@
+/* =========================================================================
+   Odin — decorative effects (Konami code-rain, shared terminal-blink
+   keyframe, prefers-reduced-motion guards). Loaded after components so
+   any conflicting animation gets the last word.
+   ========================================================================= */
+
+/* ----- Konami code-rain overlay -------------------------------------- */
+
+/* Triggered by the Konami sequence (↑↑↓↓←→←→BA) anywhere on the site.
+   ~80-96 columns of half-width katakana fall through the viewport for
+   ~6 seconds. Each column is a stack of per-character spans so we can
+   vary alpha and hue along the stream — leading char bright white,
+   then bright → mid → dim → faint up the column, with sparse cyan
+   and deep-green accents. Uniform-color streams read as bands; the
+   per-glyph variation is what sells the rain as falling. */
+.code-rain-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2000;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 600ms ease-out;
+}
+
+.code-rain-overlay.is-fading {
+  opacity: 0;
+}
+
+.code-rain-overlay__col {
+  position: absolute;
+  top: -130vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.0;
+  animation: code-rain-fall linear infinite;
+  transform-origin: top center;
+}
+
+.code-rain__glyph {
+  display: block;
+  font-family: var(--font-mono);
+  color: var(--primary);
+  line-height: 1.0;
+}
+
+.code-rain__glyph--lead {
+  color: oklch(98% 0.02 155deg);
+  text-shadow:
+    0 0 2px oklch(98% 0.02 155deg),
+    0 0 10px var(--primary),
+    0 0 22px color-mix(in oklch, var(--primary) 60%, transparent);
+}
+
+.code-rain__glyph--bright {
+  color: var(--glow);
+  text-shadow:
+    0 0 4px var(--glow),
+    0 0 14px color-mix(in oklch, var(--glow) 40%, transparent);
+}
+
+.code-rain__glyph--mid {
+  color: var(--primary);
+  opacity: 0.85;
+}
+
+.code-rain__glyph--dim {
+  color: var(--primary);
+  opacity: 0.45;
+}
+
+.code-rain__glyph--faint {
+  color: var(--primary);
+  opacity: 0.18;
+}
+
+.code-rain__glyph--blue {
+  color: oklch(82% 0.16 200deg);
+}
+
+.code-rain__glyph--deep {
+  color: oklch(60% 0.18 150deg);
+}
+
+@keyframes code-rain-fall {
+  from { transform: translateY(0); }
+  to   { transform: translateY(260vh); }
+}
+
+/* ----- Reduced-motion guards ----------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  /* Code rain freezes mid-screen instead of animating */
+  .code-rain-overlay__col {
+    animation: none;
+    transform: translateY(50vh);
+  }
+}

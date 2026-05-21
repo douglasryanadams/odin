@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en"
+      data-termstatus="on">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mockup B // 404 // Odin Matrix rebrand</title>
+  <meta name="theme-color" content="#050505" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Audiowide&family=Courier+Prime:wght@400;700&family=Orbitron:wght@700;800;900&display=swap" />
+  <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+        integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A=="
+        crossorigin="anonymous"
+        referrerpolicy="no-referrer" />
+
+  <link rel="stylesheet" href="../static/css/odin.css" />
+  <link rel="stylesheet" href="../static/css/_mockup/b.css" />
+  <link rel="stylesheet" href="../static/css/_mockup/_common.css" />
+  <link rel="stylesheet" href="../static/css/_mockup/_extras.css" />
+  <link rel="stylesheet" href="../static/css/_mockup/_switcher.css" />
+
+  <style>
+    /* Inline mockup-only styles for the error page. The production refactor
+       will move these into a real templated 404 view + a small page-error
+       module under static/css/odin/. */
+    .page-error .site-main {
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: var(--sp-6) var(--sp-5);
+    }
+
+    .error-page {
+      width: 100%;
+      max-width: 760px;
+      margin: 0 auto;
+      font-family: var(--font-mono);
+    }
+
+    .error-page__code {
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 2.5rem;
+      letter-spacing: 0.08em;
+      color: var(--danger);
+      margin: 0 0 var(--sp-5) 0;
+      text-shadow:
+        0 0 1px  var(--danger),
+        0 0 2px  var(--danger),
+        0 0 8px  color-mix(in oklch, var(--danger) 80%, transparent),
+        0 0 22px color-mix(in oklch, var(--danger) 48%, transparent),
+        0 0 48px color-mix(in oklch, var(--danger) 24%, transparent);
+    }
+
+    .error-page__trace {
+      font-family: var(--font-mono);
+      font-size: 0.9375rem;
+      color: var(--text-muted);
+      white-space: pre-wrap;
+      line-height: 1.6;
+      margin: 0 0 var(--sp-6) 0;
+    }
+
+    .error-page__cmd {
+      color: var(--text);
+    }
+
+    .error-page__err {
+      color: var(--danger);
+    }
+
+    .error-page__path {
+      color: var(--danger);
+    }
+
+    .error-page__prompt {
+      color: var(--primary);
+    }
+
+    .error-page__prose {
+      color: var(--text);
+    }
+
+    .error-page__actions {
+      display: flex;
+      gap: var(--sp-4);
+      flex-wrap: wrap;
+    }
+
+    .error-page__actions .btn {
+      font-family: var(--font-mono);
+    }
+  </style>
+</head>
+<body class="page-error">
+
+  <header class="site-header">
+    <div class="site-header__brand">
+      <a href="b.html" class="wordmark wordmark--small" aria-label="Odin home">
+        <span>ODIN</span>
+      </a>
+      <span class="beta-badge" aria-label="Beta release">Beta</span>
+    </div>
+    <nav class="header-nav">
+      <a href="b.html" class="header-nav__link">Home</a>
+    </nav>
+  </header>
+
+  <div class="status-bar" data-mockup-status role="status" aria-label="Session identity">
+    <span class="status-bar__cell">
+      <span class="status-bar__key">PILOT</span>
+      <span class="status-bar__value">douglas@odin.local</span>
+    </span>
+    <span class="status-bar__cell">
+      <span class="status-bar__key">NODE</span>
+      <span class="status-bar__value mono">10.0.0.42</span>
+    </span>
+    <span class="status-bar__cell">
+      <span class="status-bar__key">AUTH</span>
+      <span class="status-bar__value">OK</span>
+    </span>
+  </div>
+
+  <main class="site-main">
+    <section class="error-page" role="alert">
+      <h1 class="error-page__code">404 NOT FOUND</h1>
+<pre class="error-page__trace"><span class="error-page__cmd">odin (pid 1): subject not found in public-record graph</span>
+<span class="error-page__err">*** Error: lookup failed in mimir.well — no draught for this query ***</span>
+
+<span class="error-page__prose">  In the old story, Odin All-Father came to Mimir's well — the
+  well at the root of the world tree, whose water held all
+  knowledge of what is and what has been. The giant Mimir, its
+  guardian, would not pour without payment. So Odin took his
+  right eye and dropped it into the dark water. He drank, and
+  left the eye behind to watch from the well thereafter.
+
+  We took the name for that eye: an instrument trained on the
+  open record, reporting what it sees. The bargain we offer
+  is the same one — your query for the eye's sight.
+
+  This URL is a draught Mimir never poured.</span>
+
+<span class="error-page__prompt">=== Backtrace ===</span>
+  #0  mimir.draught(<span class="error-page__path">/profile/unknown_subject</span>)        well.c:42
+  #1  odin.see(subject=null)                          eye.c:108
+  #2  huginn.recall(thought)                          ravens.c:7
+  #3  muninn.fetch(memory)                            ravens.c:8
+  #4  yggdrasil.lookup(record)                        tree.c:1
+
+<span class="error-page__err">*** Aborted ***</span></pre>
+      <div class="error-page__actions">
+        <a class="btn btn--primary" href="b.html">[ return to home ]</a>
+        <a class="btn" href="#">[ try another subject ]</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span class="site-footer__brand">odin</span>
+    <span class="site-footer__sep" aria-hidden="true">//</span>
+    <span class="site-footer__muted">profiles synthesized from the web</span>
+    <span class="site-footer__sep" aria-hidden="true">//</span>
+    <a class="site-footer__link" href="#">About</a>
+    <span class="site-footer__sep" aria-hidden="true">//</span>
+    <a class="site-footer__link" href="#">Privacy</a>
+    <span class="site-footer__sep" aria-hidden="true">//</span>
+    <a class="site-footer__link" href="#">Terms</a>
+  </footer>
+
+  <aside class="mockup-switcher" aria-label="Mockup controls">
+    <div class="mockup-switcher__row">
+      <span class="mockup-switcher__label">More</span>
+      <a class="mockup-switcher__btn" href="b.html">Hero page</a>
+      <a class="mockup-switcher__btn" href="profile.html">Profile page</a>
+      <a class="mockup-switcher__btn" href="style-tile.html">Style tile</a>
+    </div>
+    <p class="mockup-switcher__hint">404 mockup: Matrix system-fault aesthetic</p>
+  </aside>
+
+  <script>
+    // Konami sequence → code-rain easter egg, same as the other mockups.
+    const root = document.documentElement;
+
+    function startRain() {
+      document.querySelectorAll(".code-rain-overlay").forEach(el => el.remove());
+      const overlay = document.createElement("div");
+      overlay.className = "code-rain-overlay";
+      overlay.setAttribute("aria-hidden", "true");
+      const colCount = Math.min(96, Math.floor(window.innerWidth / 13));
+      for (let c = 0; c < colCount; c++) {
+        const col = document.createElement("div");
+        col.className = "code-rain-overlay__col";
+        col.style.left = ((c + 0.5) / colCount * 100) + "%";
+        col.style.animationDuration = (2.5 + Math.random() * 5) + "s";
+        col.style.animationDelay = (Math.random() * 2.5) + "s";
+        const len = 14 + Math.floor(Math.random() * 22);
+        for (let i = 0; i < len; i++) {
+          const glyph = document.createElement("span");
+          glyph.className = "code-rain__glyph";
+          const code = 0xFF65 + Math.floor(Math.random() * 60);
+          glyph.textContent = String.fromCharCode(code);
+          const fromEnd = len - 1 - i;
+          if (fromEnd === 0) glyph.classList.add("code-rain__glyph--lead");
+          else if (fromEnd <= 2) glyph.classList.add("code-rain__glyph--bright");
+          else if (fromEnd <= 6) glyph.classList.add("code-rain__glyph--mid");
+          else if (fromEnd <= 12) glyph.classList.add("code-rain__glyph--dim");
+          else glyph.classList.add("code-rain__glyph--faint");
+          const r = Math.random();
+          if (r < 0.06) glyph.classList.add("code-rain__glyph--blue");
+          else if (r < 0.14) glyph.classList.add("code-rain__glyph--deep");
+          col.appendChild(glyph);
+        }
+        overlay.appendChild(col);
+      }
+      document.body.appendChild(overlay);
+      setTimeout(() => {
+        overlay.classList.add("is-fading");
+        setTimeout(() => overlay.remove(), 700);
+      }, 6000);
+    }
+
+    const KONAMI_SEQ = ["ArrowUp","ArrowUp","ArrowDown","ArrowDown","ArrowLeft","ArrowRight","ArrowLeft","ArrowRight","b","a"];
+    let konamiIndex = 0;
+    document.addEventListener("keydown", e => {
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if (key === KONAMI_SEQ[konamiIndex]) {
+        konamiIndex++;
+        if (konamiIndex === KONAMI_SEQ.length) {
+          startRain();
+          konamiIndex = 0;
+        }
+      } else {
+        konamiIndex = key === KONAMI_SEQ[0] ? 1 : 0;
+      }
+    });
+  </script>
+</body>
+</html>

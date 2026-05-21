@@ -1,0 +1,116 @@
+/* =========================================================================
+   Odin — assessment gauges (Subject Compass, Source Audit)
+   Single-line ASCII rules driven by profile.js:
+     * positive gauges: ·····▓·····  (dots with a phosphor ▓ marker)
+     * divergent gauges: ──·──▓──   (em-dashes with center dot + marker)
+   ========================================================================= */
+
+.gauges,
+.assessment-gauges {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.assessment-caveats__title {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: var(--sp-5) 0 var(--sp-3) 0;
+}
+
+.caveats-list {
+  list-style: disc;
+  padding-left: var(--sp-5);
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.caveats-list__item {
+  font-size: 0.9375rem;
+  color: var(--text);
+}
+
+.caveats-list__empty {
+  list-style: none;
+  margin-left: calc(-1 * var(--sp-5));
+}
+
+/* ----- Gauge line ----------------------------------------------------- */
+
+.gauge-line {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: var(--sp-3);
+  align-items: baseline;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  margin: var(--sp-3) 0;
+  color: var(--text-muted);
+}
+
+.gauge-line__label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  overflow-wrap: anywhere;
+}
+
+.gauge-line__value {
+  color: var(--text);
+  font-weight: 700;
+  text-align: right;
+  font-family: var(--font-mono);
+}
+
+.gauge-line__rule {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  letter-spacing: 0;
+  white-space: pre;
+  line-height: 1.2;
+  flex: 0 0 auto;
+}
+
+.gauge-line__marker {
+  color: var(--primary);
+  text-shadow:
+    0 0 1px var(--primary),
+    0 0 6px color-mix(in oklch, var(--primary) 60%, transparent);
+}
+
+/* Divergent gauges flank the rule with left/right end labels */
+.gauge-line__row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin-top: 2px;
+}
+
+.gauge-line__end {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.gauge-line__end--left {
+  text-align: right;
+}
+
+.gauge-line__end--right {
+  text-align: left;
+}
+
+/* The neutral modifier is preserved for JS-test compatibility; visually
+   the rule looks identical, but the marker hue can be dialed down here
+   if we want neutral gauges to read less "active." */
+.gauge-line--neutral .gauge-line__marker {
+  /* same as default for now */
+}

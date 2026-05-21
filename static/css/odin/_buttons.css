@@ -1,0 +1,60 @@
+/* =========================================================================
+   Odin — buttons
+   The primary submit on the hero is wrapped with "[ ... ]" pseudo-
+   elements so it reads as a keyboard "Return" key.
+   ========================================================================= */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  min-height: 44px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--border);
+  color: var(--text);
+  background: var(--surface);
+  transition:
+    color var(--t-fast),
+    border-color var(--t-fast),
+    box-shadow var(--t-fast),
+    background var(--t-fast);
+}
+
+.btn:hover {
+  border-color: var(--glow);
+  color: var(--text);
+}
+
+.btn--primary {
+  border: 1px solid var(--primary);
+  background: transparent;
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.btn--primary:hover {
+  box-shadow: 0 0 24px -4px var(--primary);
+  color: var(--glow);
+  border-color: var(--glow);
+}
+
+.btn--ghost {
+  background: transparent;
+}
+
+/* Danger button — used on the dashboard delete-account card */
+.btn--danger {
+  background: color-mix(in oklch, var(--danger) 30%, var(--surface));
+  color: var(--text);
+  border-color: color-mix(in oklch, var(--danger) 50%, var(--border));
+}
+
+.btn--danger:hover {
+  background: color-mix(in oklch, var(--danger) 50%, var(--surface));
+}

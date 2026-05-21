@@ -1,0 +1,64 @@
+/* =========================================================================
+   Odin — pipeline progress bar
+   Single-line ASCII bar driven by profile.js — six "=" segments separated
+   by "·", with a blinking "▒/░" cursor at the leading edge of the active
+   segment. The bar animates between SSE events so the user can see that
+   the pipeline is still running even when no new data has arrived.
+   ========================================================================= */
+
+.progress-bar {
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  color: var(--text-muted);
+  margin: 0 0 var(--sp-4) 0;
+  padding: var(--sp-2) 0;
+  letter-spacing: 0;
+}
+
+/* Bar and label render as two block-level siblings so the label sits
+   on its own line below the bar. The bar can scroll horizontally if
+   the viewport is narrower than its intrinsic ~67-char width; the
+   label always stays fully visible inside .profile__main. */
+.progress-bar__line {
+  display: block;
+  white-space: pre;
+  overflow-x: auto;
+  line-height: 1.4;
+}
+
+.progress-bar__filled {
+  color: var(--primary);
+}
+
+.progress-bar__cursor {
+  color: var(--primary);
+  text-shadow: 0 0 6px color-mix(in oklch, var(--primary) 60%, transparent);
+}
+
+.progress-bar__failed {
+  color: var(--danger);
+}
+
+.progress-bar__label {
+  display: block;
+  color: var(--text);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+/* Hidden via the `hidden` attribute once completeProgress() fires;
+   keeping a CSS rule here so the production .is-complete class continues
+   to evaluate as expected by older tests. */
+.progress-bar.is-complete {
+  /* No additional styling — the [hidden] attr does the work */
+}
+
+.progress-bar.is-failed .progress-bar__label {
+  color: var(--danger);
+}
+
+@media (max-width: 519px) {
+  .progress-bar {
+    font-size: 0.8125rem;
+  }
+}

@@ -1,0 +1,72 @@
+/* =========================================================================
+   Odin — error page (404 / 50x)
+   Layout: large Orbitron-bloom error code, segfault-styled body that
+   carries the Odin's-eye narrative as a fake C stacktrace, two
+   bracketed action buttons. Served from the CDN/nginx as a static
+   page; no Jinja, no dynamic state.
+   ========================================================================= */
+
+.page-error .site-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--sp-6) var(--sp-5);
+}
+
+.error-page {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  font-family: var(--font-mono);
+}
+
+.error-page__code {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 2.5rem;
+  letter-spacing: 0.08em;
+  color: var(--danger);
+  margin: 0 0 var(--sp-5) 0;
+  text-shadow:
+    0 0 1px  var(--danger),
+    0 0 2px  var(--danger),
+    0 0 8px  color-mix(in oklch, var(--danger) 80%, transparent),
+    0 0 22px color-mix(in oklch, var(--danger) 48%, transparent),
+    0 0 48px color-mix(in oklch, var(--danger) 24%, transparent);
+}
+
+.error-page__trace {
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  line-height: 1.6;
+  margin: 0 0 var(--sp-6) 0;
+}
+
+.error-page__cmd {
+  color: var(--text);
+}
+
+.error-page__err,
+.error-page__path {
+  color: var(--danger);
+}
+
+.error-page__prompt {
+  color: var(--primary);
+}
+
+.error-page__prose {
+  color: var(--text);
+}
+
+.error-page__actions {
+  display: flex;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+}
+
+.error-page__actions .btn {
+  font-family: var(--font-mono);
+}

@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en"
+      data-typeon="on"
+      data-termstatus="on"
+      data-cursor="block">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mockup B // Phosphor Terminal // Odin Matrix rebrand</title>
+  <meta name="theme-color" content="#050505" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Audiowide&family=Courier+Prime:wght@400;700&family=Orbitron:wght@700;800;900&display=swap" />
+  <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+        integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A=="
+        crossorigin="anonymous"
+        referrerpolicy="no-referrer" />
+
+  <link rel="stylesheet" href="../static/css/odin.css" />
+  <link rel="stylesheet" href="../static/css/_mockup/b.css" />
+  <link rel="stylesheet" href="../static/css/_mockup/_common.css" />
+  <link rel="stylesheet" href="../static/css/_mockup/_extras.css" />
+  <link rel="stylesheet" href="../static/css/_mockup/_switcher.css" />
+</head>
+<body class="page-hero">
+
+  <!-- Faux signed-in status bar; gated by data-termstatus="on".
+       data-typewriter-text on each value lets the type-on JS animate it. -->
+  <div class="status-bar" data-mockup-status role="status" aria-label="Session identity">
+    <span class="status-bar__cell">
+      <span class="status-bar__key">PILOT</span>
+      <span class="status-bar__value">douglas@odin.local</span>
+    </span>
+    <span class="status-bar__cell">
+      <span class="status-bar__key">NODE</span>
+      <span class="status-bar__value mono">10.0.0.42</span>
+    </span>
+    <span class="status-bar__cell">
+      <span class="status-bar__key">AUTH</span>
+      <span class="status-bar__value">OK</span>
+    </span>
+  </div>
+
+  <main class="site-main">
+    <section class="hero">
+      <div class="hero__brand">
+        <h1 class="wordmark wordmark--hero">ODIN</h1>
+        <span class="beta-badge beta-badge--hero" aria-label="Beta release">Beta</span>
+      </div>
+      <p class="hero__tagline"
+         data-typewriter-text="Decrypt the public record.">Decrypt the public record.</p>
+      <form class="search-form" role="search">
+        <label class="search-form__field">
+          <span class="search-form__icon" aria-hidden="true">
+            <i class="fa-solid fa-magnifying-glass"></i>
+          </span>
+          <input class="search-form__input"
+                 type="search"
+                 autocomplete="off"
+                 aria-label="Search subjects" />
+        </label>
+        <button class="btn btn--primary search-form__submit" type="button">
+          <span class="search-form__submit-label">Return</span>
+          <i class="fa-solid fa-arrow-turn-down-left" aria-hidden="true"></i>
+        </button>
+      </form>
+      <p class="hero__quota">3 of 3 free searches remaining // sign in for 20/day</p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span class="site-footer__brand">odin</span>
+    <span class="site-footer__sep" aria-hidden="true">//</span>
+    <span class="site-footer__muted">profiles synthesized from the web</span>
+    <span class="site-footer__sep" aria-hidden="true">//</span>
+    <a class="site-footer__link" href="#">About</a>
+    <span class="site-footer__sep" aria-hidden="true">//</span>
+    <a class="site-footer__link" href="#">Privacy</a>
+    <span class="site-footer__sep" aria-hidden="true">//</span>
+    <a class="site-footer__link" href="#">Terms</a>
+  </footer>
+
+  <aside class="mockup-switcher" aria-label="Mockup controls">
+    <div class="mockup-switcher__row">
+      <span class="mockup-switcher__label">Extras</span>
+      <button class="mockup-switcher__btn" data-toggle="typeon">Type-on</button>
+      <button class="mockup-switcher__btn" data-toggle="termstatus">Status bar</button>
+      <button class="mockup-switcher__btn" data-toggle="cursor">Block cursor</button>
+    </div>
+    <div class="mockup-switcher__row">
+      <span class="mockup-switcher__label">Try</span>
+      <button class="mockup-switcher__btn" data-action="replay-typeon" type="button">Replay type-on</button>
+      <button class="mockup-switcher__btn" data-action="rain" type="button">Code rain</button>
+      <span class="mockup-switcher__hint mockup-switcher__hint--inline">↑↑↓↓←→←→BA</span>
+    </div>
+    <div class="mockup-switcher__row">
+      <span class="mockup-switcher__label">More</span>
+      <a class="mockup-switcher__btn" href="profile.html">Profile</a>
+      <a class="mockup-switcher__btn" href="404.html">404</a>
+      <a class="mockup-switcher__btn" href="style-tile.html">Style tile</a>
+    </div>
+    <p class="mockup-switcher__hint" data-mockup-debug>state will appear here</p>
+  </aside>
+
+  <script>
+    // ===========================================================
+    // Declarations first: all state + helper functions must exist
+    // before any toggle IIFE runs, otherwise calling them from
+    // setExtra() hits the TDZ and the forEach halts silently.
+    // ===========================================================
+    const root = document.documentElement;
+    const typeonTimers = [];
+    const input = document.querySelector(".search-form__input");
+    const field = document.querySelector(".search-form__field");
+    let cursorEl = null;
+    let measureEl = null;
+
+    function applyTypeon() {
+      const els = document.querySelectorAll("[data-typewriter-text]");
+      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const typeonOn = root.getAttribute("data-typeon") === "on";
+      const termstatusOn = root.getAttribute("data-termstatus") === "on";
+
+      typeonTimers.forEach(t => clearTimeout(t));
+      typeonTimers.length = 0;
+      els.forEach(el => el.classList.remove("is-typing", "is-typed"));
+
+      if (!typeonOn || reduced) {
+        els.forEach(el => { el.textContent = el.dataset.typewriterText; });
+        return;
+      }
+
+      const ordered = Array.from(els).filter(el => {
+        if (el.closest("[data-mockup-status]")) return termstatusOn;
+        return true;
+      });
+
+      ordered.forEach(el => { el.textContent = ""; });
+
+      let cumulativeDelay = 150;
+      ordered.forEach(el => {
+        const text = el.dataset.typewriterText;
+        typeonTimers.push(setTimeout(() => {
+          el.classList.add("is-typing");
+          let i = 0;
+          const tick = () => {
+            if (i <= text.length) {
+              el.textContent = text.slice(0, i);
+              i++;
+              typeonTimers.push(setTimeout(tick, 16 + Math.random() * 22));
+            } else {
+              el.classList.remove("is-typing");
+              el.classList.add("is-typed");
+            }
+          };
+          tick();
+        }, cumulativeDelay));
+        cumulativeDelay += text.length * 30 + 220;
+      });
+    }
+
+    function initCursorElements() {
+      if (!field) return;
+      if (!cursorEl) {
+        cursorEl = document.createElement("span");
+        cursorEl.className = "search-form__cursor";
+        cursorEl.setAttribute("aria-hidden", "true");
+        field.appendChild(cursorEl);
+      }
+      if (!measureEl) {
+        measureEl = document.createElement("span");
+        measureEl.className = "search-form__measure";
+        measureEl.setAttribute("aria-hidden", "true");
+        field.appendChild(measureEl);
+      }
+    }
+
+    function positionCursor() {
+      initCursorElements();
+      if (!input || !field || !cursorEl || !measureEl) return;
+      if (root.getAttribute("data-cursor") !== "block") return;
+
+      const inputStyle = getComputedStyle(input);
+      measureEl.style.font = inputStyle.font;
+      measureEl.style.letterSpacing = inputStyle.letterSpacing;
+      measureEl.style.textTransform = inputStyle.textTransform;
+      measureEl.style.whiteSpace = "pre";
+
+      const caretPos = input.selectionEnd ?? input.value.length;
+      measureEl.textContent = input.value.substring(0, caretPos);
+      const textWidth = measureEl.getBoundingClientRect().width;
+
+      const inputRect = input.getBoundingClientRect();
+      const fieldRect = field.getBoundingClientRect();
+      const paddingLeft = parseFloat(inputStyle.paddingLeft) || 0;
+
+      const x = (inputRect.left - fieldRect.left) + paddingLeft + textWidth - input.scrollLeft;
+      cursorEl.style.left = x + "px";
+    }
+
+    function updateDebugLine() {
+      const dbg = document.querySelector("[data-mockup-debug]");
+      if (!dbg) return;
+      const attrs = ["typeon", "termstatus", "cursor"];
+      dbg.textContent = attrs.map(a => a + "=" + (root.getAttribute("data-" + a) || "?")).join("  ");
+    }
+
+    // ===========================================================
+    // Code rain (Konami code easter egg + manual button).
+    // Each column is a stack of per-character spans so we can vary
+    // alpha and hue per glyph. The leading character (bottom of the
+    // column) is bright white; chars above fade toward dim phosphor;
+    // ~12% of glyphs get a cyan hue shift; ~6% get a deeper green
+    // shift. This is what sells the Matrix look — uniform-color
+    // streams read as a single bright band, not as falling rain.
+    // ===========================================================
+    function startRain() {
+      document.querySelectorAll(".code-rain-overlay").forEach(el => el.remove());
+
+      const overlay = document.createElement("div");
+      overlay.className = "code-rain-overlay";
+      overlay.setAttribute("aria-hidden", "true");
+
+      // Tighter column spacing for visible density. The earlier
+      // mockup used /22 which left gaps; /13 puts streams almost
+      // shoulder-to-shoulder while staying readable.
+      const colCount = Math.min(96, Math.floor(window.innerWidth / 13));
+      for (let c = 0; c < colCount; c++) {
+        const col = document.createElement("div");
+        col.className = "code-rain-overlay__col";
+        col.style.left = ((c + 0.5) / colCount * 100) + "%";
+        col.style.animationDuration = (2.5 + Math.random() * 5) + "s";
+        col.style.animationDelay = (Math.random() * 2.5) + "s";
+
+        const len = 14 + Math.floor(Math.random() * 22);
+        for (let i = 0; i < len; i++) {
+          const glyph = document.createElement("span");
+          glyph.className = "code-rain__glyph";
+          // Half-width katakana, the Unicode block the film used
+          const code = 0xFF65 + Math.floor(Math.random() * 60);
+          glyph.textContent = String.fromCharCode(code);
+
+          // Position-based brightness: bottom of column is the
+          // "leading edge" (brightest white), trailing chars fade.
+          const fromEnd = len - 1 - i;
+          if (fromEnd === 0) {
+            glyph.classList.add("code-rain__glyph--lead");
+          } else if (fromEnd <= 2) {
+            glyph.classList.add("code-rain__glyph--bright");
+          } else if (fromEnd <= 6) {
+            glyph.classList.add("code-rain__glyph--mid");
+          } else if (fromEnd <= 12) {
+            glyph.classList.add("code-rain__glyph--dim");
+          } else {
+            glyph.classList.add("code-rain__glyph--faint");
+          }
+
+          // Hue variation — sparse cyan/deep-green pops so the
+          // streams don't read as a single uniform hue
+          const r = Math.random();
+          if (r < 0.06) glyph.classList.add("code-rain__glyph--blue");
+          else if (r < 0.14) glyph.classList.add("code-rain__glyph--deep");
+
+          col.appendChild(glyph);
+        }
+        overlay.appendChild(col);
+      }
+      document.body.appendChild(overlay);
+
+      setTimeout(() => {
+        overlay.classList.add("is-fading");
+        setTimeout(() => overlay.remove(), 700);
+      }, 6000);
+    }
+
+    const KONAMI_SEQ = ["ArrowUp","ArrowUp","ArrowDown","ArrowDown","ArrowLeft","ArrowRight","ArrowLeft","ArrowRight","b","a"];
+    let konamiIndex = 0;
+    document.addEventListener("keydown", e => {
+      // Don't intercept while typing in a form input
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) {
+        return;
+      }
+      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if (key === KONAMI_SEQ[konamiIndex]) {
+        konamiIndex++;
+        if (konamiIndex === KONAMI_SEQ.length) {
+          startRain();
+          konamiIndex = 0;
+        }
+      } else {
+        konamiIndex = key === KONAMI_SEQ[0] ? 1 : 0;
+      }
+    });
+
+    // ===========================================================
+    // Switcher IIFEs
+    // ===========================================================
+
+    // ----- Extras toggles --------------------------------------
+    (function () {
+      const toggles = document.querySelectorAll(".mockup-switcher__btn[data-toggle]");
+
+      function readStored(name) {
+        try {
+          const v = localStorage.getItem("odin-mockup-extra-" + name);
+          return v === null ? null : v;
+        } catch (e) { return null; }
+      }
+
+      function setExtra(name, on) {
+        root.setAttribute("data-" + name, on ? "on" : "off");
+        const btn = document.querySelector('.mockup-switcher__btn[data-toggle="' + name + '"]');
+        if (btn) btn.classList.toggle("is-active", on);
+        try { localStorage.setItem("odin-mockup-extra-" + name, on ? "on" : "off"); } catch (e) {}
+        if (name === "typeon" || name === "termstatus") applyTypeon();
+        if (name === "cursor") positionCursor();
+        updateDebugLine();
+      }
+
+      toggles.forEach(btn => {
+        const name = btn.dataset.toggle;
+        const stored = readStored(name);
+        const initial = stored !== null ? stored : root.getAttribute("data-" + name);
+        const isOn = initial !== "off";
+        setExtra(name, isOn);
+
+        btn.addEventListener("click", () => {
+          const currentlyOn = root.getAttribute("data-" + name) === "on";
+          setExtra(name, !currentlyOn);
+        });
+      });
+    })();
+
+    // ----- Cursor event wiring ---------------------------------
+    if (input && field) {
+      ["input", "keyup", "click", "focus", "blur", "scroll"].forEach(evt => {
+        input.addEventListener(evt, () => requestAnimationFrame(positionCursor));
+      });
+      document.addEventListener("selectionchange", () => {
+        if (document.activeElement === input) {
+          requestAnimationFrame(positionCursor);
+        }
+      });
+      window.addEventListener("resize", positionCursor);
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(positionCursor);
+      }
+      requestAnimationFrame(positionCursor);
+    }
+
+    // ----- First-search quota hide -----------------------------
+    // When the user starts typing in the search field, the line below
+    // it ("3 of 3 free searches…") fades out so the search box becomes
+    // the only thing on the screen. This was the original design at
+    // project start and reads as "you're committed now, just search."
+    const quotaEl = document.querySelector(".hero__quota");
+    if (input && quotaEl) {
+      input.addEventListener("input", () => {
+        if (input.value.length > 0 && !quotaEl.classList.contains("is-hidden")) {
+          quotaEl.classList.add("is-hidden");
+        }
+      });
+    }
+
+    // ----- Manual triggers (Replay type-on, Code rain) ---------
+    document.querySelectorAll('[data-action="replay-typeon"]').forEach(b => {
+      b.addEventListener("click", () => {
+        if (quotaEl) quotaEl.classList.remove("is-hidden");
+        applyTypeon();
+      });
+    });
+    document.querySelectorAll('[data-action="rain"]').forEach(b => {
+      b.addEventListener("click", () => startRain());
+    });
+
+    updateDebugLine();
+  </script>
+</body>
+</html>

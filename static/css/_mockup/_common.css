@@ -1,0 +1,296 @@
+/* =========================================================================
+   Mockup — shared overrides
+   Replaces the inline rgba(...) values in odin.css with color-mix() calls
+   that re-tint based on the current --primary / --accent / --text-muted
+   tokens. This lets a single vibe overlay re-theme the whole site.
+   Sandbox only; the production refactor will move these into the modules.
+   ========================================================================= */
+
+/* Wordmark glow recolors with --primary */
+.wordmark {
+  text-shadow:
+    0 0 12px color-mix(in oklch, var(--primary) 35%, transparent),
+    0 0 32px color-mix(in oklch, var(--accent) 12%, transparent);
+}
+
+.wordmark:hover {
+  text-shadow:
+    0 0 16px color-mix(in oklch, var(--primary) 50%, transparent),
+    0 0 40px color-mix(in oklch, var(--accent) 18%, transparent);
+}
+
+/* Site header backdrop tints with --bg */
+.site-header {
+  background: color-mix(in oklch, var(--bg) 88%, transparent);
+}
+
+/* Wordmark sigil — small wordmark in the page header carries a trailing
+   blinking underscore ("ODIN_") to signal "session still attached." Costs
+   nothing visually but reads as continuously live. The hero wordmark is
+   left untouched because its 5-stop bloom is already doing the heavy
+   lifting; adding a blinking glyph there would crowd it. */
+.wordmark--small::after {
+  content: "_";
+  color: var(--primary);
+  margin-left: 1px;
+  animation: terminal-blink 1.1s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wordmark--small::after {
+    animation: none;
+  }
+}
+
+/* Status bar pinned as a sticky terminal footer. The production rule has
+   it docked under the header; the Matrix rebrand reframes it as the
+   active-session indicator that stays in view while you scroll. The "$"
+   prompt from _extras.css plus the [KEY:value] cell framing read as a
+   running terminal status line. */
+.status-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  border-top: 1px solid var(--border);
+  border-bottom: none;
+}
+
+/* Reserve viewport-bottom space whenever the status bar is in the DOM so
+   page content (including the footer) doesn't sit behind the fixed bar. */
+body:has(.status-bar) {
+  padding-bottom: 56px;
+}
+
+/* Beta badge — monotone phosphor (no amber accent in the Matrix vibe).
+   Brackets via pseudo-elements give the badge a "[BETA]" terminal feel
+   without needing to touch the template markup. */
+.beta-badge {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.beta-badge::before {
+  content: "[";
+  margin-right: 2px;
+  color: var(--text-muted);
+}
+
+.beta-badge::after {
+  content: "]";
+  margin-left: 2px;
+  color: var(--text-muted);
+}
+
+/* Event rows + citations + caveat borders re-tint with --text-muted */
+.events__item,
+.citations__item {
+  border-color: color-mix(in oklch, var(--text-muted) 25%, transparent);
+}
+
+/* Finding + caveat rows re-tint with --primary at low opacity */
+.finding,
+.caveat {
+  background: color-mix(in oklch, var(--primary) 2.5%, transparent);
+}
+
+.caveat {
+  border-color: color-mix(in oklch, var(--text-muted) 18%, transparent);
+}
+
+.finding:hover,
+.caveat:hover {
+  background: color-mix(in oklch, var(--primary) 10%, transparent);
+}
+
+.finding[open],
+.caveat[open] {
+  background: color-mix(in oklch, var(--primary) 6%, transparent);
+}
+
+/* Gauge fill shadow tints with --primary */
+.gauge__fill {
+  box-shadow: 0 0 12px color-mix(in oklch, var(--primary) 35%, transparent);
+}
+
+/* Badges — strip the chrome and let the bracket motif carry the framing.
+   The category badge becomes "[ Historical figure ]" rather than a pill. */
+.badge--category {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.badge--category::before {
+  content: "[ ";
+  color: var(--text-muted);
+}
+
+.badge--category::after {
+  content: " ]";
+  color: var(--text-muted);
+}
+
+.badge--soon {
+  border-color: color-mix(in oklch, var(--warn) 35%, transparent);
+  background: color-mix(in oklch, var(--warn) 8%, transparent);
+}
+
+/* Finding labels read like terminal log tags: [ALGORITHM], [HEALTH], etc. */
+.finding__label::before {
+  content: "[";
+  margin-right: 1px;
+}
+
+.finding__label::after {
+  content: "]";
+  margin-left: 1px;
+}
+
+/* Section headings inside the profile main column get a "> " prompt prefix
+   so each section reads like a terminal command issuing the heading. The
+   existing odin.css ::before rule on .profile__main section h2 is recoloured
+   here to use --primary and the prompt character. */
+.profile__main section h2::before {
+  content: "> ";
+  color: var(--primary);
+  font-family: var(--font-mono);
+  margin-right: 0.25em;
+}
+
+/* ----- Progress bar — single-line ASCII load bar --------------------- */
+
+/* The production strip renders six discrete step dots connected by a
+   thin line. That reads like a metro-map UI. The Matrix rebrand replaces
+   that with one continuous ASCII bar (six segments of "=" separated by
+   "·") that animates while loading — the active segment fills char by
+   char and carries a blinking ▒/░ cursor at the leading edge. Inline JS
+   in profile.html drives the animation; this stylesheet only sets the
+   look. */
+.progress-bar {
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  color: var(--text-muted);
+  margin: var(--sp-4) 0;
+  letter-spacing: 0;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.progress-bar__filled {
+  color: var(--primary);
+}
+
+.progress-bar__cursor {
+  color: var(--primary);
+}
+
+.progress-bar__label {
+  color: var(--text);
+  margin-left: var(--sp-3);
+}
+
+/* ----- ASCII gauges — leaner than the filled-bar production version -- */
+
+/* Replaces the .gauge / .gauge__track / .gauge__fill chrome with a
+   single line of monospaced dots (or em-dashes for divergent gauges)
+   carrying a single bright marker glyph at the value's position. Reads
+   like a unix tool's progress line and matches the rest of the page's
+   terminal vocabulary. */
+.gauge-line {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: var(--sp-3);
+  align-items: baseline;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  margin: var(--sp-3) 0;
+  color: var(--text-muted);
+}
+
+.gauge-line__label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.gauge-line__value {
+  color: var(--text);
+  font-weight: 700;
+  text-align: right;
+}
+
+.gauge-line__rule {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  letter-spacing: 0;
+  white-space: pre;
+  line-height: 1.2;
+}
+
+.gauge-line__marker {
+  color: var(--primary);
+  text-shadow:
+    0 0 1px var(--primary),
+    0 0 6px color-mix(in oklch, var(--primary) 60%, transparent);
+}
+
+/* ----- Hero quota — fades out on first search keystroke ------------- */
+
+/* The original Odin design hid the explanatory text under the search
+   bar once the user committed to a search. Restoring that behavior: JS
+   in b.html adds .is-hidden on the first input keystroke. */
+.hero__quota {
+  transition: opacity 350ms ease-out;
+}
+
+.hero__quota.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ----- Profile titles — Orbitron bloom parity with the wordmark ------ */
+
+/* .profile__title and .profile__sidebar-title pick up Orbitron via
+   --font-display in odin.css; this overlay adds the same doubled-inner-
+   halo bloom recipe so the larger titles read as phosphor-lit. */
+.profile__title,
+.profile__sidebar-title {
+  font-weight: 800;
+  text-shadow:
+    0 0 1px  var(--primary),
+    0 0 2px  var(--primary),
+    0 0 8px  color-mix(in oklch, var(--primary) 70%, transparent),
+    0 0 22px color-mix(in oklch, var(--primary) 35%, transparent),
+    0 0 48px color-mix(in oklch, var(--primary) 18%, transparent);
+}
+
+/* Danger card / button — recolored to use --danger token */
+.dashboard-card--danger {
+  border-color: color-mix(in oklch, var(--danger) 35%, transparent);
+}
+
+.dashboard-card--danger .dashboard-card__title {
+  color: color-mix(in oklch, var(--danger) 80%, var(--text-muted));
+}
+
+.btn--danger {
+  background: color-mix(in oklch, var(--danger) 30%, var(--surface));
+  color: var(--text);
+  border-color: color-mix(in oklch, var(--danger) 50%, var(--border));
+}
+
+.btn--danger:hover {
+  background: color-mix(in oklch, var(--danger) 50%, var(--surface));
+}
+
+.auth-section__error {
+  color: var(--danger);
+}
