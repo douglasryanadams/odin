@@ -7,7 +7,7 @@ import pytest
 from helpers import api_response, tool_block
 from odin import claude
 from odin.models import Profile
-from odin.searxng import SearchResult
+from odin.search import SearchResult
 
 _PROFILE_DATA = {
     "name": "Marie Curie",

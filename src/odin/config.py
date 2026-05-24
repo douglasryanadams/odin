@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     fetch_curl_cffi_enabled: bool = True
 
     searxng_url: str = "http://searxng:8080"
+    # SearXNG is the incumbent backend; it stays on until first-party backends
+    # cover its role. Future backends default off and fail closed without a key.
+    searxng_enabled: bool = True
+    search_timeout_seconds: float = Field(default=30.0, gt=0)  # per-backend call ceiling
 
     secret_key: str = Field(min_length=32)  # required; HMAC-SHA256 needs 256 bits of entropy
     app_url: str  # required — used in magic link URLs; no safe generic default

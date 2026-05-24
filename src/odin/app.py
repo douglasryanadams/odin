@@ -16,7 +16,7 @@ from playwright.async_api import async_playwright
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from valkey.asyncio import Valkey
 
-from odin import curl_fetch, fetch, log
+from odin import curl_fetch, fetch, log, search
 from odin.config import settings
 
 log.setup()
@@ -90,9 +90,9 @@ async def _add_security_headers(  # pyright: ignore[reportUnusedFunction]
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 
-def get_searxng_url() -> str:
-    """Return the SearXNG base URL from config."""
-    return settings.searxng_url
+def get_search_aggregator() -> search.SearchAggregator:
+    """Return the search aggregator built from the backends enabled in config."""
+    return search.build_aggregator(settings)
 
 
 def get_anthropic_client() -> AsyncAnthropic:

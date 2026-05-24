@@ -13,7 +13,8 @@ os.environ.setdefault("APP_URL", "http://localhost:8000")
 import pytest
 from fastapi.testclient import TestClient
 
-from odin.app import app, get_searxng_url, get_valkey_client
+from odin.app import app, get_search_aggregator, get_valkey_client
+from odin.search import SearchAggregator, SearXngBackend
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = REPO_ROOT / "static"
@@ -21,8 +22,13 @@ TEST_SECRET = b"test-only-insecure-secret-key-do-not-use"
 MOCK_SEARXNG_BASE_URL = "http://test-searxng:8080"
 
 
-def _mock_searxng_url() -> str:
-    return MOCK_SEARXNG_BASE_URL
+def _mock_search_aggregator() -> SearchAggregator:
+    """Route searches through a single SearXNG backend at the mock URL.
+
+    Tests still mock the SearXNG HTTP endpoint with respx, so this keeps the
+    search edge identical to before the aggregator was introduced.
+    """
+    return SearchAggregator(backends=(SearXngBackend(base_url=MOCK_SEARXNG_BASE_URL),))
 
 
 @pytest.fixture
@@ -41,11 +47,11 @@ def mock_valkey() -> MagicMock:
 
 
 @pytest.fixture(autouse=True)
-def _override_searxng_url() -> Iterator[None]:  # pyright: ignore[reportUnusedFunction]
-    """Pin the SearXNG dependency to the test mock URL for every test."""
-    app.dependency_overrides[get_searxng_url] = _mock_searxng_url
+def _override_search_aggregator() -> Iterator[None]:  # pyright: ignore[reportUnusedFunction]
+    """Pin the search dependency to a SearXNG-only aggregator at the mock URL."""
+    app.dependency_overrides[get_search_aggregator] = _mock_search_aggregator
     yield
-    app.dependency_overrides.pop(get_searxng_url, None)
+    app.dependency_overrides.pop(get_search_aggregator, None)
 
 
 @pytest.fixture(autouse=True)

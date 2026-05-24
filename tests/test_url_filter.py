@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from odin.searxng import SearchResult
+from odin.search import SearchResult
 from odin.url_filter import filter_search_results, is_url_allowed
 
 

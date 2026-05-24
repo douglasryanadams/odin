@@ -26,7 +26,7 @@ from urllib.parse import urlsplit
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
-    from odin.searxng import SearchResult
+    from odin.search import SearchResult
 
 
 _ALLOWED_SCHEMES = frozenset({"http", "https"})

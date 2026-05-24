@@ -15,7 +15,7 @@ from odin.models import (
     ProfileHighlight,
     TimelineEntry,
 )
-from odin.searxng import SearchResult
+from odin.search import SearchResult
 
 
 @dataclass(frozen=True)
