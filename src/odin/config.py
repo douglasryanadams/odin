@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     # the direct client is proven, then disable SEARXNG to avoid double-billing Brave.
     brave_enabled: bool = False
     brave_api_key: str | None = None
+    # Wikipedia (Wikimedia Core REST) backend. Off by default; the search endpoint
+    # serves unauthenticated with a policy-compliant User-Agent, so no token is needed.
+    wikipedia_enabled: bool = False
 
     secret_key: str = Field(min_length=32)  # required; HMAC-SHA256 needs 256 bits of entropy
     app_url: str  # required — used in magic link URLs; no safe generic default

@@ -8,6 +8,7 @@ services:
       - SECRET_KEY
       - APP_URL
       - COOKIE_SECURE
+      - WIKIPEDIA_ENABLED
     volumes:
       - playwright-state:/var/lib/odin/playwright-state
     depends_on:

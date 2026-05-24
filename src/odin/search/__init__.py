@@ -18,6 +18,7 @@ from odin.search.base import SearchBackend
 from odin.search.brave import BraveBackend
 from odin.search.models import SearchResult
 from odin.search.searxng_backend import SearXngBackend
+from odin.search.wikipedia import WikipediaBackend
 
 __all__ = [
     "BraveBackend",
@@ -25,6 +26,7 @@ __all__ = [
     "SearchAggregator",
     "SearchBackend",
     "SearchResult",
+    "WikipediaBackend",
     "build_aggregator",
     "merge_results",
 ]
@@ -48,9 +50,20 @@ def _brave_factory(settings: Settings) -> SearchBackend | None:
     )
 
 
+def _wikipedia_factory(settings: Settings) -> SearchBackend | None:
+    if not settings.wikipedia_enabled:
+        return None
+    user_agent = f"Odin/1.0 (+{settings.app_url}; {settings.contact_email}) httpx"
+    return WikipediaBackend(
+        user_agent=user_agent,
+        timeout_seconds=settings.search_timeout_seconds,
+    )
+
+
 _REGISTRY: tuple[Callable[[Settings], SearchBackend | None], ...] = (
     _searxng_factory,
     _brave_factory,
+    _wikipedia_factory,
 )
 
 
