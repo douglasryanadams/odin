@@ -3,6 +3,8 @@ services:
     environment:
       - LOG_LEVEL=DEBUG
       - ANTHROPIC_API_KEY
+      - BRAVE_API_KEY
+      - BRAVE_ENABLED
       - SECRET_KEY
       - APP_URL
       - COOKIE_SECURE

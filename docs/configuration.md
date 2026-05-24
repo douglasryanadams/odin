@@ -97,7 +97,7 @@ Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/defa
 | Variable | Read where | Notes |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | `AsyncAnthropic()` via the SDK | Used by every Haiku and Sonnet call in `claude.py`. |
-| `BRAVE_API_KEY` | `searxng/entrypoint.sh` → `settings.yml.tmpl` | Authenticates SearXNG's `braveapi` engine. Provision at <https://api-dashboard.search.brave.com/>. SearXNG fails to start if unset. In prod, store as `brave_api_key` in the `odin/app` Secrets Manager entry; see [`aws-setup.md` § "How secrets reach the containers"](./aws-setup.md#how-secrets-reach-the-containers). |
+| `BRAVE_API_KEY` | `Settings` in `config.py` (web service's Brave backend); `searxng/entrypoint.sh` → `settings.yml.tmpl` (SearXNG) | Consumed directly by the web service's `BraveBackend` (when `BRAVE_ENABLED=true`) and by SearXNG's `braveapi` engine. Provision at <https://api-dashboard.search.brave.com/>. SearXNG fails to start if unset. In prod, store as `brave_api_key` in the `odin/app` Secrets Manager entry; see [`aws-setup.md` § "How secrets reach the containers"](./aws-setup.md#how-secrets-reach-the-containers). |
 | `SECRET_KEY` | `Settings` in `config.py` | 32+ random bytes; signs session and CSRF cookies. Generate with `python -c 'import secrets; print(secrets.token_urlsafe(48))'`. |
 | `APP_URL` | `Settings` in `config.py`, used by `email.py` | Public base URL of the deployment; embedded into magic-link emails. |
 
@@ -119,6 +119,7 @@ Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/defa
 | `PLAYWRIGHT_CHANNEL` | unset (bundled Chromium) | E.g. `chrome` when a real Chrome channel is installed in the image. |
 | `PLAYWRIGHT_STORAGE_STATE_PATH` | `/var/lib/odin/playwright-state/state.json` | Shared cookie/storage state, persisted under an `fcntl` lock. Set `""` to disable. |
 | `FETCH_CURL_CFFI_ENABLED` | `true` | Set `false` to skip Tier 0 and always use Playwright. |
+| `BRAVE_ENABLED` | `false` | Enables the web service's direct Brave Search API backend (`BraveBackend`). Fails closed without `BRAVE_API_KEY`. Keep `false` until the direct client is proven against SearXNG + `braveapi`; then disable SearXNG to avoid double-billing Brave. |
 | `CONTACT_EMAIL` | `odin@odinseye.info` | Address shown on `/privacy` and `/terms`. |
 
 **Production-only.**
