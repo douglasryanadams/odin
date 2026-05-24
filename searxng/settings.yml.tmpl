@@ -55,11 +55,26 @@ engines:
     results_per_page: 20
     disabled: false
 
-  # Mojeek is an independent index whose scraper is cooperative (no
-  # CAPTCHA / IP-ban regime) and remains our free secondary source.
+  # Mojeek is an independent index. Free, and the most cooperative of the
+  # scrapers SearXNG ships, though it can still rate-limit cloud IPs.
   - name: mojeek
     engine: mojeek
     disabled: false
+
+  # The remaining defaults are SERP scrapers (Google, Bing, etc.) behind
+  # proxies; from a single cloud IP they consistently return CAPTCHA or
+  # access-denied. Cannot use `engines.remove` because SearXNG's network
+  # config references some of these names as network aliases, so we
+  # override each entry with `disabled: true` instead.
+  - name: startpage
+    engine: startpage
+    disabled: true
+  - name: qwant
+    engine: qwant
+    disabled: true
+  - name: karmasearch
+    engine: karmasearch
+    disabled: true
 
 valkey:
   url: redis://searxng-valkey:6379/0

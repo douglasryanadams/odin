@@ -2,22 +2,32 @@
 
 import re
 from pathlib import Path
+from typing import Any
 
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _load_compose(filename: str) -> Any:  # noqa: ANN401  # yaml.safe_load is untyped
+    return yaml.safe_load((REPO_ROOT / "compose" / filename).read_text())
+
+
 def _service_env_names(*compose_filenames: str) -> set[str]:
-    """Return the union of environment-variable names declared across services in
-    the named compose files. Both `VAR=value` and bare `VAR` (compose interpolation
-    from .env / shell) are recognised."""
+    """Return env-var names declared across services in the named compose files.
+
+    Both `VAR=value` and bare `VAR` (compose interpolation from .env / shell)
+    are recognised.
+    """
     names: set[str] = set()
     for filename in compose_filenames:
-        data = yaml.safe_load((REPO_ROOT / "compose" / filename).read_text())
-        for service in (data.get("services") or {}).values():
-            for entry in service.get("environment") or []:
-                names.add(entry.split("=", 1)[0])
+        services = _load_compose(filename)["services"]
+        for service_name in services:
+            entries = services[service_name].get("environment")
+            if not entries:
+                continue
+            for entry in entries:
+                names.add(str(entry).split("=", 1)[0])
     return names
 
 
@@ -69,12 +79,13 @@ def test_searxng_service_uses_template_entrypoint() -> None:
 
 
 def test_searxng_renders_settings_into_tmpfs() -> None:
-    """The rendered settings.yml (which contains the substituted BRAVE_API_KEY)
-    must live on an in-container tmpfs, not the host bind mount, so the key
-    never reaches the host filesystem."""
-    data = yaml.safe_load((REPO_ROOT / "compose" / "docker-compose.yml").read_text())
-    tmpfs = data["services"]["searxng"].get("tmpfs") or []
-    assert any(entry.startswith("/run/searxng") for entry in tmpfs), (
+    """Render the BRAVE_API_KEY-substituted settings.yml into an in-container tmpfs.
+
+    The rendered file must not live on the host bind mount, so the key never
+    reaches the host filesystem (and therefore not EBS snapshots, backups, etc.).
+    """
+    tmpfs = _load_compose("docker-compose.yml")["services"]["searxng"]["tmpfs"]
+    assert any(str(entry).startswith("/run/searxng") for entry in tmpfs), (
         f"searxng service must mount a tmpfs at /run/searxng so the rendered "
         f"settings.yml (with BRAVE_API_KEY) does not touch the host filesystem; "
         f"got tmpfs={tmpfs!r}"
@@ -82,17 +93,15 @@ def test_searxng_renders_settings_into_tmpfs() -> None:
 
 
 def test_required_env_vars_are_forwarded_through_compose() -> None:
-    """Every name in the 'Required' section of config/.env.example must be passed
-    through to some service in dev or prod compose. Catches the case where a new
-    required env var is added but the compose passthrough is missed - Compose's
-    automatic .env loading only handles ${VAR} substitution in the YAML, it does
-    not pass shell/.env values to containers unless the service lists the name
-    under environment:.
+    """Required env vars from .env.example must reach a container via compose.
+
+    Catches the case where a new required env var is added but the compose
+    passthrough is missed - Compose's automatic .env loading only handles
+    ${VAR} substitution in the YAML, it does not pass shell/.env values to
+    containers unless the service lists the name under environment:.
     """
     env_example = (REPO_ROOT / "config" / ".env.example").read_text()
-    required_block = re.search(
-        r"^# Required\n(.*?)\n^#", env_example, re.DOTALL | re.MULTILINE
-    )
+    required_block = re.search(r"^# Required\n(.*?)\n^#", env_example, re.DOTALL | re.MULTILINE)
     assert required_block, "could not locate '# Required' section in config/.env.example"
     required_vars = {
         line.split("=", 1)[0].strip()

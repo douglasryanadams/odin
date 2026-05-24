@@ -28,6 +28,12 @@ PY
 chown searxng:searxng "$SETTINGS_FILE"
 chmod 0400 "$SETTINGS_FILE"
 
+# __SEARXNG_SETTINGS_PATH tells the upstream image entrypoint where to look
+# (so it does not try to create a stock settings.yml in the bind mount).
+# SEARXNG_SETTINGS_PATH is what the SearXNG app itself reads at import time -
+# without it, SearXNG falls back to its bundled /usr/local/searxng/searx/settings.yml
+# which contains "ultrasecretkey" and refuses to start.
 export __SEARXNG_SETTINGS_PATH="$SETTINGS_FILE"
+export SEARXNG_SETTINGS_PATH="$SETTINGS_FILE"
 
 exec /usr/local/searxng/entrypoint.sh "$@"
