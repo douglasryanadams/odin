@@ -9,6 +9,8 @@ services:
       - WORKERS=1
       - LOG_LEVEL=INFO
       - ANTHROPIC_API_KEY
+      - BRAVE_API_KEY
+      - BRAVE_ENABLED
       - SEARXNG_SECRET
       - SMTP_HOST
       - SMTP_FROM

@@ -15,10 +15,12 @@ from collections.abc import Callable
 from odin.config import Settings
 from odin.search.aggregator import SearchAggregator, merge_results
 from odin.search.base import SearchBackend
+from odin.search.brave import BraveBackend
 from odin.search.models import SearchResult
 from odin.search.searxng_backend import SearXngBackend
 
 __all__ = [
+    "BraveBackend",
     "SearXngBackend",
     "SearchAggregator",
     "SearchBackend",
@@ -37,7 +39,19 @@ def _searxng_factory(settings: Settings) -> SearchBackend | None:
     )
 
 
-_REGISTRY: tuple[Callable[[Settings], SearchBackend | None], ...] = (_searxng_factory,)
+def _brave_factory(settings: Settings) -> SearchBackend | None:
+    if not settings.brave_enabled or settings.brave_api_key is None:
+        return None
+    return BraveBackend(
+        api_key=settings.brave_api_key,
+        timeout_seconds=settings.search_timeout_seconds,
+    )
+
+
+_REGISTRY: tuple[Callable[[Settings], SearchBackend | None], ...] = (
+    _searxng_factory,
+    _brave_factory,
+)
 
 
 def build_aggregator(settings: Settings) -> SearchAggregator:

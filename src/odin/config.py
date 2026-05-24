@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     searxng_enabled: bool = True
     search_timeout_seconds: float = Field(default=30.0, gt=0)  # per-backend call ceiling
 
+    # Brave Search API. Off by default and fails closed without a key; flip on once
+    # the direct client is proven, then disable SEARXNG to avoid double-billing Brave.
+    brave_enabled: bool = False
+    brave_api_key: str | None = None
+
     secret_key: str = Field(min_length=32)  # required; HMAC-SHA256 needs 256 bits of entropy
     app_url: str  # required — used in magic link URLs; no safe generic default
 
