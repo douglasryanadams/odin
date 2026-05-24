@@ -8,12 +8,13 @@ Manual steps to provision the production environment. Update this file as you go
 Browser → CloudFront (HTTPS, ACM cert) → EC2 t4g.small (HTTP:8000) → docker-compose
                └─ /static/* cached           └─ nginx (publishes :8000)    ├─ nginx
                └─ /* pass-through                 ├─ serves /static/*,     ├─ web (gunicorn, network-only)
-                  (120s SSE timeout)              │  /favicon.ico,         ├─ searxng:8080
-                                                  │  /robots.txt           ├─ searxng-valkey
-                                                  └─ proxies / to web      └─ odin-valkey
+                  (120s SSE timeout)              │  /favicon.ico,         └─ odin-valkey
+                                                  │  /robots.txt
+                                                  └─ proxies / to web
                                                      (proxy_buffering off)
 
 Magic link emails → Purelymail (SMTP relay, port 587)
+Search APIs       → Brave Search, Wikimedia (direct HTTPS from web)
 ```
 
 Shield Standard (DDoS) is included free with CloudFront. EC2 port 8000 is locked to the CloudFront origin prefix list — not publicly reachable.
@@ -272,7 +273,6 @@ A single secret named `odin/app` holds every runtime credential as JSON. One bil
      "brave_api_key": "placeholder",
      "secret_key": "placeholder",
      "app_url": "placeholder",
-     "searxng_secret": "placeholder",
      "smtp_host": "placeholder",
      "smtp_from": "placeholder",
      "smtp_user": "placeholder",
@@ -282,7 +282,7 @@ A single secret named `odin/app` holds every runtime credential as JSON. One bil
 
 4. Encryption key: **aws/secretsmanager** (default).
 5. **Next**.
-6. Secret name: `odin/app`. Description: `Odin runtime credentials — Anthropic, Brave Search, SearXNG, Purelymail SMTP`.
+6. Secret name: `odin/app`. Description: `Odin runtime credentials — Anthropic, Brave Search, Purelymail SMTP`.
 7. **Next** through automatic rotation (skip — leave **Disable automatic rotation**).
 8. **Next** → **Store**.
 
@@ -332,9 +332,9 @@ Pass:  <password from step 7c.2>
    ```json
    {
      "anthropic_api_key": "placeholder",
+     "brave_api_key": "placeholder",
      "secret_key": "placeholder",
      "app_url": "placeholder",
-     "searxng_secret": "placeholder",
      "smtp_host": "smtp.purelymail.com",
      "smtp_from": "odin@yourdomain.com",
      "smtp_user": "odin@yourdomain.com",
@@ -599,7 +599,6 @@ Region: **us-west-2**.
 | `brave_api_key` | Provision at <https://api-dashboard.search.brave.com/> (CC required; ~$0.003–$0.005/query metered after $5 prepaid credit). Paste the raw key. |
 | `secret_key` | a 64-character hex string for HMAC cookie/magic-link signing. Generate locally with `openssl rand -hex 32`. Min 32 chars. |
 | `app_url` | the public origin used to build magic-link URLs, e.g. `https://yourdomain.com`. No trailing slash. |
-| `searxng_secret` | a 64-character hex string. Generate one locally with `openssl rand -hex 32` and paste the output. |
 
 The `smtp_*` keys were already populated in step 7d.
 
@@ -627,7 +626,6 @@ export ANTHROPIC_API_KEY=$(echo "$_SECRETS" | jq -r '.anthropic_api_key')
 export BRAVE_API_KEY=$(echo "$_SECRETS" | jq -r '.brave_api_key')
 export SECRET_KEY=$(echo "$_SECRETS" | jq -r '.secret_key')
 export APP_URL=$(echo "$_SECRETS" | jq -r '.app_url')
-export SEARXNG_SECRET=$(echo "$_SECRETS" | jq -r '.searxng_secret')
 export SMTP_HOST=$(echo "$_SECRETS" | jq -r '.smtp_host')
 export SMTP_FROM=$(echo "$_SECRETS" | jq -r '.smtp_from')
 export SMTP_USER=$(echo "$_SECRETS" | jq -r '.smtp_user')
@@ -713,7 +711,7 @@ The Budget above is the primary cap. Add a CloudWatch alarm for a faster ping:
 
 ### Named volumes (already configured)
 
-`compose/docker-compose.yml` mounts `odin-valkey-data` and `searxng-valkey-data` as named volumes. They live on the EC2 root EBS volume and persist across container restarts. Nothing to do here.
+`compose/docker-compose.yml` mounts `odin-valkey-data` as a named volume. It lives on the EC2 root EBS volume and persists across container restarts. Nothing to do here.
 
 ### AWS Backup — daily EBS snapshots
 
@@ -763,17 +761,16 @@ Run this drill once against a throwaway sandbox EC2 before launch so you've actu
 
 ### CloudWatch Logs
 
-`compose/docker-compose.awslogs.yml` (a separate overlay applied on top of the prod compose file on EC2) configures the `awslogs` log driver for all four services. The driver is split into its own file because it requires EC2 IMDS to authenticate, which CI runners don't have. Log groups are created automatically on first start:
+`compose/docker-compose.awslogs.yml` (a separate overlay applied on top of the prod compose file on EC2) configures the `awslogs` log driver for the running services. The driver is split into its own file because it requires EC2 IMDS to authenticate, which CI runners don't have. Log groups are created automatically on first start:
 
 - `/odin/web`
-- `/odin/searxng`
-- `/odin/searxng-valkey`
+- `/odin/nginx`
 - `/odin/odin-valkey`
 
 Log groups appear automatically once containers start (the role permission for this was attached in step 4d). Set retention to bound cost:
 
 1. **CloudWatch** → **Logs** → **Log groups**. Region: **us-west-2**.
-2. For each of the four `/odin/*` log groups: click the group → **Actions** → **Edit retention setting** → **2 weeks** → **Save**.
+2. For each of the three `/odin/*` log groups: click the group → **Actions** → **Edit retention setting** → **2 weeks** → **Save**.
 
 ### Uptime check
 
@@ -856,9 +853,9 @@ ECR retains all image tags by SHA, so any prior deploy is recoverable as long as
 
 `scripts/deploy.sh` runs `docker compose up -d --pull always --force-recreate --wait` against the full stack on every push to main. Three things follow:
 
-1. **Bind-mounted config changes take effect on every deploy.** `searxng/settings.yml.tmpl` is mounted from disk and rendered into a tmpfs by `searxng/entrypoint.sh` on container start; without `--force-recreate`, the running container keeps its in-memory copy and template edits silently no-op until the container restarts.
-2. **Image tags are refreshed.** Both `searxng` (see [`searxng.md`](./searxng.md)) and `valkey` are pinned to specific tags; `--pull always` is harmless on a pinned tag but means anything still on a moving tag would auto-update on every deploy.
-3. **`--wait` makes deploy failures visible.** It blocks until every container reports healthy and exits non-zero if any container never does. `web.depends_on.searxng.condition: service_healthy` just orders startup so `web` doesn't come up before searxng is reachable.
+1. **Bind-mounted config changes take effect on every deploy.** `config/nginx.conf` is mounted from disk; without `--force-recreate`, the running container keeps its in-memory copy and edits silently no-op until the container restarts.
+2. **Image tags are refreshed.** `valkey` is pinned to a specific tag; `--pull always` is harmless on a pinned tag but means anything still on a moving tag would auto-update on every deploy.
+3. **`--wait` makes deploy failures visible.** It blocks until every container reports healthy and exits non-zero if any container never does.
 
 This is not a graceful cutover — there is no blue/green. Every deploy briefly takes the site offline: `web` is recreated like the other services, and CloudFront sees 5xx for the ~10–20s it takes the new `web` container to reach healthy. `--wait` only tells the deploy script when to declare success or failure; it does not eliminate that gap. Acceptable today because traffic is low. If that changes, the fix is a second instance behind a target group, not a compose flag.
 
@@ -899,19 +896,15 @@ cd /opt/odin
 docker compose \
   -f compose/docker-compose.yml \
   -f compose/docker-compose.prod.yml \
-  exec searxng env | grep -q '^BRAVE_API_KEY=' && echo "container: ok" || echo "container: MISSING"
+  exec web env | grep -q '^BRAVE_API_KEY=' && echo "container: ok" || echo "container: MISSING"
 
 docker compose \
   -f compose/docker-compose.yml \
   -f compose/docker-compose.prod.yml \
-  logs searxng --tail 50 | grep -iE 'brave|401|403|unauthor' || echo "searxng: no errors"
+  logs web --tail 200 | grep -iE 'brave|401|403|unauthor' || echo "web: no auth errors"
 ```
 
-If `.env` has the value but the container does not, the passthrough is missing from `compose/*.yml`. If the container has the value but braveapi returns 401/403, the value itself is wrong (revoked, expired, copy/paste error).
-
-## SearXNG limiter
-
-Disabled via `searxng/settings.yml` (`server.limiter: false`). SearXNG is reachable only on the Docker bridge (port 8080 is not exposed past it) and the EC2 security group, so the limiter was redundant defense-in-depth and its botdetection PASSLIST logger fired a `WARNING` on every Odin request. The Odin client at `src/odin/searxng.py` still sets `X-Forwarded-For: 127.0.0.1` because SearXNG rejects requests with no forwarded address.
+If `.env` has the value but the container does not, the passthrough is missing from `compose/*.yml`. If the container has the value but Brave's API returns 401/403, the value itself is wrong (revoked, expired, copy/paste error).
 
 ---
 

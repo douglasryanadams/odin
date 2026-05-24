@@ -1,9 +1,7 @@
 """Wikipedia as a SearchBackend via the Wikimedia Core REST search endpoint.
 
-SearXNG's bundled wikipedia engine is blocked from our cloud IPs because it sends
-a ``searxng/<version>`` User-Agent that Wikimedia rejects. This first-party client
-sends a policy-compliant User-Agent, which the endpoint serves unauthenticated,
-and maps each result page to the neutral SearchResult.
+The endpoint serves search unauthenticated given a policy-compliant
+User-Agent. Maps each result page to the neutral SearchResult.
 """
 
 import html
@@ -29,8 +27,8 @@ def _strip_excerpt(excerpt: str) -> str:
 class WikipediaBackend:
     """Search English Wikipedia through the Wikimedia Core REST API.
 
-    The endpoint serves search unauthenticated; a policy-compliant User-Agent is
-    required, and is the one thing SearXNG's bundled engine could not provide.
+    The endpoint serves search unauthenticated; only a policy-compliant
+    User-Agent is required.
     """
 
     user_agent: str = _DEFAULT_USER_AGENT

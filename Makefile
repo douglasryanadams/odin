@@ -54,11 +54,11 @@ test-js: node_modules
 
 test-integration:
 	START=$$(date -u +"%Y-%m-%dT%H:%M:%SZ"); \
-	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml up -d --wait searxng searxng-valkey odin-valkey; \
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml up -d --wait odin-valkey; \
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm -e SMTP_TEST_RECIPIENT web uv run pytest -m integration; \
 	TEST_EXIT=$$?; \
-	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml stop searxng searxng-valkey odin-valkey; \
-	ERROR_LOGS=$$(docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml logs --no-color --since "$$START" 2>&1 | grep -E "ERROR|CRITICAL" | grep -v "searx.botdetection" | grep -v "searx.engines" | grep -v "searx.search.processor" || true); \
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml stop odin-valkey; \
+	ERROR_LOGS=$$(docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml logs --no-color --since "$$START" 2>&1 | grep -E "ERROR|CRITICAL" || true); \
 	if [ -n "$$ERROR_LOGS" ]; then \
 		echo ""; \
 		echo "Errors detected in service logs during integration tests:"; \

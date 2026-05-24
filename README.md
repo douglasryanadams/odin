@@ -14,22 +14,23 @@ This repository contains the full service: pipeline, search infrastructure, fetc
 
 ## Quick start
 
-You'll need [Docker](https://docs.docker.com/get-docker/), `make`, and two secrets:
+You'll need [Docker](https://docs.docker.com/get-docker/), `make`, and three secrets:
 
 | Key | How to get it |
 |---|---|
 | `ANTHROPIC_API_KEY` | Create one at <https://console.anthropic.com/>. |
+| `BRAVE_API_KEY` | Create one at <https://api-dashboard.search.brave.com/>. Optional in dev: if omitted, the search aggregator falls back to Wikipedia only. |
 | `SECRET_KEY` | 32+ random bytes that sign session and CSRF cookies. Generate with `python -c 'import secrets; print(secrets.token_urlsafe(48))'`. |
 
-The example file has dev-safe defaults for everything else. Copy it, paste the two secrets in, and start the stack:
+The example file has dev-safe defaults for everything else. Copy it, paste the secrets in, and start the stack:
 
 ```sh
 cp config/.env.example .env
-# edit .env: paste your ANTHROPIC_API_KEY and a generated SECRET_KEY
+# edit .env: paste your ANTHROPIC_API_KEY, BRAVE_API_KEY, and a generated SECRET_KEY
 make dev
 ```
 
-The first `make dev` builds the Docker images and pulls SearXNG + Valkey (a few minutes). Subsequent runs reuse the cache. Open <http://localhost:8000>, search for something — *Marie Curie*, *Reykjavik*, *the Apollo program* — and watch each stage light up. A first profile takes ~15–30 seconds end-to-end.
+The first `make dev` builds the Docker image and pulls Valkey (a few minutes). Subsequent runs reuse the cache. Open <http://localhost:8000>, search for something — *Marie Curie*, *Reykjavik*, *the Apollo program* — and watch each stage light up. A first profile takes ~15–30 seconds end-to-end.
 
 ---
 
@@ -41,7 +42,7 @@ The first `make dev` builds the Docker images and pulls SearXNG + Valkey (a few 
 | Look up every env var, Make target, or linter setting | [`docs/configuration.md`](./docs/configuration.md) |
 | Touch templates, CSS, JS, or the SSE consumer | [`docs/frontend.md`](./docs/frontend.md) |
 | Add or change an Anthropic API call | [`docs/claude-api.md`](./docs/claude-api.md) |
-| Debug or extend SearXNG | [`docs/searxng.md`](./docs/searxng.md) |
+| Understand or extend the search backends | [`docs/search.md`](./docs/search.md) |
 
 New here? Start with [`docs/backend.md`](./docs/backend.md) — the async pipeline is the heart of the project.
 

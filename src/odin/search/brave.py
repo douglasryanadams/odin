@@ -1,8 +1,7 @@
 """Brave Search API as a SearchBackend: a first-party direct client.
 
-Replaces reliance on SearXNG's braveapi engine. Maps Brave's web.results to the
-neutral SearchResult, stamping engines=["brave"] so the aggregator can union
-provenance across sources.
+Maps Brave's web.results to the neutral SearchResult, stamping
+engines=["brave"] so the aggregator can union provenance across sources.
 """
 
 import html
@@ -15,7 +14,7 @@ from loguru import logger
 from odin.search.models import SearchResult
 
 BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
-_BRAVE_RESULT_COUNT = 20  # matches the SearXNG braveapi engine's results_per_page
+_BRAVE_RESULT_COUNT = 20
 _TAG_RE = re.compile(r"<[^>]+>")
 
 

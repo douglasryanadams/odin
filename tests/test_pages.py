@@ -196,7 +196,8 @@ def test_privacy_page_renders(client: TestClient) -> None:
     body = response.text
     assert "Privacy" in body
     assert "Anthropic" in body
-    assert "SearXNG" in body or "search engines" in body
+    assert "Brave Search" in body
+    assert "Wikipedia" in body or "Wikimedia" in body
     assert "odin@odinseye.info" in body
 
 

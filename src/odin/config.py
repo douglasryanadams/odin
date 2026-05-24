@@ -40,19 +40,10 @@ class Settings(BaseSettings):
     playwright_storage_state_path: str | None = "/var/lib/odin/playwright-state/state.json"
     fetch_curl_cffi_enabled: bool = True
 
-    searxng_url: str = "http://searxng:8080"
-    # SearXNG is the incumbent backend; it stays on until first-party backends
-    # cover its role. Future backends default off and fail closed without a key.
-    searxng_enabled: bool = True
     search_timeout_seconds: float = Field(default=30.0, gt=0)  # per-backend call ceiling
 
-    # Brave Search API. Off by default and fails closed without a key; flip on once
-    # the direct client is proven, then disable SEARXNG to avoid double-billing Brave.
-    brave_enabled: bool = False
+    # Brave Search API. Fails closed without a key: the backend is not constructed.
     brave_api_key: str | None = None
-    # Wikipedia (Wikimedia Core REST) backend. Off by default; the search endpoint
-    # serves unauthenticated with a policy-compliant User-Agent, so no token is needed.
-    wikipedia_enabled: bool = False
 
     secret_key: str = Field(min_length=32)  # required; HMAC-SHA256 needs 256 bits of entropy
     app_url: str  # required — used in magic link URLs; no safe generic default

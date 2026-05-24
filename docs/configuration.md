@@ -54,7 +54,7 @@ Every target runs through `docker-compose` — host needs only Docker + `make`.
 | `make test-unit` | `pytest` (with the default `not integration` filter), then `make test-js`. |
 | `make test-js` | `npx vitest run` in the `node` sidecar; covers `profile.js` helpers. |
 | `make test-smoke` | Brings up the full prod compose stack (`web` + `nginx` + dependencies) via `scripts/test-smoke.sh`, then asserts: `/health` proxied, `/static/css/odin.css` served by Nginx with `Cache-Control: public, max-age=86400`, `/favicon.ico` and `/robots.txt` served by Nginx, zero `GET /static/` lines in the `web` log, and `/profile/stream` responses are chunked (proves `proxy_buffering off`). Tears the stack down on exit. |
-| `make test-integration` | Brings up `searxng` + `searxng-valkey`, runs `pytest -m integration`, then fails the run if service logs contain `ERROR` / `CRITICAL` (a few SearXNG-internal lines are filtered out). |
+| `make test-integration` | Brings up `odin-valkey`, runs `pytest -m integration`, then fails the run if service logs contain `ERROR` / `CRITICAL`. |
 
 ## `Dockerfile`
 
@@ -66,12 +66,12 @@ One multi-stage Dockerfile; two images (`odin-prod`, `odin-dev`).
 
 ## Compose
 
-Compose files live in [`compose/`](../compose/). Every Make target invokes `docker compose --project-directory . -f compose/...` so relative paths inside the YAML (build context, `./searxng/` mount, `.env` discovery) keep resolving from the project root.
+Compose files live in [`compose/`](../compose/). Every Make target invokes `docker compose --project-directory . -f compose/...` so relative paths inside the YAML (build context, `.env` discovery) keep resolving from the project root.
 
-- **`compose/docker-compose.yml`** — `nginx` (`8000:8000`, serves `/static/*`, `/favicon.ico`, `/robots.txt` directly and proxies everything else to `web`), `web` (gunicorn on `8000` inside the network only — no host publish, `LOG_LEVEL=DEBUG`, `ANTHROPIC_API_KEY` passthrough, `/health` healthcheck), `searxng` (`8080:8080`, mounts `./searxng/`), `searxng-valkey` (named volume), `odin-valkey` (named volume), `node` (`node:20-slim`, mounts `.:/workspace`, gated by the `tools` profile so it stays out of `make dev`). `nginx` mounts `./static` and `./config/nginx.conf` read-only so static-file edits are picked up live without an image rebuild.
+- **`compose/docker-compose.yml`** — `nginx` (`8000:8000`, serves `/static/*`, `/favicon.ico`, `/robots.txt` directly and proxies everything else to `web`), `web` (gunicorn on `8000` inside the network only — no host publish, `LOG_LEVEL=DEBUG`, `ANTHROPIC_API_KEY` and `BRAVE_API_KEY` passthrough, `/health` healthcheck), `odin-valkey` (named volume), `node` (`node:20-slim`, mounts `.:/workspace`, gated by the `tools` profile so it stays out of `make dev`). `nginx` mounts `./static` and `./config/nginx.conf` read-only so static-file edits are picked up live without an image rebuild.
 - **`compose/docker-compose.override.yml`** — paired with the base file via `-f` for dev targets. Uses `odin-dev`, builds `development`, bind-mounts `.:/app`.
-- **`compose/docker-compose.prod.yml`** — paired with the base file for prod targets. Uses `odin-prod`, builds `production`, `restart: always` on `nginx` and the SearXNG services.
-- **`compose/docker-compose.awslogs.yml`** — production-only overlay applied on EC2; routes container stdout/stderr to CloudWatch log groups `/odin/web`, `/odin/nginx`, `/odin/searxng`, `/odin/searxng-valkey`, `/odin/odin-valkey`.
+- **`compose/docker-compose.prod.yml`** — paired with the base file for prod targets. Uses `odin-prod`, builds `production`, `restart: always` on `nginx`.
+- **`compose/docker-compose.awslogs.yml`** — production-only overlay applied on EC2; routes container stdout/stderr to CloudWatch log groups `/odin/web`, `/odin/nginx`, `/odin/odin-valkey`.
 
 ## `config/gunicorn.conf.py`
 
@@ -83,11 +83,6 @@ The `web` container does not publish port 8000 to the host; Nginx is the only pa
 
 Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/default.conf`. Listens on `8000`, serves `/static/*`, `/favicon.ico`, and `/robots.txt` directly from the bind-mounted `./static/` tree at the repo root with `Cache-Control: public, max-age=86400`, and proxies everything else to `http://web:8000`. `proxy_buffering off`, `X-Accel-Buffering: no`, and `proxy_read_timeout 130s` (just above CloudFront's 120s SSE origin timeout) keep `/profile/stream` flowing. `gzip on` is enabled for text and image/x-icon at `gzip_min_length 256`.
 
-## `searxng/`
-
-- `settings.yml.tmpl` — engines, dev secret key, `limiter: false`, `image_proxy: true`, JSON format, outgoing-pool tuning. The `braveapi` engine reads `${BRAVE_API_KEY}` from the environment. Details in [`searxng.md`](./searxng.md).
-- `entrypoint.sh` — runs before the SearXNG image's own entrypoint, expands `${BRAVE_API_KEY}` in the template using Python's `string.Template`, writes the rendered file to an in-container tmpfs at `/run/searxng/settings.yml` (chmod `0400`, owned by `searxng:searxng`), points SearXNG at it via `__SEARXNG_SETTINGS_PATH`, and execs the upstream entrypoint. The key never touches the host filesystem. Exits non-zero if `BRAVE_API_KEY` is unset.
-
 ## Environment variables
 
 [`config/.env.example`](../config/.env.example) is the annotated source of truth; this table groups the same variables by purpose and notes where each is read.
@@ -97,7 +92,7 @@ Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/defa
 | Variable | Read where | Notes |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | `AsyncAnthropic()` via the SDK | Used by every Haiku and Sonnet call in `claude.py`. |
-| `BRAVE_API_KEY` | `Settings` in `config.py` (web service's Brave backend); `searxng/entrypoint.sh` → `settings.yml.tmpl` (SearXNG) | Consumed directly by the web service's `BraveBackend` (when `BRAVE_ENABLED=true`) and by SearXNG's `braveapi` engine. Provision at <https://api-dashboard.search.brave.com/>. SearXNG fails to start if unset. In prod, store as `brave_api_key` in the `odin/app` Secrets Manager entry; see [`aws-setup.md` § "How secrets reach the containers"](./aws-setup.md#how-secrets-reach-the-containers). |
+| `BRAVE_API_KEY` | `Settings` in `config.py` (web service's Brave backend) | Consumed directly by the web service's `BraveBackend`. Provision at <https://api-dashboard.search.brave.com/>. When unset, the Brave backend is not constructed and the aggregator falls back to Wikipedia only. In prod, store as `brave_api_key` in the `odin/app` Secrets Manager entry; see [`aws-setup.md` § "How secrets reach the containers"](./aws-setup.md#how-secrets-reach-the-containers). |
 | `SECRET_KEY` | `Settings` in `config.py` | 32+ random bytes; signs session and CSRF cookies. Generate with `python -c 'import secrets; print(secrets.token_urlsafe(48))'`. |
 | `APP_URL` | `Settings` in `config.py`, used by `email.py` | Public base URL of the deployment; embedded into magic-link emails. |
 
@@ -111,7 +106,6 @@ Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/defa
 
 | Variable | Default | Notes |
 |---|---|---|
-| `SEARXNG_URL` | `http://searxng:8080` | Override only when running SearXNG out of compose. |
 | `LOG_LEVEL` | `INFO` (compose dev sets `DEBUG`) | Loguru level. |
 | `WORKERS` | `(cpu_count * 2) + 1` | Each gunicorn worker holds ~200 MB Chromium — set explicitly on small boxes. |
 | `PLAYWRIGHT_HEADLESS` | `true` | `false` launches a visible Chromium; only useful on a host with a display server. |
@@ -119,15 +113,13 @@ Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/defa
 | `PLAYWRIGHT_CHANNEL` | unset (bundled Chromium) | E.g. `chrome` when a real Chrome channel is installed in the image. |
 | `PLAYWRIGHT_STORAGE_STATE_PATH` | `/var/lib/odin/playwright-state/state.json` | Shared cookie/storage state, persisted under an `fcntl` lock. Set `""` to disable. |
 | `FETCH_CURL_CFFI_ENABLED` | `true` | Set `false` to skip Tier 0 and always use Playwright. |
-| `BRAVE_ENABLED` | `false` | Enables the web service's direct Brave Search API backend (`BraveBackend`). Fails closed without `BRAVE_API_KEY`. Keep `false` until the direct client is proven against SearXNG + `braveapi`; then disable SearXNG to avoid double-billing Brave. |
-| `WIKIPEDIA_ENABLED` | `false` | Enables the first-party Wikipedia search backend (Wikimedia Core REST search). The endpoint serves search unauthenticated given a policy-compliant `User-Agent`, so no token is required. |
+| `SEARCH_TIMEOUT_SECONDS` | `30.0` | Per-backend call ceiling enforced by `SearchAggregator`. |
 | `CONTACT_EMAIL` | `odin@odinseye.info` | Address shown on `/privacy` and `/terms`; also composed into the Wikipedia backend's `User-Agent`. |
 
 **Production-only.**
 
 | Variable | Default | Notes |
 |---|---|---|
-| `SEARXNG_SECRET` | unset | Overrides the dev secret in `searxng/settings.yml`. |
 | `SMTP_HOST` | `smtp.purelymail.com` | Used by `email.py`. |
 | `SMTP_PORT` | `587` | Submission port. |
 | `SMTP_FROM` | `odin@odinseye.info` | `From:` header. |
@@ -154,13 +146,12 @@ PLAYWRIGHT_TRACE_DIR=traces make dev
 uvx playwright show-trace traces/<file>.zip
 ```
 
-If you really want a live, visible Chromium window, run uvicorn directly on the macOS host (SearXNG stays in Docker via `8080:8080`). Note that this bypasses Nginx entirely, so `/static/*`, `/favicon.ico`, and `/robots.txt` will 404 — only use this mode for headed Playwright debugging, not full-app verification:
+If you really want a live, visible Chromium window, run uvicorn directly on the macOS host. Note that this bypasses Nginx entirely, so `/static/*`, `/favicon.ico`, and `/robots.txt` will 404 — only use this mode for headed Playwright debugging, not full-app verification:
 
 ```sh
 uv sync
 uv run playwright install chromium
-PLAYWRIGHT_HEADLESS=false SEARXNG_URL=http://localhost:8080 \
-  uv run uvicorn odin.main:app --reload --port 8000
+PLAYWRIGHT_HEADLESS=false uv run uvicorn odin.main:app --reload --port 8000
 ```
 
 ## CI/CD
@@ -174,4 +165,4 @@ GitHub Actions workflows live in `.github/workflows/`:
 
 The deploy workflow uses OIDC — no long-lived AWS credentials stored in GitHub. Required repository secrets: `AWS_ACCOUNT_ID`, `EC2_INSTANCE_ID`. See [`docs/aws-setup.md`](./aws-setup.md) for full provisioning steps.
 
-Integration tests are excluded from CI — they require a live SearXNG instance hitting real search engines. Run them locally with `make test-integration`.
+Integration tests are excluded from CI — they hit real external services (the Brave Search API, the Wikimedia REST endpoint, and the SMTP relay). Run them locally with `make test-integration`.

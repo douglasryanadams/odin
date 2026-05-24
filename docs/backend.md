@@ -9,8 +9,7 @@ Python lives under `src/odin/` as one mostly flat package; the search layer is t
 | `main.py` | FastAPI app, routes, dependency providers, template wiring. |
 | `pipeline.py` | Orchestrates the profile build as an async generator. |
 | `claude.py` | Anthropic API calls — one function per stage. |
-| `search/` | The search layer. `models.py` defines the neutral `SearchResult`; `base.py` the `SearchBackend` Protocol; `aggregator.py` the `SearchAggregator` (fan-out, per-backend timeout, dedupe by URL with engines-union) plus the shared `merge_results` helper; `searxng_backend.py` wraps `searxng.search` as a backend; `wikipedia.py` is a first-party client for the Wikimedia Core REST search endpoint (unauthenticated with a policy-compliant `User-Agent`, excerpt HTML stripped to plain text, `engines=["wikipedia"]`), gated by `WIKIPEDIA_ENABLED`. `__init__.py` holds the backend registry and `build_aggregator(settings)`. |
-| `searxng.py` | Async SearXNG client (`search()`), wrapped as one backend behind the aggregator. |
+| `search/` | The search layer. `models.py` defines the neutral `SearchResult`; `base.py` the `SearchBackend` Protocol; `aggregator.py` the `SearchAggregator` (fan-out, per-backend timeout, dedupe by URL with engines-union) plus the shared `merge_results` helper; `brave.py` and `wikipedia.py` are first-party clients for the Brave Search API and the Wikimedia Core REST search endpoint. `__init__.py` holds the backend registry (`_brave_factory`, `_wikipedia_factory`) and `build_aggregator(settings)`. See [`search.md`](./search.md). |
 | `fetch.py` | Tiered page fetch: hardened Playwright (Tier 1) plus orchestration via `TieredPageFetcher`. Defines the `PageFetcher` Protocol and `PlaywrightPageFetcher`. |
 | `curl_fetch.py` | Tier 0 fetcher: `curl_cffi` with Chrome TLS impersonation. Defines `CurlCffiPageFetcher`, `CurlFetchResult`, the `_should_fall_back` predicate, and the response-shape gates (`ALLOWED_CONTENT_TYPES`, `MAX_RESPONSE_BYTES`). |
 | `url_filter.py` | Pure allowlist for URLs sent to Claude. Rejects non-`http(s)` schemes, known-binary extensions, and hosts in the configured domain blocklist. Applied by `pipeline.py` before `select_urls`. |
@@ -38,7 +37,7 @@ Python lives under `src/odin/` as one mostly flat package; the search layer is t
 
 Three dependency providers, used with `Annotated[..., Depends(...)]` and overridden in tests:
 
-- `get_search_aggregator()` — returns `search.build_aggregator(settings)`, a `SearchAggregator` over the enabled backends (Phase 1: SearXNG only, gated by `SEARXNG_ENABLED`).
+- `get_search_aggregator()` — returns `search.build_aggregator(settings)`, a `SearchAggregator` over the active backends: Brave (when `BRAVE_API_KEY` is set) and Wikipedia (always).
 - `get_anthropic_client()` — returns `AsyncAnthropic()`, which itself reads `ANTHROPIC_API_KEY`.
 - `get_page_fetcher(request)` — returns `TieredPageFetcher(curl=CurlCffiPageFetcher(), playwright=PlaywrightPageFetcher(browser=...))` so each batch tries Tier 0 first.
 
@@ -73,7 +72,7 @@ Each event is one JSON object on a single SSE `data:` line. The browser consumes
 
 ## Integrations
 
-- **Search** — Queries fan out through the `SearchAggregator` over registered `SearchBackend`s. Phase 1 wraps the existing `searxng.search()` (one async function, ~20 lines) as the sole backend; per-query concurrency lives in `pipeline.py`, per-backend timeout and the dedupe/engines-union merge in `search/aggregator.py`. See [`searxng.md`](./searxng.md).
+- **Search** — Queries fan out through the `SearchAggregator` over registered `SearchBackend`s. Today: `BraveBackend` (when `BRAVE_API_KEY` is set) and `WikipediaBackend` (always). Per-query concurrency lives in `pipeline.py`; per-backend timeout and the dedupe/engines-union merge live in `search/aggregator.py`. See [`search.md`](./search.md).
 - **Anthropic** — Five async functions in `claude.py`, each using tool-use to enforce structured output. Haiku for classify/queries/select-urls; Sonnet for synthesis and assessment. See [`claude-api.md`](./claude-api.md).
 
 ## Logging
@@ -82,7 +81,7 @@ Each event is one JSON object on a single SSE `data:` line. The browser consumes
 
 ## Tests
 
-`tests/` mirrors the module layout: `test_main.py`, `test_pipeline.py`, `test_claude.py`, `test_fetch.py`, `test_log.py`, plus `tests/integration/` (marked `integration`, requires a live SearXNG, off by default). Run modes are in the [Makefile](../Makefile) and explained in [`configuration.md`](./configuration.md).
+`tests/` mirrors the module layout: `test_main.py`, `test_pipeline.py`, `test_claude.py`, `test_fetch.py`, `test_log.py`, plus `tests/integration/` (marked `integration`, hits real external services, off by default). Run modes are in the [Makefile](../Makefile) and explained in [`configuration.md`](./configuration.md).
 
 ## Design philosophy
 
