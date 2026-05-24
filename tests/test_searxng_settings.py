@@ -43,17 +43,22 @@ def test_search_ban_backoff_is_long_enough_to_silence_blocked_scrapers() -> None
 
 
 def test_known_blocked_scrapers_are_disabled() -> None:
-    """startpage/qwant/karmasearch must be present-but-disabled.
+    """Engines that fail from our IPs must be present-but-disabled.
 
-    They cannot be removed via `use_default_settings.engines.remove` because
-    SearXNG's network config references some of these names as network
-    aliases (e.g. dropping `qwant` raises KeyError at SearXNG startup), so
-    we override them with `disabled: true` to keep the runtime alive while
-    silencing the requests.
+    startpage / qwant / karmasearch return CAPTCHA / access-denied from
+    cloud IPs; wikipedia returns HTTP 429 because SearXNG's hardcoded
+    `searxng/<version>` User-Agent trips Wikimedia's bot-rate-limit
+    (and SearXNG doesn't support per-engine UA override).
+
+    These cannot be removed via `use_default_settings.engines.remove`
+    because SearXNG's network config references some of these names as
+    network aliases (e.g. dropping `qwant` raises KeyError at SearXNG
+    startup), so we override them with `disabled: true` to keep the
+    runtime alive while silencing the requests.
     """
     data = _render_template("unused")
     by_engine = {e["engine"]: e for e in data["engines"]}
-    for engine in ("startpage", "qwant", "karmasearch"):
+    for engine in ("startpage", "qwant", "karmasearch", "wikipedia"):
         assert engine in by_engine, f"{engine} must be present in the engine list"
         assert by_engine[engine]["disabled"] is True, f"{engine} must be disabled"
     assert "mojeek" in by_engine, "mojeek must remain as a free secondary source"

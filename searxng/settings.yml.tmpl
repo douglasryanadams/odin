@@ -68,9 +68,12 @@ engines:
 
   # The remaining defaults are SERP scrapers (Google, Bing, etc.) behind
   # proxies; from a single cloud IP they consistently return CAPTCHA or
-  # access-denied. Cannot use `engines.remove` because SearXNG's network
-  # config references some of these names as network aliases, so we
-  # override each entry with `disabled: true` instead.
+  # access-denied. Wikipedia returns HTTP 429 because SearXNG identifies
+  # itself as `searxng/<version>` and that trips Wikimedia's bot rate
+  # limit (no per-engine User-Agent override is supported). Cannot use
+  # `engines.remove` because SearXNG's network config references some of
+  # these names as network aliases, so we override each entry with
+  # `disabled: true` instead.
   - name: startpage
     engine: startpage
     disabled: true
@@ -79,6 +82,9 @@ engines:
     disabled: true
   - name: karmasearch
     engine: karmasearch
+    disabled: true
+  - name: wikipedia
+    engine: wikipedia
     disabled: true
 
 valkey:
