@@ -29,7 +29,6 @@ function buildProfileDom() {
     <section id="section-sources"><span id="sources-count"></span><ol class="citations" data-empty="none"></ol></section>
     <div id="subject-compass"><div class="assessment-gauges"></div></div>
     <div id="source-audit">
-      <span id="audit-pct"></span>
       <div class="assessment-gauges"></div>
       <ul class="profile__caveats" data-empty="No caveats."></ul>
     </div>
@@ -47,31 +46,6 @@ describe("el", () => {
 
   test("leaves textContent empty when content is undefined", () => {
     expect(profile.el("span", "x").textContent).toBe("");
-  });
-});
-
-describe("buildGauge", () => {
-  test("renders label, percent value, and a marker in the rule", () => {
-    const wrap = profile.buildGauge("Conf", 78, "gauge-line--confidence");
-    expect(wrap.querySelector(".gauge-line__label").textContent).toBe("Conf");
-    expect(wrap.querySelector(".gauge-line__value").textContent).toBe("78%");
-    expect(wrap.querySelector(".gauge-line__marker").textContent).toBe("▓");
-    expect(wrap.className).toBe("gauge-line gauge-line--confidence");
-  });
-
-  test("rule length is the configured RULE_WIDTH and contains exactly one marker", () => {
-    const wrap = profile.buildGauge("X", 50, "");
-    const rule = wrap.querySelector(".gauge-line__rule");
-    // textContent collapses the marker span's "▓" plus the surrounding dots.
-    // RULE_WIDTH (24) chars total: 23 dots + 1 marker = 24.
-    expect(rule.textContent.length).toBe(24);
-    expect(rule.querySelectorAll(".gauge-line__marker").length).toBe(1);
-  });
-
-  test("100% places marker at the right end (last position)", () => {
-    const wrap = profile.buildGauge("X", 100, "");
-    const rule = wrap.querySelector(".gauge-line__rule");
-    expect(rule.textContent[rule.textContent.length - 1]).toBe("▓");
   });
 });
 
@@ -215,7 +189,6 @@ describe("handleEvent", () => {
   test("assessment event completes the bar and renders gauges + caveats", () => {
     profile.handleEvent({
       type: "assessment",
-      confidence: 0.5,
       public_sentiment: 0,
       subject_political_bias: 0,
       source_political_bias: 0,
@@ -225,7 +198,6 @@ describe("handleEvent", () => {
     });
     expect(document.getElementById("progress-strip").classList.contains("is-complete")).toBe(true);
     expect(document.querySelectorAll("#subject-compass .gauge-line__label").length).toBe(4);
-    expect(document.getElementById("audit-pct").textContent).toBe("50%");
   });
 
   test("done force-completes the bar if assessment never arrives", () => {
@@ -337,7 +309,6 @@ describe("renderAssessment", () => {
   });
 
   const sample = {
-    confidence: 0.78,
     public_sentiment: 0.32,
     subject_political_bias: -0.2,
     source_political_bias: 0.1,
@@ -357,16 +328,12 @@ describe("renderAssessment", () => {
     expect(labels).toEqual(["Public sentiment", "Political lean", "Order", "Morality"]);
   });
 
-  test("Source Audit renders confidence + source lean, and sets audit-pct", () => {
+  test("Source Audit renders only the source political lean gauge", () => {
     profile.renderAssessment(sample);
     const labels = [
       ...document.querySelectorAll("#source-audit .gauge-line__label"),
     ].map((n) => n.textContent);
-    expect(labels).toEqual(["Profile confidence", "Source political lean"]);
-    expect(
-      document.querySelector("#source-audit .gauge-line--confidence .gauge-line__value").textContent,
-    ).toBe("78%");
-    expect(document.getElementById("audit-pct").textContent).toBe("78%");
+    expect(labels).toEqual(["Source political lean"]);
   });
 
   test("caveats render as expandable <details> with brief + detail", () => {

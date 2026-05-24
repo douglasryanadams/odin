@@ -10,7 +10,7 @@ Odin uses the [Anthropic API](https://platform.claude.com/docs/en/home) for five
 | Generate 3–5 search queries | `generate_queries()` | `claude-haiku-4-5-20251001` |
 | Select up to 5 URLs from search results | `select_urls()` | `claude-haiku-4-5-20251001` |
 | Synthesize the structured `Profile` | `synthesize()` | `claude-sonnet-4-6` |
-| Assess confidence, sentiment, bias, alignment, caveats | `assess()` | `claude-sonnet-4-6` |
+| Assess sentiment, bias, alignment, caveats | `assess()` | `claude-sonnet-4-6` |
 
 Model IDs are pinned as `_HAIKU` and `_SONNET` constants. Sonnet is used for tasks that need long input or nuanced judgment — synthesis (multi-source reasoning) and assessment (bias / alignment / caveats).
 

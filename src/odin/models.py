@@ -55,9 +55,8 @@ class Caveat(BaseModel):
 
 
 class Assessment(BaseModel):
-    """Confidence, sentiment, bias and alignment judgments about a profile."""
+    """Sentiment, bias and alignment judgments about a profile."""
 
-    confidence: float = Field(ge=0, le=1)
     public_sentiment: float = Field(ge=-1, le=1)
     subject_political_bias: float = Field(ge=-1, le=1)
     source_political_bias: float = Field(ge=-1, le=1)
