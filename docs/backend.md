@@ -1,6 +1,6 @@
 # Backend
 
-Python lives under `src/odin/` as one flat package — no subpackages. Front-end assets sit alongside under `templates/` and `static/` and are documented in [`frontend.md`](./frontend.md).
+Python lives under `src/odin/` as one mostly flat package; the search layer is the one subpackage (`search/`). Front-end assets sit alongside under `templates/` and `static/` and are documented in [`frontend.md`](./frontend.md).
 
 ## Module map
 
@@ -9,7 +9,8 @@ Python lives under `src/odin/` as one flat package — no subpackages. Front-end
 | `main.py` | FastAPI app, routes, dependency providers, template wiring. |
 | `pipeline.py` | Orchestrates the profile build as an async generator. |
 | `claude.py` | Anthropic API calls — one function per stage. |
-| `searxng.py` | Async SearXNG client; defines `SearchResult`. |
+| `search/` | The search layer. `models.py` defines the neutral `SearchResult`; `base.py` the `SearchBackend` Protocol; `aggregator.py` the `SearchAggregator` (fan-out, per-backend timeout, dedupe by URL with engines-union) plus the shared `merge_results` helper; `searxng_backend.py` wraps `searxng.search` as a backend. `__init__.py` holds the backend registry and `build_aggregator(settings)`. |
+| `searxng.py` | Async SearXNG client (`search()`), wrapped as one backend behind the aggregator. |
 | `fetch.py` | Tiered page fetch: hardened Playwright (Tier 1) plus orchestration via `TieredPageFetcher`. Defines the `PageFetcher` Protocol and `PlaywrightPageFetcher`. |
 | `curl_fetch.py` | Tier 0 fetcher: `curl_cffi` with Chrome TLS impersonation. Defines `CurlCffiPageFetcher`, `CurlFetchResult`, the `_should_fall_back` predicate, and the response-shape gates (`ALLOWED_CONTENT_TYPES`, `MAX_RESPONSE_BYTES`). |
 | `url_filter.py` | Pure allowlist for URLs sent to Claude. Rejects non-`http(s)` schemes, known-binary extensions, and hosts in the configured domain blocklist. Applied by `pipeline.py` before `select_urls`. |
@@ -37,17 +38,17 @@ Python lives under `src/odin/` as one flat package — no subpackages. Front-end
 
 Three dependency providers, used with `Annotated[..., Depends(...)]` and overridden in tests:
 
-- `get_searxng_url()` — reads `SEARXNG_URL` (default `http://searxng:8080`).
+- `get_search_aggregator()` — returns `search.build_aggregator(settings)`, a `SearchAggregator` over the enabled backends (Phase 1: SearXNG only, gated by `SEARXNG_ENABLED`).
 - `get_anthropic_client()` — returns `AsyncAnthropic()`, which itself reads `ANTHROPIC_API_KEY`.
 - `get_page_fetcher(request)` — returns `TieredPageFetcher(curl=CurlCffiPageFetcher(), playwright=PlaywrightPageFetcher(browser=...))` so each batch tries Tier 0 first.
 
 ## Profile pipeline
 
-`pipeline.build_profile(query, searxng_url, anthropic_client, fetcher)` is an async generator yielding a `StageEvent(stage, data)` per step:
+`pipeline.build_profile(query, searcher, anthropic_client, fetcher)` is an async generator yielding a `StageEvent(stage, data)` per step (`searcher` is any `SearchBackend`; in production the `SearchAggregator`):
 
 1. **`categorized`** — `claude.categorize()` → `person | place | event | other` (Haiku).
 2. **`queries`** — `claude.generate_queries()` → 3–5 search strings (Haiku).
-3. **`searching`** — Run queries against SearXNG, gated by `asyncio.Semaphore(SEARXNG_MAX_CONCURRENCY=2)`. Dedupe by URL, preserving first-seen order. Then apply `url_filter.filter_search_results()` against `settings.url_domain_blocklist` to drop results with non-`http(s)` schemes, known-binary extensions, or hosts in the blocklist. Only the filtered set is forwarded to `select_urls` and used as the citation-candidate pool for `synthesize`.
+3. **`searching`** — Run each query through `searcher.search()`, gated by `asyncio.Semaphore(SEARCH_QUERY_CONCURRENCY=2)`. The aggregator fans each query across its enabled backends concurrently under a per-backend timeout, dropping any that time out or error (partial results allowed). Results are merged by `merge_results()`: deduped by URL preserving first-seen order, with the `engines` field unioned across backends that returned the same URL — the same helper collapses results across queries. Then apply `url_filter.filter_search_results()` against `settings.url_domain_blocklist` to drop results with non-`http(s)` schemes, known-binary extensions, or hosts in the blocklist. Only the filtered set is forwarded to `select_urls` and used as the citation-candidate pool for `synthesize`.
 4. **`fetching`** — `claude.select_urls()` picks ≤ 5 URLs (Haiku); the event carries the count.
 5. **`profile`** — `fetcher.fetch_pages()` runs each URL through Tier 0 (`curl_cffi` with `impersonate="chrome"`, 8 s timeout, `trafilatura.extract`). The Tier 0 response is gated by `ALLOWED_CONTENT_TYPES` (`text/html`, `text/plain`, `application/xhtml+xml`) and `MAX_RESPONSE_BYTES` (2 MB); a response that fails either check is discarded with `fall_back=False` so Playwright is not retried. Otherwise, any URL whose result has `fall_back=True` is rendered in a fresh Playwright `BrowserContext` with locale `en-US`, timezone `America/Los_Angeles`, an `Accept-Language` header, a randomized viewport drawn from `(1366, 768)`, `(1536, 864)`, or `(1440, 900)` ±20 px, an init script that hides `navigator.webdriver`, and an optional shared `storage_state` JSON file persisted under an `fcntl` lock. The first `domcontentloaded` attempt is retried once with `wait_until="load"` if the extraction is too short. Each result is capped at `CONTENT_LIMIT = 10_000` chars. `claude.synthesize()` then builds the `Profile` (Sonnet); yielded as `Profile.model_dump()`. Page-level errors are mapped to `"Error fetching URL: <exc>"` so a single bad URL does not fail the batch.
 6. **`assessment`** — `claude.assess()` scores the profile + sources on sentiment, subject/source political bias, D&D law-chaos / good-evil, and a short caveats list (Sonnet). If the call raises, the stage is skipped and a warning is logged so the profile still reaches the user.
@@ -60,7 +61,7 @@ The streaming layer lives entirely inside `profile_stream()` in `main.py`:
 
 ```python
 async def event_generator() -> AsyncGenerator[str, None]:
-    async for event in pipeline.build_profile(q, searxng_url, anthropic, fetcher):
+    async for event in pipeline.build_profile(q, searcher, anthropic, fetcher):
         payload = {"type": event.stage, **event.data}
         yield f"data: {json.dumps(payload)}\n\n"
     yield 'data: {"type": "done"}\n\n'
@@ -72,7 +73,7 @@ Each event is one JSON object on a single SSE `data:` line. The browser consumes
 
 ## Integrations
 
-- **SearXNG** — `searxng.search()` is one async function, ~30 lines. Concurrency and dedup live in `pipeline.py`. See [`searxng.md`](./searxng.md).
+- **Search** — Queries fan out through the `SearchAggregator` over registered `SearchBackend`s. Phase 1 wraps the existing `searxng.search()` (one async function, ~20 lines) as the sole backend; per-query concurrency lives in `pipeline.py`, per-backend timeout and the dedupe/engines-union merge in `search/aggregator.py`. See [`searxng.md`](./searxng.md).
 - **Anthropic** — Five async functions in `claude.py`, each using tool-use to enforce structured output. Haiku for classify/queries/select-urls; Sonnet for synthesis and assessment. See [`claude-api.md`](./claude-api.md).
 
 ## Logging
@@ -86,5 +87,5 @@ Each event is one JSON object on a single SSE `data:` line. The browser consumes
 ## Design philosophy
 
 - **Flat package, async generators.** No subpackages; the pipeline `yield`s progress so SSE is a thin adapter on top.
-- **DI for external services.** SearXNG URL and Anthropic client come in via `Depends`; tests swap them.
+- **DI for external services.** The search aggregator and Anthropic client come in via `Depends`; tests swap them (a fake `SearchBackend`, an aggregator over a mock URL).
 - **Tool-use, not parsing.** Structured output is enforced by tool schemas; missing tool blocks raise.

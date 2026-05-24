@@ -8,10 +8,11 @@ from typing import Any, cast
 from anthropic import AsyncAnthropic, BadRequestError, RateLimitError
 from loguru import logger
 
-from odin import claude, fetch, searxng, url_filter
+from odin import claude, fetch, url_filter
 from odin.config import settings
+from odin.search import SearchBackend, SearchResult, merge_results
 
-SEARXNG_MAX_CONCURRENCY = 2
+SEARCH_QUERY_CONCURRENCY = 2
 
 _SERVICE_UNAVAILABLE_MESSAGE = "Odin is temporarily paused. Please try again in a little while."
 
@@ -36,7 +37,7 @@ class StageEvent:
 
 async def build_profile(
     query: str,
-    searxng_url: str,
+    searcher: SearchBackend,
     anthropic_client: AsyncAnthropic,
     fetcher: fetch.PageFetcher,
 ) -> AsyncGenerator[StageEvent, None]:
@@ -44,7 +45,7 @@ async def build_profile(
     logger.debug("pipeline start query={!r}", query)
 
     try:
-        async for event in _run_pipeline(query, searxng_url, anthropic_client, fetcher):
+        async for event in _run_pipeline(query, searcher, anthropic_client, fetcher):
             yield event
     except RateLimitError as exc:
         logger.warning("anthropic rate-limited: {}", exc)
@@ -62,7 +63,7 @@ async def build_profile(
 
 async def _run_pipeline(
     query: str,
-    searxng_url: str,
+    searcher: SearchBackend,
     anthropic_client: AsyncAnthropic,
     fetcher: fetch.PageFetcher,
 ) -> AsyncGenerator[StageEvent, None]:
@@ -74,20 +75,14 @@ async def _run_pipeline(
     logger.debug("queries generated count={}", len(queries))
     yield StageEvent(stage="queries", data={"queries": queries})
 
-    semaphore = asyncio.Semaphore(SEARXNG_MAX_CONCURRENCY)
+    semaphore = asyncio.Semaphore(SEARCH_QUERY_CONCURRENCY)
 
-    async def _throttled_search(q: str) -> list[searxng.SearchResult]:
+    async def _throttled_search(q: str) -> list[SearchResult]:
         async with semaphore:
-            return await searxng.search(q, searxng_url)
+            return await searcher.search(q)
 
     results_per_query = await asyncio.gather(*[_throttled_search(q) for q in queries])
-    seen: set[str] = set()
-    unique_results: list[searxng.SearchResult] = []
-    for batch in results_per_query:
-        for r in batch:
-            if r.url not in seen:
-                seen.add(r.url)
-                unique_results.append(r)
+    unique_results = merge_results(results_per_query)
     allowed_results = url_filter.filter_search_results(
         unique_results, blocked_domains=settings.url_domain_blocklist
     )

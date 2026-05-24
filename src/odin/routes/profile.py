@@ -14,7 +14,7 @@ from odin import auth, cache, fetch, pipeline, store
 from odin.app import (
     get_anthropic_client,
     get_page_fetcher,
-    get_searxng_url,
+    get_search_aggregator,
     get_valkey_client,
     templates,
 )
@@ -29,6 +29,7 @@ from odin.routes._shared import (
     set_csrf_cookie_if_absent,
     user_email,
 )
+from odin.search import SearchAggregator
 
 router = APIRouter()
 
@@ -79,7 +80,7 @@ async def profile_page(
 async def profile_stream(  # noqa: PLR0913
     request: Request,
     q: Annotated[str, Query(max_length=MAX_QUERY_LEN)],
-    searxng_url: Annotated[str, Depends(get_searxng_url)],
+    searcher: Annotated[SearchAggregator, Depends(get_search_aggregator)],
     anthropic: Annotated[AsyncAnthropic, Depends(get_anthropic_client)],
     fetcher: Annotated[fetch.PageFetcher, Depends(get_page_fetcher)],
     valkey_client: Annotated[Valkey, Depends(get_valkey_client)],
@@ -116,7 +117,7 @@ async def profile_stream(  # noqa: PLR0913
         else:
             collected: list[dict[str, Any]] = []
             category = "other"
-            async for chunk in _stream_pipeline(q, searxng_url, anthropic, fetcher, collected):
+            async for chunk in _stream_pipeline(q, searcher, anthropic, fetcher, collected):
                 yield chunk
             category = _category_from(collected) or category
             if not _had_failure(collected):
@@ -136,12 +137,12 @@ async def _replay_cached(events: list[dict[str, Any]]) -> AsyncGenerator[str, No
 
 async def _stream_pipeline(
     q: str,
-    searxng_url: str,
+    searcher: SearchAggregator,
     anthropic: AsyncAnthropic,
     fetcher: fetch.PageFetcher,
     collected: list[dict[str, Any]],
 ) -> AsyncGenerator[str, None]:
-    async for event in pipeline.build_profile(q, searxng_url, anthropic, fetcher):
+    async for event in pipeline.build_profile(q, searcher, anthropic, fetcher):
         payload = {"type": event.stage, **event.data}
         collected.append(payload)
         yield f"data: {json.dumps(payload)}\n\n"

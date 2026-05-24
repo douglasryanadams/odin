@@ -1,6 +1,7 @@
 """Tests for the profile pipeline."""
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -8,7 +9,7 @@ import pytest
 
 from odin import pipeline
 from odin.models import Assessment, Profile
-from odin.searxng import SearchResult
+from odin.search import SearchResult
 
 
 @dataclass(frozen=True)
@@ -19,12 +20,24 @@ class _FakeFetcher:
         return dict.fromkeys(urls, "")
 
 
-async def test_pipeline_bounds_searxng_concurrency() -> None:
-    """build_profile should cap in-flight searxng.search calls at SEARXNG_MAX_CONCURRENCY."""
+@dataclass(frozen=True)
+class _FakeBackend:
+    """Minimal SearchBackend stub that delegates to a supplied search function."""
+
+    search_fn: Callable[[str], Awaitable[list[SearchResult]]]
+    name: str = "fake"
+    timeout_seconds: float = 5.0
+
+    async def search(self, query: str) -> list[SearchResult]:
+        return await self.search_fn(query)
+
+
+async def test_pipeline_bounds_search_concurrency() -> None:
+    """build_profile should cap in-flight backend.search calls at SEARCH_QUERY_CONCURRENCY."""
     inflight = 0
     max_inflight = 0
 
-    async def fake_search(q: str, base_url: str) -> list[SearchResult]:  # noqa: ARG001
+    async def fake_search(q: str) -> list[SearchResult]:
         nonlocal inflight, max_inflight
         inflight += 1
         max_inflight = max(max_inflight, inflight)
@@ -43,12 +56,13 @@ async def test_pipeline_bounds_searxng_concurrency() -> None:
         patch.object(pipeline.claude, "select_urls", AsyncMock(return_value=[])),
         patch.object(pipeline.claude, "synthesize", AsyncMock(return_value=profile)),
         patch.object(pipeline.claude, "assess", AsyncMock(side_effect=Exception("skip"))),
-        patch.object(pipeline.searxng, "search", side_effect=fake_search),
     ):
-        async for _ in pipeline.build_profile("foo", "http://test", anthropic, _FakeFetcher()):
+        async for _ in pipeline.build_profile(
+            "foo", _FakeBackend(fake_search), anthropic, _FakeFetcher()
+        ):
             pass
 
-    assert max_inflight <= pipeline.SEARXNG_MAX_CONCURRENCY
+    assert max_inflight <= pipeline.SEARCH_QUERY_CONCURRENCY
     assert max_inflight >= 2, "sanity: the test should actually exercise concurrency"
 
 
@@ -56,8 +70,9 @@ def _make_tracing_pipeline_doubles() -> tuple[
     list[str],
     dict[str, object],
     type,
+    Callable[[str], Awaitable[list[SearchResult]]],
 ]:
-    """Build doubles that record every claude/searxng/fetcher call into a shared trace."""
+    """Build doubles that record every claude/search/fetcher call into a shared trace."""
     trace: list[str] = []
 
     async def trace_categorize(*_args: object, **_kw: object) -> str:
@@ -95,7 +110,7 @@ def _make_tracing_pipeline_doubles() -> tuple[
             caveats=[],
         )
 
-    async def trace_search(q: str, _url: str) -> list[SearchResult]:
+    async def trace_search(q: str) -> list[SearchResult]:
         trace.append("call:search")
         return [SearchResult(url=f"https://e/{q}", title=q, content="", engines=["x"])]
 
@@ -111,9 +126,8 @@ def _make_tracing_pipeline_doubles() -> tuple[
         "select_urls": trace_select_urls,
         "synthesize": trace_synthesize,
         "assess": trace_assess,
-        "search": trace_search,
     }
-    return trace, doubles, _TraceFetcher
+    return trace, doubles, _TraceFetcher, trace_search
 
 
 async def test_pipeline_emits_synthesizing_and_assessing_events_at_phase_boundaries() -> None:
@@ -122,17 +136,18 @@ async def test_pipeline_emits_synthesizing_and_assessing_events_at_phase_boundar
     `synthesizing` fires between fetch and synthesize; `assessing` fires between
     synthesize and assess, so the UI can show progress during the long Sonnet calls.
     """
-    trace, doubles, fetcher_cls = _make_tracing_pipeline_doubles()
+    trace, doubles, fetcher_cls, search_fn = _make_tracing_pipeline_doubles()
     with (
         patch.object(pipeline.claude, "categorize", side_effect=doubles["categorize"]),
         patch.object(pipeline.claude, "generate_queries", side_effect=doubles["generate_queries"]),
         patch.object(pipeline.claude, "select_urls", side_effect=doubles["select_urls"]),
         patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
         patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
-        patch.object(pipeline.searxng, "search", side_effect=doubles["search"]),
     ):
         events: list[str] = []
-        async for ev in pipeline.build_profile("foo", "http://t", MagicMock(), fetcher_cls()):
+        async for ev in pipeline.build_profile(
+            "foo", _FakeBackend(search_fn), MagicMock(), fetcher_cls()
+        ):
             trace.append(f"yield:{ev.stage}")
             events.append(ev.stage)
 
@@ -158,7 +173,7 @@ async def test_pipeline_filters_disallowed_urls_before_select(
     """Search results with blocked extensions or blocked domains are stripped before select_urls."""
     monkeypatch.setattr(pipeline.settings, "url_domain_blocklist", ("bit.ly",))
 
-    async def fake_search(q: str, _url: str) -> list[SearchResult]:  # noqa: ARG001
+    async def fake_search(_q: str) -> list[SearchResult]:
         return [
             SearchResult(url="https://example.com/article", title="ok"),
             SearchResult(url="https://example.com/whitepaper.pdf", title="pdf"),
@@ -190,9 +205,10 @@ async def test_pipeline_filters_disallowed_urls_before_select(
         patch.object(pipeline.claude, "select_urls", side_effect=capture_select_urls),
         patch.object(pipeline.claude, "synthesize", AsyncMock(return_value=profile)),
         patch.object(pipeline.claude, "assess", AsyncMock(side_effect=Exception("skip"))),
-        patch.object(pipeline.searxng, "search", side_effect=fake_search),
     ):
-        async for _ in pipeline.build_profile("foo", "http://t", MagicMock(), _FakeFetcher()):
+        async for _ in pipeline.build_profile(
+            "foo", _FakeBackend(fake_search), MagicMock(), _FakeFetcher()
+        ):
             pass
 
     assert len(received) == 1

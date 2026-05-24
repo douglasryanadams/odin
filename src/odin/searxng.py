@@ -2,16 +2,8 @@
 
 import httpx
 from loguru import logger
-from pydantic import BaseModel
 
-
-class SearchResult(BaseModel):
-    """A single search result from SearXNG."""
-
-    url: str
-    title: str
-    content: str = ""
-    engines: list[str] = []
+from odin.search.models import SearchResult
 
 
 async def search(query: str, base_url: str) -> list[SearchResult]:

@@ -13,7 +13,8 @@ from fastapi.testclient import TestClient
 
 from helpers import api_response, tool_block
 from odin import routes  # noqa: F401  # pyright: ignore[reportUnusedImport]
-from odin.app import app, get_anthropic_client, get_searxng_url
+from odin.app import app, get_anthropic_client, get_search_aggregator
+from odin.search import SearchAggregator, SearXngBackend
 
 SEARXNG_URL = "http://searxng:8080"
 
@@ -55,10 +56,12 @@ def client() -> Iterator[TestClient]:
     Used as a context manager so FastAPI's lifespan runs and launches the
     Playwright Browser stored on ``app.state.browser``.
     """
-    app.dependency_overrides[get_searxng_url] = lambda: SEARXNG_URL
+    app.dependency_overrides[get_search_aggregator] = lambda: SearchAggregator(
+        backends=(SearXngBackend(base_url=SEARXNG_URL),)
+    )
     with TestClient(app) as test_client:
         yield test_client
-    app.dependency_overrides.pop(get_searxng_url, None)
+    app.dependency_overrides.pop(get_search_aggregator, None)
 
 
 @pytest.mark.integration
