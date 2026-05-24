@@ -856,11 +856,58 @@ ECR retains all image tags by SHA, so any prior deploy is recoverable as long as
 
 `scripts/deploy.sh` runs `docker compose up -d --pull always --force-recreate --wait` against the full stack on every push to main. Three things follow:
 
-1. **Bind-mounted config changes take effect on every deploy.** `searxng/settings.yml` is mounted from disk; without `--force-recreate`, the running container keeps its in-memory copy and config edits silently no-op until the container restarts.
+1. **Bind-mounted config changes take effect on every deploy.** `searxng/settings.yml.tmpl` is mounted from disk and rendered into a tmpfs by `searxng/entrypoint.sh` on container start; without `--force-recreate`, the running container keeps its in-memory copy and template edits silently no-op until the container restarts.
 2. **Image tags are refreshed.** Both `searxng` (see [`searxng.md`](./searxng.md)) and `valkey` are pinned to specific tags; `--pull always` is harmless on a pinned tag but means anything still on a moving tag would auto-update on every deploy.
 3. **`--wait` makes deploy failures visible.** It blocks until every container reports healthy and exits non-zero if any container never does. `web.depends_on.searxng.condition: service_healthy` just orders startup so `web` doesn't come up before searxng is reachable.
 
 This is not a graceful cutover — there is no blue/green. Every deploy briefly takes the site offline: `web` is recreated like the other services, and CloudFront sees 5xx for the ~10–20s it takes the new `web` container to reach healthy. `--wait` only tells the deploy script when to declare success or failure; it does not eliminate that gap. Acceptable today because traffic is low. If that changes, the fix is a second instance behind a target group, not a compose flag.
+
+## How secrets reach the containers
+
+`scripts/deploy.sh` is **data-driven** — every JSON key in the `odin/app` Secrets Manager entry becomes an uppercased `KEY=VALUE` line in `/opt/odin/.env`:
+
+```text
+AWS Secrets Manager (odin/app JSON)
+        │  aws secretsmanager get-secret-value
+        ▼
+scripts/deploy.sh:17-28
+        │  jq 'to_entries | map("\(.key | ascii_upcase)=\(.value)")'
+        │  → /opt/odin/.env  (umask 077, owned by ec2-user)
+        ▼
+docker compose --pull always --force-recreate --wait
+        │  loads .env from project root; forwards values for vars listed
+        │  in each service's `environment:` block to the container
+        ▼
+container env: BRAVE_API_KEY, ANTHROPIC_API_KEY, SMTP_*, ...
+```
+
+### Adding a new secret
+
+1. Add the key to the `odin/app` JSON in Secrets Manager (Console → Secrets Manager → `odin/app` → Edit → Plaintext tab). Key naming: lowercase with underscores (`brave_api_key`, `serper_api_key`). The deploy script uppercases on write.
+2. Add the **uppercased** name to the relevant service's `environment:` block in `compose/docker-compose.yml` and/or `compose/docker-compose.prod.yml`. Use the bare form (`- BRAVE_API_KEY`, no `=`) so Compose pulls the value from `.env`. **This is the step that's easy to forget** — Compose's automatic `.env` loading only does `${VAR}` substitution in the YAML, it does not forward host env vars to containers unless listed. `tests/test_compose_config.py::test_required_env_vars_are_forwarded_through_compose` catches the missing-passthrough case at lint time.
+3. Add the variable to `config/.env.example` under the appropriate section (Required, Optional, etc.) so the test can find it.
+4. Push to main. The next deploy pulls the new key into `.env` and forwards it to the listed containers automatically — no `scripts/deploy.sh` edit needed.
+
+### Verifying a secret reached the container
+
+After a deploy, from an SSM Session Manager shell on the EC2 instance:
+
+```bash
+sudo grep '^BRAVE_API_KEY=' /opt/odin/.env >/dev/null && echo ".env: ok" || echo ".env: MISSING"
+
+cd /opt/odin
+docker compose \
+  -f compose/docker-compose.yml \
+  -f compose/docker-compose.prod.yml \
+  exec searxng env | grep -q '^BRAVE_API_KEY=' && echo "container: ok" || echo "container: MISSING"
+
+docker compose \
+  -f compose/docker-compose.yml \
+  -f compose/docker-compose.prod.yml \
+  logs searxng --tail 50 | grep -iE 'brave|401|403|unauthor' || echo "searxng: no errors"
+```
+
+If `.env` has the value but the container does not, the passthrough is missing from `compose/*.yml`. If the container has the value but braveapi returns 401/403, the value itself is wrong (revoked, expired, copy/paste error).
 
 ## SearXNG limiter
 

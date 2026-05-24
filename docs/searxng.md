@@ -33,13 +33,15 @@ Concurrency limiting (`asyncio.Semaphore(SEARXNG_MAX_CONCURRENCY=2)`) and dedup-
 The `braveapi` engine needs an API key. Provision one at <https://api-dashboard.search.brave.com/> (the free tier is gone as of February 2026; metered billing starts at $5 prepaid credit, ~$0.003–$0.005/query). Then expose it as `BRAVE_API_KEY` in the environment that runs `docker compose`:
 
 - **Local dev:** add `BRAVE_API_KEY=...` to `.env` at the repo root.
-- **Prod (EC2):** the deploy script writes it into `.env` on the host alongside the other secrets.
+- **Prod (EC2):** add `brave_api_key` to the `odin/app` Secrets Manager JSON. The deploy script's `jq` step rewrites it as `BRAVE_API_KEY=...` in `/opt/odin/.env`, and the searxng service's `environment:` passthrough in `compose/docker-compose.prod.yml` forwards it to the container. See [`aws-setup.md` § "How secrets reach the containers"](./aws-setup.md#how-secrets-reach-the-containers) for the full data flow and verification commands.
 
-`searxng/entrypoint.sh` runs before the SearXNG image's own entrypoint, substitutes `${BRAVE_API_KEY}` into `settings.yml.tmpl`, writes the result to a **tmpfs** at `/run/searxng/settings.yml`, points SearXNG at it by exporting `__SEARXNG_SETTINGS_PATH`, then execs the original entrypoint. The rendered file is chmod `0400` owned by `searxng:searxng`, so the key never touches the host filesystem and is unreadable to non-root processes inside the container. If `BRAVE_API_KEY` is unset, the entrypoint exits before SearXNG can boot with an unauthenticated engine config.
+`searxng/entrypoint.sh` runs before the SearXNG image's own entrypoint, substitutes `${BRAVE_API_KEY}` into `settings.yml.tmpl`, writes the result to a **tmpfs** at `/run/searxng/settings.yml`, points SearXNG at it by exporting both `__SEARXNG_SETTINGS_PATH` (used by the upstream image entrypoint) and `SEARXNG_SETTINGS_PATH` (read by the SearXNG app itself at import time), then execs the original entrypoint. The rendered file is chmod `0400` owned by `searxng:searxng`, so the key never touches the host filesystem and is unreadable to non-root processes inside the container. If `BRAVE_API_KEY` is unset, the entrypoint exits before SearXNG can boot with an unauthenticated engine config.
 
-### Previously enabled engines (removed)
+### Other engines
 
-`startpage` and `qwant` were enabled scrapers; both were consistently blocked or rate-limited from a single cloud IP and contributed almost no usable results. They were removed alongside the `braveapi` switch. If we revisit them later it will be through paid SERP-scraping APIs (e.g. Serper), not direct scraping.
+`startpage`, `qwant`, and `karmasearch` are SearXNG defaults that we override with `disabled: true` in the engines list. They were consistently returning CAPTCHA / access-denied from our cloud IP and added latency without returning results. They cannot be dropped via `use_default_settings.engines.remove` because SearXNG's network config references some of these names as aliases (`qwant` in particular) and removal causes a `KeyError` at startup.
+
+`mojeek` is enabled and free, but in practice it also returns `HTTP 403` from our cloud IPs. SearXNG suspends the engine for 10 min on first failure (capping at 1 hour on repeats) — see the `search.ban_time_on_fail` / `max_ban_time_on_fail` settings in `settings.yml.tmpl`. In effect `braveapi` is the only engine returning results today; a Serper backend is tracked in `TODO.md` as the next reliability step.
 
 ## Verify
 
