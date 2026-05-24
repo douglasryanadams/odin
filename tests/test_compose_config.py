@@ -1,10 +1,34 @@
 """Regression checks for docker-compose configuration."""
 
+import re
 from pathlib import Path
+from typing import Any
 
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_compose(filename: str) -> Any:  # noqa: ANN401  # yaml.safe_load is untyped
+    return yaml.safe_load((REPO_ROOT / "compose" / filename).read_text())
+
+
+def _service_env_names(*compose_filenames: str) -> set[str]:
+    """Return env-var names declared across services in the named compose files.
+
+    Both `VAR=value` and bare `VAR` (compose interpolation from .env / shell)
+    are recognised.
+    """
+    names: set[str] = set()
+    for filename in compose_filenames:
+        services = _load_compose(filename)["services"]
+        for service_name in services:
+            entries = services[service_name].get("environment")
+            if not entries:
+                continue
+            for entry in entries:
+                names.add(str(entry).split("=", 1)[0])
+    return names
 
 
 def test_prod_compose_surfaces_smtp_settings() -> None:
@@ -24,4 +48,71 @@ def test_prod_compose_surfaces_smtp_settings() -> None:
     missing = {"SMTP_HOST", "SMTP_FROM", "SMTP_USER", "SMTP_PASS"} - names
     assert not missing, (
         f"compose/docker-compose.prod.yml web.environment missing: {sorted(missing)}"
+    )
+
+
+def test_searxng_service_passes_brave_api_key_in_both_compose_files() -> None:
+    """SearXNG's braveapi engine requires BRAVE_API_KEY at container start.
+
+    The base docker-compose.yml overrides the SearXNG entrypoint to render
+    settings.yml from a template that contains `${BRAVE_API_KEY}`; the prod
+    file ships the same env passthrough so the EC2 host's .env reaches the
+    container. If either file is missing the entry, the entrypoint exits 1
+    with the `BRAVE_API_KEY must be set` message before SearXNG starts.
+    """
+    for compose_file in ("docker-compose.yml", "docker-compose.prod.yml"):
+        data = yaml.safe_load((REPO_ROOT / "compose" / compose_file).read_text())
+        env = data["services"]["searxng"]["environment"]
+        names = {entry.split("=", 1)[0] for entry in env}
+        assert "BRAVE_API_KEY" in names, (
+            f"compose/{compose_file} searxng.environment is missing BRAVE_API_KEY"
+        )
+
+
+def test_searxng_service_uses_template_entrypoint() -> None:
+    """SearXNG's container must run our entrypoint so the template is rendered."""
+    data = yaml.safe_load((REPO_ROOT / "compose" / "docker-compose.yml").read_text())
+    entrypoint = data["services"]["searxng"]["entrypoint"]
+    assert "/etc/searxng/entrypoint.sh" in entrypoint, (
+        f"searxng entrypoint must invoke /etc/searxng/entrypoint.sh, got {entrypoint!r}"
+    )
+
+
+def test_searxng_renders_settings_into_tmpfs() -> None:
+    """Render the BRAVE_API_KEY-substituted settings.yml into an in-container tmpfs.
+
+    The rendered file must not live on the host bind mount, so the key never
+    reaches the host filesystem (and therefore not EBS snapshots, backups, etc.).
+    """
+    tmpfs = _load_compose("docker-compose.yml")["services"]["searxng"]["tmpfs"]
+    assert any(str(entry).startswith("/run/searxng") for entry in tmpfs), (
+        f"searxng service must mount a tmpfs at /run/searxng so the rendered "
+        f"settings.yml (with BRAVE_API_KEY) does not touch the host filesystem; "
+        f"got tmpfs={tmpfs!r}"
+    )
+
+
+def test_required_env_vars_are_forwarded_through_compose() -> None:
+    """Required env vars from .env.example must reach a container via compose.
+
+    Catches the case where a new required env var is added but the compose
+    passthrough is missed - Compose's automatic .env loading only handles
+    ${VAR} substitution in the YAML, it does not pass shell/.env values to
+    containers unless the service lists the name under environment:.
+    """
+    env_example = (REPO_ROOT / "config" / ".env.example").read_text()
+    required_block = re.search(r"^# Required\n(.*?)\n^#", env_example, re.DOTALL | re.MULTILINE)
+    assert required_block, "could not locate '# Required' section in config/.env.example"
+    required_vars = {
+        line.split("=", 1)[0].strip()
+        for line in required_block.group(1).splitlines()
+        if line and not line.lstrip().startswith("#")
+    }
+    forwarded = _service_env_names("docker-compose.yml", "docker-compose.prod.yml")
+    missing = required_vars - forwarded
+    assert not missing, (
+        f"config/.env.example marks {sorted(missing)} as required, but "
+        f"compose/docker-compose.yml and compose/docker-compose.prod.yml do not "
+        f"forward them to any service. Add each to the relevant service's "
+        f"`environment:` list (bare name, no `=`) so .env / host values reach the container."
     )

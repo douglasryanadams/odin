@@ -40,10 +40,17 @@ services:
   searxng:
     # Pinned: avoid surprise upstream changes on auto-pull. Bump deliberately.
     image: docker.io/searxng/searxng:2026.5.9-0cba32c15
+    entrypoint: ["/etc/searxng/entrypoint.sh"]
+    environment:
+      - BRAVE_API_KEY
     ports:
       - "8080:8080"
     volumes:
       - ./searxng/:/etc/searxng/:Z
+    # In-memory mount for the rendered settings.yml so the BRAVE_API_KEY never
+    # touches the host filesystem; the entrypoint chmods the file to 0400.
+    tmpfs:
+      - /run/searxng
     depends_on:
       - searxng-valkey
     healthcheck:
