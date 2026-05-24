@@ -10,6 +10,43 @@ import respx
 from odin.search import SearchResult
 from odin.search.brave import BRAVE_SEARCH_URL, BraveBackend
 from odin.search.searxng_backend import SearXngBackend
+from odin.search.wikipedia import WikipediaBackend
+
+_WIKIPEDIA_URL = "https://api.wikimedia.org/core/v1/wikipedia/en/search/page"
+
+# Shape mirrors a real Wikimedia Core REST search response: the first page's
+# excerpt carries <span class="searchmatch"> tags and an &amp; entity to prove
+# stripping; the second exercises the null-able optional fields.
+_WIKIPEDIA_SEARCH_RESPONSE = {
+    "pages": [
+        {
+            "id": 20408,
+            "key": "Marie_Curie",
+            "title": "Marie Curie",
+            "excerpt": (
+                'Marie <span class="searchmatch">Curie</span> was a '
+                "physicist &amp; chemist who conducted pioneering research."
+            ),
+            "matched_title": None,
+            "description": "Polish-French physicist and chemist (1867 to 1934)",
+            "thumbnail": {
+                "mimetype": "image/jpeg",
+                "url": "//upload.wikimedia.org/wikipedia/commons/thumb/marie.jpg",
+                "width": 60,
+                "height": 80,
+            },
+        },
+        {
+            "id": 24481,
+            "key": "Pierre_Curie",
+            "title": "Pierre Curie",
+            "excerpt": 'Pierre <span class="searchmatch">Curie</span> was a French physicist.',
+            "matched_title": "Pierre Curie (physicist)",
+            "description": None,
+            "thumbnail": None,
+        },
+    ]
+}
 
 _BRAVE_KEY = "test-subscription-token"
 
@@ -106,3 +143,76 @@ async def test_brave_backend_request_carries_auth_and_query_params() -> None:
     assert request.headers["Accept"] == "application/json"
     assert request.url.params["q"] == "marie curie"
     assert int(request.url.params["count"]) == 20
+
+
+@respx.mock
+async def test_wikipedia_backend_maps_pages_to_search_results() -> None:
+    """Each Wikimedia page maps to a SearchResult with a wiki URL built from its key."""
+    respx.get(_WIKIPEDIA_URL).mock(
+        return_value=httpx.Response(200, json=_WIKIPEDIA_SEARCH_RESPONSE)
+    )
+    backend = WikipediaBackend()
+    out = await backend.search("marie curie")
+    assert [r.url for r in out] == [
+        "https://en.wikipedia.org/wiki/Marie_Curie",
+        "https://en.wikipedia.org/wiki/Pierre_Curie",
+    ]
+    assert [r.title for r in out] == ["Marie Curie", "Pierre Curie"]
+
+
+@respx.mock
+async def test_wikipedia_backend_strips_html_and_entities_from_excerpt() -> None:
+    """The HTML searchmatch markup and entities are reduced to plain text content."""
+    respx.get(_WIKIPEDIA_URL).mock(
+        return_value=httpx.Response(200, json=_WIKIPEDIA_SEARCH_RESPONSE)
+    )
+    backend = WikipediaBackend()
+    out = await backend.search("marie curie")
+    content = out[0].content
+    assert "<span" not in content
+    assert "searchmatch" not in content
+    assert "&amp;" not in content
+    assert "physicist & chemist" in content
+
+
+@respx.mock
+async def test_wikipedia_backend_stamps_wikipedia_engine() -> None:
+    """Every result is stamped engines==['wikipedia'] for provenance."""
+    respx.get(_WIKIPEDIA_URL).mock(
+        return_value=httpx.Response(200, json=_WIKIPEDIA_SEARCH_RESPONSE)
+    )
+    backend = WikipediaBackend()
+    out = await backend.search("marie curie")
+    assert all(r.engines == ["wikipedia"] for r in out)
+
+
+@respx.mock
+async def test_wikipedia_backend_sends_user_agent_and_params_without_auth() -> None:
+    """The request carries a User-Agent and q/limit params, and sends no Authorization header."""
+    route = respx.get(_WIKIPEDIA_URL).mock(
+        return_value=httpx.Response(200, json=_WIKIPEDIA_SEARCH_RESPONSE)
+    )
+    backend = WikipediaBackend()
+    await backend.search("marie curie")
+    request = route.calls.last.request
+    assert request.headers["User-Agent"]
+    assert "Authorization" not in request.headers
+    assert request.url.params["q"] == "marie curie"
+    assert request.url.params["limit"] == "10"
+
+
+@respx.mock
+async def test_wikipedia_backend_returns_empty_for_no_pages() -> None:
+    """An empty pages list yields no results."""
+    respx.get(_WIKIPEDIA_URL).mock(return_value=httpx.Response(200, json={"pages": []}))
+    backend = WikipediaBackend()
+    assert await backend.search("nobody") == []
+
+
+@respx.mock
+async def test_wikipedia_backend_raises_on_http_error() -> None:
+    """A 429 (or any non-2xx) surfaces as an HTTPStatusError for the aggregator to guard."""
+    respx.get(_WIKIPEDIA_URL).mock(return_value=httpx.Response(429))
+    backend = WikipediaBackend()
+    with pytest.raises(httpx.HTTPStatusError):
+        await backend.search("marie curie")

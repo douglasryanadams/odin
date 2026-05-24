@@ -120,7 +120,8 @@ Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/defa
 | `PLAYWRIGHT_STORAGE_STATE_PATH` | `/var/lib/odin/playwright-state/state.json` | Shared cookie/storage state, persisted under an `fcntl` lock. Set `""` to disable. |
 | `FETCH_CURL_CFFI_ENABLED` | `true` | Set `false` to skip Tier 0 and always use Playwright. |
 | `BRAVE_ENABLED` | `false` | Enables the web service's direct Brave Search API backend (`BraveBackend`). Fails closed without `BRAVE_API_KEY`. Keep `false` until the direct client is proven against SearXNG + `braveapi`; then disable SearXNG to avoid double-billing Brave. |
-| `CONTACT_EMAIL` | `odin@odinseye.info` | Address shown on `/privacy` and `/terms`. |
+| `WIKIPEDIA_ENABLED` | `false` | Enables the first-party Wikipedia search backend (Wikimedia Core REST search). The endpoint serves search unauthenticated given a policy-compliant `User-Agent`, so no token is required. |
+| `CONTACT_EMAIL` | `odin@odinseye.info` | Address shown on `/privacy` and `/terms`; also composed into the Wikipedia backend's `User-Agent`. |
 
 **Production-only.**
 
