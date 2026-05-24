@@ -1,7 +1,6 @@
 /* =========================================================================
    Odin — assessment gauges (Subject Compass, Source Audit)
    Single-line ASCII rules driven by profile.js:
-     * positive gauges: ·····▓·····  (dots with a phosphor ▓ marker)
      * divergent gauges: ──·──▓──   (em-dashes with center dot + marker)
    ========================================================================= */
 

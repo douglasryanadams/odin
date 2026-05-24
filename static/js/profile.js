@@ -414,9 +414,6 @@ function renderAssessment(data) {
   if (sourceGauges) {
     sourceGauges.replaceChildren();
     sourceGauges.appendChild(
-      buildGauge("Profile confidence", Math.round(data.confidence * 100), "gauge-line--confidence"),
-    );
-    sourceGauges.appendChild(
       buildSentimentGauge({
         label: "Source political lean",
         leftLabel: "Left",
@@ -426,9 +423,6 @@ function renderAssessment(data) {
       }),
     );
   }
-  const auditPct = $("audit-pct");
-  if (auditPct) auditPct.textContent = `${Math.round(data.confidence * 100)}%`;
-
   const caveats = document.querySelector("#source-audit .profile__caveats");
   if (caveats) renderCaveats(caveats, data.caveats || []);
 }
@@ -458,26 +452,11 @@ function renderCaveats(listEl, items) {
 }
 
 // ---------------------------------------------------------------------------
-// ASCII gauges (positive-only and divergent)
+// ASCII divergent sentiment gauge
 // ---------------------------------------------------------------------------
 
 function _markerSpan() {
   return '<span class="gauge-line__marker">▓</span>';
-}
-
-function buildGauge(label, percent, modifier) {
-  // percent is 0-100; map to character position in a row of dots.
-  const pos = Math.max(0, Math.min(RULE_WIDTH - 1, Math.floor((percent / 100) * RULE_WIDTH)));
-  const cls = "gauge-line" + (modifier ? ` ${modifier}` : "");
-  const wrap = el("div", cls);
-  wrap.appendChild(el("span", "gauge-line__label", label));
-  wrap.appendChild(el("span", "gauge-line__value mono", `${percent}%`));
-  const rule = document.createElement("span");
-  rule.className = "gauge-line__rule";
-  rule.innerHTML =
-    "·".repeat(pos) + _markerSpan() + "·".repeat(RULE_WIDTH - pos - 1);
-  wrap.appendChild(rule);
-  return wrap;
 }
 
 function buildSentimentGauge({ label, leftLabel, rightLabel, value, neutral = false }) {

@@ -189,11 +189,6 @@
   margin-right: var(--sp-1);
 }
 
-.profile__panel-pct {
-  color: var(--ok);
-  font-weight: 500;
-}
-
 .profile__caveats {
   list-style: none;
   padding: 0;

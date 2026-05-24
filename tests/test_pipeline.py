@@ -87,7 +87,6 @@ def _make_tracing_pipeline_doubles() -> tuple[
     async def trace_assess(*_args: object, **_kw: object) -> Assessment:
         trace.append("call:assess")
         return Assessment(
-            confidence=0.5,
             public_sentiment=0.0,
             subject_political_bias=0.0,
             source_political_bias=0.0,

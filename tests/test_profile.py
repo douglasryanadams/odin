@@ -31,7 +31,6 @@ _MOCK_PROFILE_INPUT: Mapping[str, object] = {
 }
 
 _MOCK_ASSESSMENT_INPUT: Mapping[str, object] = {
-    "confidence": 0.5,
     "public_sentiment": 0.0,
     "subject_political_bias": 0.0,
     "source_political_bias": 0.0,
@@ -485,7 +484,7 @@ def test_profile_stream_emits_assessment_after_profile(
 
     assert types.index("assessment") > types.index("profile")
     assess_event = next(e for e in events if e["type"] == "assessment")
-    assert assess_event["confidence"] == 0.5
+    assert "confidence" not in assess_event
     assert assess_event["caveats"] == [
         {"brief": "Limited sources.", "detail": "Only one page returned a usable snippet."}
     ]
@@ -498,7 +497,6 @@ def test_profile_stream_assessment_preserves_boundary_values(
     """Extreme values (-1.0/1.0) and an empty caveats list survive through to the SSE event."""
     _setup_page_fetcher()
     boundary: Mapping[str, object] = {
-        "confidence": 1.0,
         "public_sentiment": -1.0,
         "subject_political_bias": 1.0,
         "source_political_bias": -1.0,

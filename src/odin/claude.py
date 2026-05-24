@@ -46,7 +46,6 @@ class _SynthesizeOutput:
 
 @dataclass(frozen=True)
 class _AssessOutput:
-    confidence: float
     public_sentiment: float
     subject_political_bias: float
     source_political_bias: float
@@ -112,8 +111,6 @@ _SYNTHESIZE_SYSTEM = (
 _ASSESS_SYSTEM = (
     "You are an analyst auditing a freshly synthesized profile and the source pages it drew from.\n"
     "Score the following on the listed scales, then list short caveats:\n"
-    "- confidence (0..1): how confident you are in the profile's accuracy and completeness,\n"
-    "  given the quantity and quality of the sources.\n"
     "- public_sentiment (-1..+1): aggregate public sentiment toward the subject (-1 negative,\n"
     "  +1 positive, 0 neutral or mixed).\n"
     "- subject_political_bias (-1..+1): the subject's own political lean (-1 left, +1 right,\n"
@@ -247,13 +244,10 @@ _CREATE_PROFILE_TOOL: dict[str, Any] = {
 
 _ASSESS_TOOL: dict[str, Any] = {
     "name": "assess_profile",
-    "description": (
-        "Score the profile and source set on confidence, sentiment, bias, and alignment."
-    ),
+    "description": ("Score the profile and source set on sentiment, bias, and alignment."),
     "input_schema": {
         "type": "object",
         "properties": {
-            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
             "public_sentiment": {"type": "number", "minimum": -1, "maximum": 1},
             "subject_political_bias": {"type": "number", "minimum": -1, "maximum": 1},
             "source_political_bias": {"type": "number", "minimum": -1, "maximum": 1},
@@ -284,7 +278,6 @@ _ASSESS_TOOL: dict[str, Any] = {
             },
         },
         "required": [
-            "confidence",
             "public_sentiment",
             "subject_political_bias",
             "source_political_bias",
@@ -447,7 +440,7 @@ async def assess(
     profile: Profile,
     content: dict[str, str],
 ) -> Assessment:
-    """Score the profile and source set on confidence, sentiment, bias, and alignment."""
+    """Score the profile and source set on sentiment, bias, and alignment."""
     logger.debug("assess query={!r} sources={}", query, len(content))
     profile_block = _format_profile_for_assess(profile)
     sections = "\n\n".join(f"--- {url} ---\n{text}" for url, text in content.items())
@@ -472,7 +465,6 @@ async def assess(
         raise RuntimeError(msg)
     parsed = _AssessOutput(**block.input)
     return Assessment(
-        confidence=parsed.confidence,
         public_sentiment=parsed.public_sentiment,
         subject_political_bias=parsed.subject_political_bias,
         source_political_bias=parsed.source_political_bias,

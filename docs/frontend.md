@@ -17,7 +17,7 @@ Jinja2 templates, a per-concern CSS module tree under `@layer`, and two JavaScri
 | `static/css/odin/_buttons.css` | `.btn` variants — primary uses a transparent fill + primary-colored border. `.btn--danger` re-tints from `--danger`. |
 | `static/css/odin/_badges.css` | Category badge framed with `[ ... ]` pseudos; `.badge--soon` keeps an amber pill for genuine-different signal. |
 | `static/css/odin/_progress.css` | ASCII pipeline bar: `[===…·===…·===…·===…·===…·===…]   N%  stage`. profile.js fills the line via `innerHTML`. |
-| `static/css/odin/_gauges.css` | Single-row ASCII rules with a phosphor `▓` marker — `······▓··` for positive gauges, `──·──▓──` for divergent gauges. |
+| `static/css/odin/_gauges.css` | Single-row ASCII rules with a phosphor `▓` marker — `──·──▓──` for divergent gauges. |
 | `static/css/odin/_effects.css` | Konami code-rain overlay (per-glyph alpha + hue variation) and shared `prefers-reduced-motion` guards. |
 | `static/css/odin/pages/_hero.css` | Hero search box with `>` prompt prefix, `[ Return ⏎ ]` submit, hero-margin spacing, `.hero__quota.is-hidden` first-input fade. |
 | `static/css/odin/pages/_profile.css` | Profile two-column layout, `>` heading prompt prefix on section h2s, bracket-framed `[FINDING-LABEL]` tags, numbered `[1] [2]` citations. Header search lives here too with the same `>` prompt. |
@@ -56,7 +56,7 @@ On `DOMContentLoaded`: set the synthesis time (rendered as `[YYYY-MM-DDThh:mmZ]`
 
 Each pipeline event advances the progress bar. `advanceProgress(stage)` snaps the bar to the named stage and starts an animation loop (`requestAnimationFrame`) that fills the active segment char-by-char and blinks a `▒/░` cursor at the leading edge. When the next stage event arrives, the bar snaps forward; if the current segment fills before the next event arrives, the bar holds. `completeProgress()` renders all segments filled and hides the bar; `failProgress(msg)` paints the active segment with `XXXXXXXXXX` and shows the failure message.
 
-The `profile` event renders the title, deck, exposition, events, findings, citations; the `assessment` event (after `profile`) fills the Subject Compass (four divergent ASCII gauges) and Source Audit (one positive + one divergent gauge plus caveats). `{"type": "done"}` closes the connection. `es.onerror` flips the bar to failed and replaces the summary with a "Return to search" link.
+The `profile` event renders the title, deck, exposition, events, findings, citations; the `assessment` event (after `profile`) fills the Subject Compass (four divergent ASCII gauges) and Source Audit (one divergent gauge plus caveats). `{"type": "done"}` closes the connection. `es.onerror` flips the bar to failed and replaces the summary with a "Return to search" link.
 
 If the backend `assess()` call fails, the stream skips the `assessment` event and ends with `done`. The Compass and Audit panels stay in their default empty state — no error UI for this secondary data.
 

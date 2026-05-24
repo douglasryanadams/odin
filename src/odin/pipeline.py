@@ -117,7 +117,5 @@ async def _run_pipeline(
     except Exception as exc:  # noqa: BLE001 — assess is non-essential; degrade gracefully
         logger.warning("assess failed; skipping assessment event: {}", exc)
         return
-    logger.debug(
-        "assessment ready confidence={} caveats={}", assessment.confidence, len(assessment.caveats)
-    )
+    logger.debug("assessment ready caveats={}", len(assessment.caveats))
     yield StageEvent(stage="assessment", data=assessment.model_dump())
