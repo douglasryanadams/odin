@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<!--
+  Static 404 page. Served by CloudFront (CustomErrorResponse) or nginx
+  (error_page directive) — not by FastAPI. Stays standalone so it works
+  even when the upstream is down. Mirrors the look of _base.html: same
+  font stack, same theme-color, no status bar (no session state).
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>404 Not Found // Odin</title>
+    <meta name="description" content="Page not found." />
+    <meta name="robots" content="noindex,follow" />
+    <meta name="theme-color" content="#050505" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Orbitron:wght@700;800;900&family=Audiowide&display=swap" />
+    <link rel="stylesheet" href="/static/css/odin.css" />
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png" />
+    <link rel="icon" type="image/vnd.microsoft.icon" href="/favicon.ico" />
+    <link rel="manifest" href="/site.webmanifest" />
+  </head>
+  <body class="page-error">
+    <header class="site-header">
+      <div class="site-header__brand">
+        <a href="/" class="wordmark wordmark--small" aria-label="Odin home">
+          <span>ODIN</span>
+        </a>
+        <span class="beta-badge" aria-label="Beta release">Beta</span>
+      </div>
+      <nav class="header-nav">
+        <a href="/" class="header-nav__link">Home</a>
+      </nav>
+    </header>
+
+    <main class="site-main">
+      <section class="error-page" role="alert">
+        <h1 class="error-page__code">404 NOT FOUND</h1>
+<pre class="error-page__trace"><span class="error-page__cmd">odin (pid 1): subject not found in public-record graph</span>
+<span class="error-page__err">*** Error: lookup failed in mimir.well — no draught for this query ***</span>
+
+<span class="error-page__prose">  In the old story, Odin All-Father came to Mimir's well — the
+  well at the root of the world tree, whose water held all
+  knowledge of what is and what has been. The giant Mimir, its
+  guardian, would not pour without payment. So Odin took his
+  right eye and dropped it into the dark water. He drank, and
+  left the eye behind to watch from the well thereafter.
+
+  We took the name for that eye: an instrument trained on the
+  open record, reporting what it sees. The bargain we offer
+  is the same one — your query for the eye's sight.
+
+  This URL is a draught Mimir never poured.</span>
+
+<span class="error-page__prompt">=== Backtrace ===</span>
+  #0  mimir.draught(<span class="error-page__path">/profile/unknown_subject</span>)        well.c:42
+  #1  odin.see(subject=null)                          eye.c:108
+  #2  huginn.recall(thought)                          ravens.c:7
+  #3  muninn.fetch(memory)                            ravens.c:8
+  #4  yggdrasil.lookup(record)                        tree.c:1
+
+<span class="error-page__err">*** Aborted ***</span></pre>
+        <div class="error-page__actions">
+          <a class="btn btn--primary" href="/">[ return to home ]</a>
+          <a class="btn" href="/">[ try another subject ]</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span class="site-footer__brand">odin</span>
+      <span class="site-footer__sep" aria-hidden="true">//</span>
+      <span class="site-footer__muted">profiles synthesized from the web</span>
+      <span class="site-footer__sep" aria-hidden="true">//</span>
+      <a class="site-footer__link" href="/about">About</a>
+      <span class="site-footer__sep" aria-hidden="true">//</span>
+      <a class="site-footer__link" href="/privacy">Privacy</a>
+      <span class="site-footer__sep" aria-hidden="true">//</span>
+      <a class="site-footer__link" href="/terms">Terms</a>
+    </footer>
+    <script src="/static/js/odin.js" defer></script>
+  </body>
+</html>

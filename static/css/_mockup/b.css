@@ -1,0 +1,229 @@
+/* =========================================================================
+   Vibe B — Wake Up Neo terminal (iterated)
+   Cyan-shifted phosphor on pure black. Universal text bloom (every glyph
+   halates), heavy wordmark stack. Courier Prime for body + mono; angular
+   display font picked via the switcher.
+   References: opening "Wake up, Neo…" + "The Matrix has you" + 1999 credits.
+   ========================================================================= */
+
+:root {
+  /* Pure CRT black; zero chroma so the screen reads as honest unlit pixels */
+  --bg:        oklch(8% 0 0deg);             /* #050505 */
+  --surface:   oklch(13% 0 0deg);            /* #1a1a1a */
+  --surface-2: oklch(17% 0.02 155deg);       /* tiny cyan-green tint at elevation */
+  --border:    oklch(28% 0.06 155deg);       /* phosphor-tinted borders */
+
+  /* Phosphor text — cyan-shifted 155° matches the reference frames */
+  --text:       oklch(78% 0.20 155deg);      /* primary phosphor body */
+  --text-muted: oklch(55% 0.16 155deg);      /* dim phosphor labels */
+
+  /* Active phosphor — what the CRT writes brightly when the system is "lit" */
+  --primary: oklch(82% 0.22 155deg);         /* focus, active, CTA */
+  --accent:  oklch(72% 0.18 150deg);         /* slight hue shift for variety */
+  --glow:    oklch(92% 0.22 155deg);         /* near-white phosphor on hover */
+
+  /* Status */
+  --ok:     oklch(82% 0.22 155deg);
+  --warn:   oklch(80% 0.17 80deg);
+
+  /* Red, used sparingly: pulled toward pure red (hue 18deg) and pushed darker
+     so it reads as a serious phosphor red — closer to the Matrix red-pill
+     palette than the previous orange-leaning red. */
+  --danger: oklch(60% 0.24 18deg);
+
+  /* Typography — body/mono are Courier; --font-display lands on
+     Orbitron (the original geometric face). Earlier attempts couldn't
+     get it to glow because Orbitron's strokes are too thin to catch a
+     bloom; the wordmark rules below pair font-weight 900 with a doubled
+     1-2px solid halo that visually fattens the strokes so the larger
+     blur stops have something to wrap. */
+  --font-body: "Courier Prime", "Courier New", ui-monospace, Menlo, monospace;
+  --font-mono: "Courier Prime", "Courier New", ui-monospace, Menlo, monospace;
+  --font-display: "Orbitron", "Audiowide", ui-monospace, monospace;
+
+  /* No rounded corners — a terminal has square pixels */
+  --radius-sm: 0;
+  --radius-md: 0;
+}
+
+/* ----- Universal phosphor halation ------------------------------------ */
+
+/* Every text element gets a soft bloom that picks up its own foreground color.
+   Cheap to render (one shadow per element); the heavy stack is reserved for
+   the wordmark. */
+body {
+  text-shadow: 0 0 4px;
+}
+
+/* Mute the bloom on tiny labels so they don't blur into illegibility */
+.status-bar,
+.profile__panel-head,
+.gauge__label,
+.gauge__value,
+.history-item__time {
+  text-shadow: 0 0 2px;
+}
+
+/* ----- Wordmark — full multi-stop phosphor stack ---------------------- */
+
+/* Orbitron-on-phosphor bloom recipe: layer two 1-2px SOLID inner halos
+   (no alpha, no blur falloff in the inner ring) to visually thicken the
+   thin strokes, then stack the larger blurs. Without the solid inner
+   ring the larger blurs have too little ink mass to wrap, which is why
+   the earlier text-shadow stack looked flat. font-weight 900 also helps
+   feed the bloom.
+
+   IMPORTANT: the selector is doubled to .wordmark.wordmark--hero so the
+   specificity (0,2,0) beats the same-stop .wordmark rule in _common.css
+   that loads AFTER this file. Without the bump, the simpler 2-stop bloom
+   in _common.css wins the cascade and the hero appears flat. */
+.wordmark.wordmark--hero {
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-shadow:
+    0 0 1px  var(--primary),
+    0 0 2px  var(--primary),
+    0 0 6px  color-mix(in oklch, var(--primary) 90%, transparent),
+    0 0 14px color-mix(in oklch, var(--primary) 70%, transparent),
+    0 0 32px color-mix(in oklch, var(--primary) 48%, transparent),
+    0 0 68px color-mix(in oklch, var(--primary) 28%, transparent),
+    0 0 130px color-mix(in oklch, var(--primary) 14%, transparent);
+}
+
+.wordmark.wordmark--hero:hover {
+  text-shadow:
+    0 0 1px  var(--glow),
+    0 0 3px  var(--glow),
+    0 0 8px  color-mix(in oklch, var(--glow) 90%, transparent),
+    0 0 18px color-mix(in oklch, var(--glow) 70%, transparent),
+    0 0 40px color-mix(in oklch, var(--glow) 50%, transparent),
+    0 0 80px color-mix(in oklch, var(--glow) 30%, transparent),
+    0 0 150px color-mix(in oklch, var(--glow) 16%, transparent);
+}
+
+.wordmark.wordmark--small {
+  font-weight: 800;
+  letter-spacing: 0.10em;
+  text-shadow:
+    0 0 1px  var(--primary),
+    0 0 4px  color-mix(in oklch, var(--primary) 80%, transparent),
+    0 0 10px color-mix(in oklch, var(--primary) 45%, transparent),
+    0 0 22px color-mix(in oklch, var(--primary) 22%, transparent);
+}
+
+/* ----- Hero tagline — keep Courier feel, push letter-spacing ---------- */
+.hero__tagline {
+  font-family: var(--font-body);
+  letter-spacing: 0.04em;
+}
+
+/* Blank-screen breathing room: the user asked for substantial space between
+   the tagline and the search form so the input reads as "the only thing on
+   the screen" — the opening Matrix terminal moment. */
+.search-form {
+  margin-top: var(--sp-8);
+}
+
+/* ----- Terminal search box -------------------------------------------- */
+
+/* Hide the magnifying-glass icon in both the hero form and the header form;
+   a terminal doesn't carry GUI affordances. The "> " prompt replaces it. */
+.search-form__icon,
+.header-search__icon {
+  display: none;
+}
+
+/* Inject a "> " prompt before the input. Positioned absolutely so the
+   surrounding form structure stays intact for production. Both the hero
+   search and the header search get the same prompt. */
+.search-form__field::before {
+  content: "> ";
+  position: absolute;
+  left: var(--sp-4);
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  color: var(--primary);
+  letter-spacing: 0.08em;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.header-search__field::before {
+  content: "> ";
+  position: absolute;
+  left: var(--sp-3);
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  color: var(--primary);
+  letter-spacing: 0.08em;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.search-form__input {
+  border-radius: 0;
+  padding-left: calc(var(--sp-4) + 24px);
+  caret-color: var(--primary);
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+.header-search__input {
+  border-radius: 0;
+  padding-left: calc(var(--sp-3) + 22px);
+  caret-color: var(--primary);
+  font-family: var(--font-mono);
+}
+
+.search-form__input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+/* Search input focus is intentionally subtle — a real terminal prompt
+   doesn't paint a halo around its input line. Just brighten the border. */
+.search-form__input:focus-visible,
+.header-search__input:focus-visible {
+  border-color: var(--primary);
+  outline: none;
+  box-shadow: none;
+}
+
+/* Submit button: wrap label in [ ... ] so it reads as a keyboard key.
+   Combined with the "Return" label + return-arrow glyph, the button now
+   looks like a hardware enter key rather than a GUI control. */
+.btn,
+.btn--primary,
+.search-form__submit {
+  border-radius: 0;
+}
+
+.search-form__submit::before {
+  content: "[ ";
+  font-family: var(--font-mono);
+}
+
+.search-form__submit::after {
+  content: " ]";
+  font-family: var(--font-mono);
+}
+
+/* ----- Focus rings — phosphor bloom on buttons + links, not on inputs - */
+a:focus-visible,
+button:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--primary),
+    0 0 14px color-mix(in oklch, var(--primary) 60%, transparent),
+    0 0 32px color-mix(in oklch, var(--primary) 25%, transparent);
+}
+
+/* ----- Reduced motion: keep the static bloom, kill any animation ------ */
+@media (prefers-reduced-motion: reduce) {
+  .progress-step.is-active .progress-step__dot {
+    animation: none;
+  }
+}

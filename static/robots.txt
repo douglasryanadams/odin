@@ -6,3 +6,5 @@ Disallow: /profile
 Disallow: /dashboard
 Disallow: /health
 Crawl-delay: 10
+
+Sitemap: https://odinseye.info/sitemap.xml

@@ -1,0 +1,67 @@
+/* =========================================================================
+   Odin — element reset and base element styling
+   ========================================================================= */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+/* Universal phosphor halation on the body: every text element inherits
+   a soft 4px text-shadow that picks up its own foreground color.
+   Cheap to render (one shadow per element); the heavy wordmark bloom
+   stack stacks on top in _typography.css. */
+body {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.55;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  display: flex;
+  flex-direction: column;
+  text-shadow: 0 0 4px;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+input {
+  font-family: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  transition: color var(--t-fast);
+}
+
+a:hover {
+  color: var(--glow);
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--primary),
+    0 0 14px color-mix(in oklch, var(--primary) 60%, transparent),
+    0 0 32px color-mix(in oklch, var(--primary) 25%, transparent);
+}

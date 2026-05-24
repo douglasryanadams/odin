@@ -1,0 +1,196 @@
+/* =========================================================================
+   Odin — dashboard page
+   ========================================================================= */
+
+.page-dashboard .site-main {
+  padding: var(--sp-5);
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.dashboard__heading {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 2rem;
+  color: var(--accent);
+  margin: 0;
+}
+
+.dashboard__user {
+  font-size: 0.9375rem;
+  margin: 0;
+}
+
+.dashboard-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.dashboard-card__title {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0;
+}
+
+.dashboard-card--danger {
+  border-color: color-mix(in oklch, var(--danger) 35%, transparent);
+}
+
+.dashboard-card--danger .dashboard-card__title {
+  color: color-mix(in oklch, var(--danger) 80%, var(--text-muted));
+}
+
+.delete-account {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  align-items: flex-start;
+}
+
+.delete-account__label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.delete-account__input {
+  width: 100%;
+  padding: var(--sp-2);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  border-radius: var(--radius-sm);
+}
+
+/* ----- Quota bar ----------------------------------------------------- */
+
+.quota {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.quota__bar {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.quota__fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, var(--accent), var(--primary));
+}
+
+.quota__label {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin: 0;
+  font-family: var(--font-mono);
+}
+
+/* ----- Search history list ------------------------------------------- */
+
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.history-item:last-child {
+  border-bottom: none;
+}
+
+.history-item__query {
+  font-size: 0.9375rem;
+  color: var(--accent);
+  text-decoration: none;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color var(--t-fast);
+}
+
+.history-item__query:hover {
+  color: var(--glow);
+}
+
+.history-item__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: 0.8125rem;
+  flex-shrink: 0;
+}
+
+.history-item__cat {
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+.history-item__time {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* ----- Dashboard footer actions ------------------------------------- */
+
+.dashboard__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  margin: 0;
+}
+
+.dashboard__logout-form {
+  display: inline-flex;
+  margin: 0;
+}
+
+.dashboard__logout {
+  font-size: 0.875rem;
+  text-decoration: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--text-muted);
+  transition: color var(--t-fast);
+}
+
+.dashboard__logout:hover {
+  color: var(--text);
+}

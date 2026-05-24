@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en" data-font="orbitron">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Style tile · Odin Matrix rebrand</title>
+  <meta name="theme-color" content="#0c0f12" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Orbitron:wght@600;700&family=Major+Mono+Display&family=Audiowide&family=Wallpoet&family=Courier+Prime:wght@400;700&display=swap" />
+  <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+        integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A=="
+        crossorigin="anonymous"
+        referrerpolicy="no-referrer" />
+
+  <link rel="stylesheet" href="../static/css/odin.css" />
+  <link rel="stylesheet" href="../static/css/_mockup/_common.css" />
+  <link rel="stylesheet" href="../static/css/_mockup/_switcher.css" />
+
+  <style>
+    /* ----- Page chrome (neutral, vibe-agnostic) --------------------- */
+    :root {
+      --bg:        oklch(14% 0.01 250);
+      --surface:   oklch(18% 0.01 250);
+      --surface-2: oklch(22% 0.01 250);
+      --border:    oklch(30% 0.01 250);
+      --text:       oklch(94% 0.005 250);
+      --text-muted: oklch(60% 0.01 250);
+      --primary: oklch(82% 0.20 142);
+      --accent:  oklch(82% 0.20 142);
+      --glow:    oklch(90% 0.20 142);
+      --ok:     oklch(82% 0.20 142);
+      --warn:   oklch(80% 0.17 80);
+      --danger: oklch(68% 0.22 25);
+      --font-display: var(--font-mono);
+    }
+
+    :root[data-font="orbitron"]  { --font-display: "Orbitron", system-ui, sans-serif; }
+    :root[data-font="major"]     { --font-display: "Major Mono Display", ui-monospace, monospace; }
+    :root[data-font="audiowide"] { --font-display: "Audiowide", ui-monospace, monospace; }
+    :root[data-font="wallpoet"]  { --font-display: "Wallpoet", ui-monospace, monospace; }
+
+    :root[data-font="orbitron"]  .wordmark--hero { letter-spacing: 0.18em; }
+    :root[data-font="major"]     .wordmark--hero { letter-spacing: 0.10em; }
+    :root[data-font="audiowide"] .wordmark--hero { letter-spacing: 0.04em; }
+    :root[data-font="wallpoet"]  .wordmark--hero { letter-spacing: 0.06em; }
+
+    /* ----- Style tile layout ---------------------------------------- */
+    .tile-page {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 48px 24px 96px;
+      display: flex;
+      flex-direction: column;
+      gap: 48px;
+    }
+
+    .tile-intro h1 {
+      font-family: var(--font-display);
+      font-size: 2rem;
+      margin: 0 0 12px 0;
+    }
+
+    .tile-intro p {
+      color: var(--text-muted);
+      max-width: 60ch;
+      margin: 0 0 12px 0;
+    }
+
+    .tile-intro__nav {
+      display: flex;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .tile-intro__nav a {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      text-decoration: none;
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+    }
+
+    .tile-intro__nav a:hover {
+      color: var(--primary);
+      border-color: var(--primary);
+    }
+
+    /* ----- Vibe card: scoped token overrides --------------------- */
+    .vibe-card {
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 1fr;
+    }
+
+    @media (min-width: 900px) {
+      .vibe-card {
+        grid-template-columns: minmax(280px, 320px) 1fr;
+      }
+    }
+
+    .vibe-card__head {
+      padding: 24px;
+      background: color-mix(in oklch, var(--bg) 92%, transparent);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    @media (min-width: 900px) {
+      .vibe-card__head {
+        border-bottom: none;
+        border-right: 1px solid var(--border);
+      }
+    }
+
+    .vibe-card__label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .vibe-card__name {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      color: var(--text);
+      margin: 0;
+    }
+
+    .vibe-card__tagline {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin: 0;
+    }
+
+    .vibe-card__claims {
+      margin: 8px 0 0 0;
+      padding-left: 18px;
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .vibe-card__claims li { margin-bottom: 4px; }
+    .vibe-card__claims strong { color: var(--text); font-weight: 500; }
+
+    .vibe-card__body {
+      padding: 24px;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    /* Scoped token overrides — the B card paints itself in the Matrix palette */
+    .vibe-card[data-vibe="b"] {
+      --bg:        oklch(8% 0 0deg);
+      --surface:   oklch(13% 0 0deg);
+      --surface-2: oklch(17% 0.02 155deg);
+      --border:    oklch(28% 0.06 155deg);
+      --text:       oklch(78% 0.20 155deg);
+      --text-muted: oklch(55% 0.16 155deg);
+      --primary: oklch(82% 0.22 155deg);
+      --accent:  oklch(72% 0.18 150deg);
+      --glow:    oklch(92% 0.22 155deg);
+      --font-body: "Courier Prime", "Courier New", ui-monospace, monospace;
+      --font-mono: "Courier Prime", "Courier New", ui-monospace, monospace;
+      --radius-sm: 0;
+      --radius-md: 0;
+    }
+
+    /* Universal phosphor bloom inside the B card */
+    .vibe-card[data-vibe="b"] .vibe-card__body {
+      text-shadow: 0 0 4px;
+    }
+    .vibe-card[data-vibe="b"] .swatch__meta,
+    .vibe-card[data-vibe="b"] .specimen__label,
+    .vibe-card[data-vibe="b"] .components__label {
+      text-shadow: 0 0 2px;
+    }
+
+    /* Terminal search inside the B card */
+    .vibe-card[data-vibe="b"] .search-form__icon { display: none; }
+    .vibe-card[data-vibe="b"] .search-form__field { position: relative; }
+    .vibe-card[data-vibe="b"] .search-form__field::before {
+      content: "> ";
+      position: absolute;
+      left: var(--sp-4);
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--primary);
+      letter-spacing: 0.08em;
+      pointer-events: none;
+      z-index: 1;
+      font-family: var(--font-mono);
+    }
+    .vibe-card[data-vibe="b"] .search-form__input {
+      padding-left: calc(var(--sp-4) + 24px);
+      caret-color: var(--primary);
+    }
+
+    /* ----- Swatches ------------------------------------------------ */
+    .swatches {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+
+    .swatch {
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .swatch__chip {
+      height: 64px;
+    }
+
+    .swatch__meta {
+      padding: 6px 8px;
+      background: var(--surface);
+      color: var(--text-muted);
+    }
+
+    .swatch__meta strong {
+      display: block;
+      color: var(--text);
+      font-weight: 500;
+      margin-bottom: 2px;
+    }
+
+    /* ----- Type specimens ----------------------------------------- */
+    .specimens {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin-bottom: 32px;
+      padding: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+
+    .specimen {
+      display: grid;
+      grid-template-columns: 80px 1fr;
+      gap: 16px;
+      align-items: baseline;
+    }
+
+    .specimen__label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .specimen__sample {
+      color: var(--text);
+    }
+
+    /* ----- Components row ------------------------------------------ */
+    .components {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .components__row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .components__label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      flex-basis: 100%;
+    }
+
+    /* Force the .btn etc. to use the per-vibe tokens explicitly */
+    .vibe-card .btn--primary {
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: var(--bg);
+    }
+
+    .vibe-card .finding {
+      max-width: 560px;
+      width: 100%;
+    }
+
+    .vibe-card .status-bar {
+      width: 100%;
+      margin: 0;
+    }
+
+    .vibe-card .progress-strip {
+      width: 100%;
+      max-width: 560px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="tile-page">
+
+    <header class="tile-intro">
+      <h1>Odin Matrix rebrand · Style tile</h1>
+      <p>Swatches, type specimens, and component samples in the Vibe B palette. Real CSS, scoped under the card so the production tokens stay untouched. Contrast ratios vs the card background are annotated where they matter.</p>
+      <p>The font switcher in the bottom-right rebinds <code>--font-display</code> — flip between Orbitron, Major Mono, Audiowide, and Wallpoet to see how the wordmark face changes the brand voice.</p>
+      <nav class="tile-intro__nav">
+        <a href="b.html">Hero mockup ·&nbsp;B</a>
+      </nav>
+    </header>
+    <!-- ============================================================ -->
+    <!-- VIBE B                                                       -->
+    <!-- ============================================================ -->
+    <article class="vibe-card" data-vibe="b">
+      <header class="vibe-card__head">
+        <span class="vibe-card__label">Option B · iterated</span>
+        <h2 class="vibe-card__name">Wake Up Neo terminal</h2>
+        <p class="vibe-card__tagline">Cyan-shifted phosphor on pure black. Courier Prime for body + mono. Universal text halation; heavy wordmark bloom. Terminal-styled search box. Open <a href="b.html" style="color: var(--primary);">mockup B</a> for the full effect.</p>
+        <ul class="vibe-card__claims">
+          <li><strong>Defends:</strong> Honest CRT phosphor physics (hue 155°); type-as-brand pairing; universal bloom matches the reference frames.</li>
+          <li><strong>References:</strong> "Wake up, Neo…", "The Matrix has you", 1999 credits sequence.</li>
+          <li><strong>Sacrifices:</strong> Long-form Courier readability vs. Inter. Square corners on every surface read more "interface" than "product."</li>
+        </ul>
+      </header>
+      <div class="vibe-card__body">
+
+        <div class="swatches">
+          <div class="swatch">
+            <div class="swatch__chip" style="background: oklch(8% 0 0deg)"></div>
+            <div class="swatch__meta"><strong>--bg</strong>oklch(8% 0 0)<br>flat black</div>
+          </div>
+          <div class="swatch">
+            <div class="swatch__chip" style="background: oklch(13% 0 0deg)"></div>
+            <div class="swatch__meta"><strong>--surface</strong>oklch(13% 0 0)<br>neutral elevation</div>
+          </div>
+          <div class="swatch">
+            <div class="swatch__chip" style="background: oklch(28% 0.06 155deg)"></div>
+            <div class="swatch__meta"><strong>--border</strong>oklch(28% 0.06 155)<br>phosphor-tinted</div>
+          </div>
+          <div class="swatch">
+            <div class="swatch__chip" style="background: oklch(78% 0.20 155deg)"></div>
+            <div class="swatch__meta"><strong>--text</strong>oklch(78% 0.20 155)<br>~10:1 vs bg</div>
+          </div>
+          <div class="swatch">
+            <div class="swatch__chip" style="background: oklch(55% 0.16 155deg)"></div>
+            <div class="swatch__meta"><strong>--text-muted</strong>oklch(55% 0.16 155)<br>~4.5:1 vs bg</div>
+          </div>
+          <div class="swatch">
+            <div class="swatch__chip" style="background: oklch(82% 0.22 155deg)"></div>
+            <div class="swatch__meta"><strong>--primary</strong>oklch(82% 0.22 155)<br>~12:1 vs bg</div>
+          </div>
+          <div class="swatch">
+            <div class="swatch__chip" style="background: oklch(72% 0.18 150deg)"></div>
+            <div class="swatch__meta"><strong>--accent</strong>oklch(72% 0.18 150)<br>~8:1 vs bg</div>
+          </div>
+          <div class="swatch">
+            <div class="swatch__chip" style="background: oklch(92% 0.22 155deg)"></div>
+            <div class="swatch__meta"><strong>--glow</strong>oklch(92% 0.22 155)<br>~14:1 vs bg</div>
+          </div>
+        </div>
+
+        <div class="specimens">
+          <div class="specimen">
+            <span class="specimen__label">Wordmark</span>
+            <span class="wordmark wordmark--hero specimen__sample" style="font-size: 3rem;">ODIN</span>
+          </div>
+          <div class="specimen">
+            <span class="specimen__label">H2</span>
+            <h2 class="specimen__sample" style="color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em;">Significant events</h2>
+          </div>
+          <div class="specimen">
+            <span class="specimen__label">Body</span>
+            <p class="specimen__sample" style="font-family: var(--font-body); color: var(--text);">Body stays in a humanist sans; the phosphor tint comes from the text color itself, not the typeface. Mono surfaces (timestamps, labels, code-like values) keep their character.</p>
+          </div>
+          <div class="specimen">
+            <span class="specimen__label">Mono</span>
+            <p class="specimen__sample mono" style="font-size: 12px; color: var(--text-muted);">PILOT · douglas@odin.local · NODE · 10.0.0.42 · 2026-05-19T14:33Z</p>
+          </div>
+        </div>
+
+        <div class="components">
+          <span class="components__label">Buttons</span>
+          <div class="components__row">
+            <button class="btn btn--primary" type="button">Primary action</button>
+            <button class="btn btn--ghost" type="button">Ghost</button>
+            <button class="btn" type="button">Default</button>
+          </div>
+
+          <span class="components__label">Badges</span>
+          <div class="components__row">
+            <span class="badge badge--category">Person</span>
+            <span class="badge badge--soon">Soon</span>
+            <span class="beta-badge">Beta</span>
+          </div>
+
+          <span class="components__label">Search input</span>
+          <form class="search-form" style="max-width: 480px;" onsubmit="return false;">
+            <label class="search-form__field">
+              <span class="search-form__icon"><i class="fa-solid fa-magnifying-glass"></i></span>
+              <input class="search-form__input" type="search" placeholder="Enter a name, place, or event…" />
+            </label>
+            <button class="btn btn--primary search-form__submit" type="button">
+              <i class="fa-solid fa-arrow-right"></i>
+            </button>
+          </form>
+
+          <span class="components__label">Status bar</span>
+          <div class="status-bar" style="margin: 0;">
+            <span class="status-bar__cell"><span class="status-bar__key">Pilot</span><span class="status-bar__value">douglas@odin.local</span></span>
+            <span class="status-bar__cell"><span class="status-bar__key">Node</span><span class="status-bar__value mono">10.0.0.42</span></span>
+          </div>
+
+          <span class="components__label">Progress strip (mid-flight)</span>
+          <ol class="progress-strip">
+            <li class="progress-step is-done"><span class="progress-step__dot"></span><span class="progress-step__label">Plan</span></li>
+            <li class="progress-step is-done"><span class="progress-step__dot"></span><span class="progress-step__label">Search</span></li>
+            <li class="progress-step is-active"><span class="progress-step__dot"></span><span class="progress-step__label">Read</span></li>
+            <li class="progress-step"><span class="progress-step__dot"></span><span class="progress-step__label">Cite</span></li>
+            <li class="progress-step"><span class="progress-step__dot"></span><span class="progress-step__label">Assess</span></li>
+            <li class="progress-step"><span class="progress-step__dot"></span><span class="progress-step__label">Render</span></li>
+          </ol>
+
+          <span class="components__label">Finding row</span>
+          <details class="finding">
+            <summary>
+              <span class="finding__label">Risk</span>
+              <span class="finding__title">Concentration of revenue in <strong>three customers</strong> exceeds 60% of FY24 bookings.</span>
+              <span class="finding__more"><i class="fa-solid fa-chevron-right finding__chev"></i> <span class="finding__more-label"></span></span>
+            </summary>
+          </details>
+        </div>
+
+      </div>
+    </article>
+
+    <!-- ============================================================ -->
+    <!-- VARIABLE PHOSPHOR — profile + about page treatment           -->
+    <!-- ============================================================ -->
+    <article class="vibe-card" data-vibe="b" data-demo="vary-phosphor">
+      <header class="vibe-card__head">
+        <span class="vibe-card__label">Profile + About</span>
+        <h2 class="vibe-card__name">Variable phosphor</h2>
+        <p class="vibe-card__tagline">The Matrix code rain has varied weight, alpha, and an occasional cyan-blue hue shift. Applying that signal to <em>every</em> glyph would ruin body legibility, so we reserve it for code-like surfaces: timestamps, citations, IPs, source domains, and the like. Body prose stays uniform.</p>
+        <ul class="vibe-card__claims">
+          <li><strong>Defends:</strong> Reference fidelity to the code rain texture while preserving WCAG body-text contrast on long-form pages.</li>
+          <li><strong>How it works:</strong> Code-like spans get class <code>.phosphor-vary</code>. Inside, individual character spans (or words) carry <code>.dim</code>, <code>.bright</code>, <code>.blue</code> modifiers chosen pseudo-randomly at server-render time so output is deterministic.</li>
+          <li><strong>Where it lives in production:</strong> <code>.profile__byline</code>, <code>.citations__item</code>, <code>.events__date</code>, <code>.status-bar__value</code>, IP/email mono spans.</li>
+        </ul>
+      </header>
+      <div class="vibe-card__body">
+
+        <div class="components">
+          <span class="components__label">Citation list — uniform vs. varied</span>
+          <ol class="vary-demo-citations">
+            <li><span class="vary-demo-num">1.</span> <a href="#" class="vary-demo-link">en.wikipedia.org/wiki/Halberd</a></li>
+            <li><span class="vary-demo-num">2.</span> <a href="#" class="vary-demo-link">archive.org/details/medieval-arms-1873</a></li>
+            <li><span class="vary-demo-num">3.</span> <a href="#" class="vary-demo-link">jstor.org/stable/3823491</a></li>
+          </ol>
+          <ol class="vary-demo-citations phosphor-vary">
+            <li>
+              <span class="vary-demo-num">1.</span>
+              <a href="#" class="vary-demo-link">
+                <span class="phosphor-bright">en</span><span class="phosphor-dim">.</span><span>wikipedia</span><span class="phosphor-dim">.</span><span class="phosphor-bright">org</span><span class="phosphor-dim">/wiki/</span><span class="phosphor-bright">Halberd</span>
+              </a>
+            </li>
+            <li>
+              <span class="vary-demo-num">2.</span>
+              <a href="#" class="vary-demo-link">
+                <span>archive</span><span class="phosphor-dim">.</span><span class="phosphor-bright">org</span><span class="phosphor-dim">/details/</span><span class="phosphor-blue">medieval-arms</span><span class="phosphor-dim">-</span><span class="phosphor-bright">1873</span>
+              </a>
+            </li>
+            <li>
+              <span class="vary-demo-num">3.</span>
+              <a href="#" class="vary-demo-link">
+                <span class="phosphor-bright">jstor</span><span class="phosphor-dim">.</span><span>org</span><span class="phosphor-dim">/stable/</span><span class="phosphor-bright">3823491</span>
+              </a>
+            </li>
+          </ol>
+
+          <span class="components__label">Timestamps + IP — code-like atoms</span>
+          <div class="vary-demo-row">
+            <span class="vary-demo-cell">
+              <span class="vary-demo-tag">Uniform:</span>
+              <code>2026-05-20T14:33:09Z · 10.0.0.42</code>
+            </span>
+            <span class="vary-demo-cell phosphor-vary">
+              <span class="vary-demo-tag">Varied:</span>
+              <code><span class="phosphor-bright">2026</span><span class="phosphor-dim">-</span><span>05</span><span class="phosphor-dim">-</span><span class="phosphor-bright">20</span><span class="phosphor-dim">T</span><span>14</span><span class="phosphor-dim">:</span><span class="phosphor-bright">33</span><span class="phosphor-dim">:</span><span class="phosphor-blue">09</span><span class="phosphor-dim">Z</span> <span class="phosphor-dim">·</span> <span class="phosphor-bright">10</span><span class="phosphor-dim">.</span><span>0</span><span class="phosphor-dim">.</span><span>0</span><span class="phosphor-dim">.</span><span class="phosphor-bright">42</span></code>
+            </span>
+          </div>
+
+          <span class="components__label">Decryption-on-hover (interactive)</span>
+          <p class="vary-demo-hint">Hover the strings below — they scramble briefly through Matrix glyphs, then resolve. CSS-coordinated, JS-driven, cheap. <strong>Reserve for low-frequency interactions</strong> (citation reveal, "decode" expand action) so it stays special.</p>
+          <div class="vary-demo-row">
+            <span class="vary-demo-decrypt" data-decrypt="Subject: DOUGLAS RYAN ADAMS">Subject: DOUGLAS RYAN ADAMS</span>
+            <span class="vary-demo-decrypt" data-decrypt="Threat level: 0xFF">Threat level: 0xFF</span>
+            <span class="vary-demo-decrypt" data-decrypt="Last seen: 2026-05-20">Last seen: 2026-05-20</span>
+          </div>
+
+          <span class="components__label">Code-rain glyph mosaic (background texture, separate concept)</span>
+          <p class="vary-demo-hint">For pages that benefit from a strong Matrix gesture (about page hero, 404, sign-in), a low-opacity static glyph wall — not the falling animation. Variable weight/alpha/hue. <strong>Background only</strong>; never behind body text.</p>
+          <div class="vary-demo-rain" aria-hidden="true"></div>
+        </div>
+
+      </div>
+    </article>
+
+  </div>
+
+  <style>
+    /* ----- Variable-phosphor demo styles ----------------------------- */
+    .vary-demo-citations {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 var(--sp-4) 0;
+      font-family: var(--font-mono);
+      font-size: 0.9375rem;
+      line-height: 1.7;
+    }
+
+    .vary-demo-num {
+      color: var(--text-muted);
+      margin-right: 8px;
+    }
+
+    .vary-demo-link {
+      color: var(--text);
+      text-decoration: none;
+      word-break: break-all;
+    }
+
+    .vary-demo-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      margin: 8px 0 24px 0;
+    }
+
+    .vary-demo-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-family: var(--font-mono);
+      font-size: 0.9375rem;
+    }
+
+    .vary-demo-tag {
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .vary-demo-hint {
+      font-size: 13px;
+      color: var(--text-muted);
+      max-width: 65ch;
+      margin: 4px 0;
+    }
+
+    .vary-demo-decrypt {
+      font-family: var(--font-mono);
+      font-size: 0.9375rem;
+      color: var(--text);
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      user-select: none;
+    }
+
+    .vary-demo-decrypt.is-scrambling {
+      color: var(--primary);
+    }
+
+    /* ----- The actual variable-phosphor mechanics ------------------- */
+    /* Each modifier nudges opacity, weight, or hue. Used on inline
+       <span> elements wrapping characters or words. Production version
+       would pick these pseudo-randomly at server-render so output is
+       deterministic per query (no per-paint flicker). */
+    .phosphor-vary .phosphor-dim    { opacity: 0.45; }
+    .phosphor-vary .phosphor-bright { color: var(--glow); font-weight: 700; }
+    .phosphor-vary .phosphor-blue   { color: oklch(78% 0.18 220deg); }
+
+    /* ----- Code-rain glyph mosaic ----------------------------------- */
+    /* A static texture — varied weight, alpha, hue across characters.
+       Composed in JS on render; CSS handles the look. */
+    .vary-demo-rain {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      line-height: 1.2;
+      letter-spacing: 0.08em;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 16px;
+      height: 180px;
+      overflow: hidden;
+      white-space: pre;
+      user-select: none;
+    }
+
+    .vary-demo-rain span.dim      { opacity: 0.30; }
+    .vary-demo-rain span.mid      { opacity: 0.65; }
+    .vary-demo-rain span.bright   { color: var(--glow); font-weight: 700; }
+    .vary-demo-rain span.blue     { color: oklch(78% 0.18 220deg); }
+    .vary-demo-rain span.gap      { opacity: 0; }
+  </style>
+
+  <!-- Switcher widget -->
+  <aside class="mockup-switcher" aria-label="Mockup controls">
+    <div class="mockup-switcher__row">
+      <span class="mockup-switcher__label">More</span>
+      <a class="mockup-switcher__btn" href="b.html">Hero mockup</a>
+    </div>
+    <div class="mockup-switcher__row">
+      <span class="mockup-switcher__label">Display</span>
+      <button class="mockup-switcher__btn" data-font="orbitron">Orbitron</button>
+      <button class="mockup-switcher__btn" data-font="major">Major Mono</button>
+      <button class="mockup-switcher__btn" data-font="audiowide">Audiowide</button>
+      <button class="mockup-switcher__btn" data-font="wallpoet">Wallpoet</button>
+    </div>
+    <p class="mockup-switcher__hint">Wordmark rebinds across the chrome and the B card together.</p>
+  </aside>
+
+  <script>
+    // ----- Font switcher (shared) ---------------------------------------
+    (function () {
+      const root = document.documentElement;
+      const btns = document.querySelectorAll(".mockup-switcher__btn[data-font]");
+      const valid = ["orbitron", "major", "audiowide", "wallpoet"];
+      function setFont(name) {
+        if (!valid.includes(name)) name = "orbitron";
+        root.setAttribute("data-font", name);
+        btns.forEach(b => b.classList.toggle("is-active", b.dataset.font === name));
+        try { localStorage.setItem("odin-mockup-font", name); } catch (e) {}
+      }
+      btns.forEach(b => b.addEventListener("click", () => setFont(b.dataset.font)));
+      let saved = null;
+      try { saved = localStorage.getItem("odin-mockup-font"); } catch (e) {}
+      setFont(valid.includes(saved) ? saved : root.dataset.font);
+    })();
+
+    // ----- Decryption-on-hover effect ------------------------------------
+    // Scrambles through Matrix glyphs for ~700ms, then resolves to the
+    // real text. Triggered on pointerenter; debounced so repeated hovers
+    // don't stack timers.
+    (function () {
+      const GLYPHS = "ﾊﾐﾋｰｳｼﾅﾓﾆｻﾜﾂｵﾘｱﾎﾃﾏｹﾒｴｶｷﾑﾕﾗｾﾈｽﾀﾇﾍ0123456789=+*/<>|";
+      const els = document.querySelectorAll(".vary-demo-decrypt");
+      els.forEach(el => {
+        let timer = null;
+        let frame = 0;
+        const total = 18;
+
+        function start() {
+          if (timer) return;
+          el.classList.add("is-scrambling");
+          const target = el.dataset.decrypt;
+          frame = 0;
+          timer = setInterval(() => {
+            const reveal = Math.floor((frame / total) * target.length);
+            let out = "";
+            for (let i = 0; i < target.length; i++) {
+              const c = target[i];
+              if (c === " ") { out += " "; continue; }
+              out += i < reveal ? c : GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
+            }
+            el.textContent = out;
+            frame++;
+            if (frame > total) {
+              el.textContent = target;
+              clearInterval(timer);
+              timer = null;
+              el.classList.remove("is-scrambling");
+            }
+          }, 38);
+        }
+
+        el.addEventListener("pointerenter", start);
+        el.addEventListener("focus", start);
+      });
+    })();
+
+    // ----- Code-rain glyph mosaic ---------------------------------------
+    // Static texture; 30 columns × N rows of varied-weight glyphs. Built
+    // once on load; no animation.
+    (function () {
+      const GLYPHS = "ﾊﾐﾋｰｳｼﾅﾓﾆｻﾜﾂｵﾘｱﾎﾃﾏｹﾒｴｶｷﾑﾕﾗｾﾈｽﾀﾇﾍ0123456789=+*/<>|".split("");
+      const container = document.querySelector(".vary-demo-rain");
+      if (!container) return;
+
+      // ~12 lines × ~80 chars each, picked deterministically-ish
+      const ROWS = 12;
+      const COLS = 80;
+
+      function pick() { return GLYPHS[Math.floor(Math.random() * GLYPHS.length)]; }
+      function variant() {
+        const r = Math.random();
+        if (r < 0.30) return "dim";
+        if (r < 0.55) return "mid";
+        if (r < 0.85) return "";          // default brightness
+        if (r < 0.92) return "bright";
+        if (r < 0.96) return "blue";
+        return "gap";                      // a blank space — pulses of nothing
+      }
+
+      let html = "";
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const cls = variant();
+          const ch = cls === "gap" ? " " : pick();
+          html += cls ? `<span class="${cls}">${ch}</span>` : `<span>${ch}</span>`;
+        }
+        html += "\n";
+      }
+      container.innerHTML = html;
+    })();
+  </script>
+</body>
+</html>

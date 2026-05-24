@@ -1,0 +1,42 @@
+{% extends "_base.html" %}
+{% block title %}About // Odin{% endblock %}
+{% block meta_description %}
+  Odin synthesizes profiles of people, places, and events from public web sources, with explicit citations and per-source audit metadata.
+{% endblock %}
+{% block body_class %}page-legal{% endblock %}
+{% block json_ld %}
+  <script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"Organization","name":"Odin","url":"{{ app_url }}"}
+  </script>
+  <script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"WebApplication","name":"Odin","url":"{{ app_url }}","applicationCategory":"UtilitiesApplication","browserRequirements":"Requires JavaScript. Requires HTML5.","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
+  </script>
+{% endblock %}
+{% block content %}
+  <article class="legal">
+    <h1 class="legal__heading">About Odin</h1>
+    <p class="legal__updated">Beta</p>
+    <h2>What Odin is</h2>
+    <p>
+      Odin is a search-and-synthesis tool. You enter a name, place, or event; Odin runs the query across multiple privacy-respecting search engines, fetches the most relevant pages, and asks Claude (Anthropic) to write a concise profile with cited sources.
+    </p>
+    <h2>What Odin isn't</h2>
+    <ul>
+      <li>
+        Not a chat bot. There's no conversation, no memory, no persona; just one query, one profile.
+      </li>
+      <li>
+        Not a search-engine wrapper that hides its sources. Every claim links back to the page it came from.
+      </li>
+      <li>Not a content-marketing site. We don't publish articles, opinions, or commentary.</li>
+    </ul>
+    <h2>Why this approach</h2>
+    <p>
+      Most "AI answer" tools either summarize a single page or generate prose without showing their work. Odin combines several sources, surfaces a source audit (what was used, what was filtered, what was unreliable), and keeps the answer short enough to read at a glance. The goal is to give you a useful starting point, not a final verdict.
+    </p>
+    <h2>Beta status</h2>
+    <p>
+      Odin is in beta. Output may contain errors or omissions; treat profiles as a research starting point, not a verified source. See the <a href="/privacy">Privacy Policy</a> for what we collect and how queries are handled.
+    </p>
+  </article>
+{% endblock %}
