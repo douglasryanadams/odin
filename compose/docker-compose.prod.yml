@@ -10,23 +10,12 @@ services:
       - LOG_LEVEL=INFO
       - ANTHROPIC_API_KEY
       - BRAVE_API_KEY
-      - BRAVE_ENABLED
-      - SEARXNG_SECRET
       - SMTP_HOST
       - SMTP_FROM
       - SMTP_USER
       - SMTP_PASS
-      - WIKIPEDIA_ENABLED
 
   nginx:
-    restart: always
-
-  searxng:
-    restart: always
-    environment:
-      - BRAVE_API_KEY
-
-  searxng-valkey:
     restart: always
 
   odin-valkey:

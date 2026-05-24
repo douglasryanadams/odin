@@ -30,24 +30,6 @@ services:
         awslogs-create-group: "true"
         awslogs-stream: nginx
 
-  searxng:
-    logging:
-      driver: awslogs
-      options:
-        awslogs-region: us-west-2
-        awslogs-group: /odin/searxng
-        awslogs-create-group: "true"
-        awslogs-stream: searxng
-
-  searxng-valkey:
-    logging:
-      driver: awslogs
-      options:
-        awslogs-region: us-west-2
-        awslogs-group: /odin/searxng-valkey
-        awslogs-create-group: "true"
-        awslogs-stream: searxng-valkey
-
   odin-valkey:
     logging:
       driver: awslogs

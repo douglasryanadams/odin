@@ -72,7 +72,7 @@ testpaths = ["tests"]
 pythonpath = ["tests"]
 addopts = "--cov --cov-report=term-missing --durations=0 -m 'not integration'"
 asyncio_mode = "auto"
-markers = ["integration: requires a running SearXNG instance"]
+markers = ["integration: requires external services (real APIs and/or running containers)"]
 
 [tool.coverage.run]
 source = ["src/odin"]

@@ -2,12 +2,12 @@
 
 Exposes the neutral :class:`SearchResult` model, the :class:`SearchBackend`
 protocol, the :class:`SearchAggregator` that fans queries across backends, and
-:func:`build_aggregator`, which assembles the enabled backend set from config.
+:func:`build_aggregator`, which assembles the active backend set from config.
 
 Backends register through ``_REGISTRY``: each entry is a factory
-``(settings) -> SearchBackend | None`` that returns ``None`` when its backend is
-disabled or missing required config, so the aggregator is built fail-closed.
-New backends add a factory here; the dependency wiring in ``app.py`` never changes.
+``(settings) -> SearchBackend | None`` that returns ``None`` when the backend's
+required config is missing, so the aggregator is built fail-closed. New
+backends add a factory here; the dependency wiring in ``app.py`` never changes.
 """
 
 from collections.abc import Callable
@@ -17,12 +17,10 @@ from odin.search.aggregator import SearchAggregator, merge_results
 from odin.search.base import SearchBackend
 from odin.search.brave import BraveBackend
 from odin.search.models import SearchResult
-from odin.search.searxng_backend import SearXngBackend
 from odin.search.wikipedia import WikipediaBackend
 
 __all__ = [
     "BraveBackend",
-    "SearXngBackend",
     "SearchAggregator",
     "SearchBackend",
     "SearchResult",
@@ -32,17 +30,8 @@ __all__ = [
 ]
 
 
-def _searxng_factory(settings: Settings) -> SearchBackend | None:
-    if not settings.searxng_enabled:
-        return None
-    return SearXngBackend(
-        base_url=settings.searxng_url,
-        timeout_seconds=settings.search_timeout_seconds,
-    )
-
-
 def _brave_factory(settings: Settings) -> SearchBackend | None:
-    if not settings.brave_enabled or settings.brave_api_key is None:
+    if settings.brave_api_key is None:
         return None
     return BraveBackend(
         api_key=settings.brave_api_key,
@@ -50,9 +39,7 @@ def _brave_factory(settings: Settings) -> SearchBackend | None:
     )
 
 
-def _wikipedia_factory(settings: Settings) -> SearchBackend | None:
-    if not settings.wikipedia_enabled:
-        return None
+def _wikipedia_factory(settings: Settings) -> SearchBackend:
     user_agent = f"Odin/1.0 (+{settings.app_url}; {settings.contact_email}) httpx"
     return WikipediaBackend(
         user_agent=user_agent,
@@ -61,13 +48,12 @@ def _wikipedia_factory(settings: Settings) -> SearchBackend | None:
 
 
 _REGISTRY: tuple[Callable[[Settings], SearchBackend | None], ...] = (
-    _searxng_factory,
     _brave_factory,
     _wikipedia_factory,
 )
 
 
 def build_aggregator(settings: Settings) -> SearchAggregator:
-    """Instantiate every enabled backend from config and wrap them in an aggregator."""
+    """Instantiate every active backend from config and wrap them in an aggregator."""
     backends = tuple(backend for factory in _REGISTRY if (backend := factory(settings)) is not None)
     return SearchAggregator(backends=backends)

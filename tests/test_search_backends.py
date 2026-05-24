@@ -1,15 +1,12 @@
 """Contract tests for individual search backends."""
 
 from typing import Any
-from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
 import respx
 
-from odin.search import SearchResult
 from odin.search.brave import BRAVE_SEARCH_URL, BraveBackend
-from odin.search.searxng_backend import SearXngBackend
 from odin.search.wikipedia import WikipediaBackend
 
 _WIKIPEDIA_URL = "https://api.wikimedia.org/core/v1/wikipedia/en/search/page"
@@ -66,18 +63,6 @@ _BRAVE_RESPONSE: dict[str, Any] = {
 }
 
 _BRAVE_EMPTY_RESPONSE: dict[str, Any] = {"web": {"results": []}}
-
-
-async def test_searxng_backend_delegates_to_searxng_search() -> None:
-    """SearXngBackend.search forwards to searxng.search with its base_url, returning the results."""
-    expected = [SearchResult(url="https://x/1", title="t", content="c", engines=["brave"])]
-    backend = SearXngBackend(base_url="http://searxng:8080")
-    with patch(
-        "odin.search.searxng_backend.searxng.search", AsyncMock(return_value=expected)
-    ) as mock:
-        out = await backend.search("marie curie")
-    mock.assert_awaited_once_with("marie curie", "http://searxng:8080")
-    assert out == expected
 
 
 async def test_brave_backend_maps_web_results_to_search_results() -> None:

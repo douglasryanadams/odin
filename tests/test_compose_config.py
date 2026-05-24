@@ -51,24 +51,6 @@ def test_prod_compose_surfaces_smtp_settings() -> None:
     )
 
 
-def test_searxng_service_passes_brave_api_key_in_both_compose_files() -> None:
-    """SearXNG's braveapi engine requires BRAVE_API_KEY at container start.
-
-    The base docker-compose.yml overrides the SearXNG entrypoint to render
-    settings.yml from a template that contains `${BRAVE_API_KEY}`; the prod
-    file ships the same env passthrough so the EC2 host's .env reaches the
-    container. If either file is missing the entry, the entrypoint exits 1
-    with the `BRAVE_API_KEY must be set` message before SearXNG starts.
-    """
-    for compose_file in ("docker-compose.yml", "docker-compose.prod.yml"):
-        data = yaml.safe_load((REPO_ROOT / "compose" / compose_file).read_text())
-        env = data["services"]["searxng"]["environment"]
-        names = {entry.split("=", 1)[0] for entry in env}
-        assert "BRAVE_API_KEY" in names, (
-            f"compose/{compose_file} searxng.environment is missing BRAVE_API_KEY"
-        )
-
-
 def test_web_service_passes_brave_api_key_in_both_compose_files() -> None:
     """The web service's direct Brave backend reads BRAVE_API_KEY from the container env.
 
@@ -76,7 +58,7 @@ def test_web_service_passes_brave_api_key_in_both_compose_files() -> None:
     it does not pass shell/.env values into a container unless the service lists the
     name under environment:. Both the base and prod compose files must forward
     BRAVE_API_KEY to web, or BraveBackend never instantiates (it fails closed without
-    the key) even when BRAVE_ENABLED is true.
+    the key).
     """
     for compose_file in ("docker-compose.yml", "docker-compose.prod.yml"):
         data = yaml.safe_load((REPO_ROOT / "compose" / compose_file).read_text())
@@ -85,29 +67,6 @@ def test_web_service_passes_brave_api_key_in_both_compose_files() -> None:
         assert "BRAVE_API_KEY" in names, (
             f"compose/{compose_file} web.environment is missing BRAVE_API_KEY"
         )
-
-
-def test_searxng_service_uses_template_entrypoint() -> None:
-    """SearXNG's container must run our entrypoint so the template is rendered."""
-    data = yaml.safe_load((REPO_ROOT / "compose" / "docker-compose.yml").read_text())
-    entrypoint = data["services"]["searxng"]["entrypoint"]
-    assert "/etc/searxng/entrypoint.sh" in entrypoint, (
-        f"searxng entrypoint must invoke /etc/searxng/entrypoint.sh, got {entrypoint!r}"
-    )
-
-
-def test_searxng_renders_settings_into_tmpfs() -> None:
-    """Render the BRAVE_API_KEY-substituted settings.yml into an in-container tmpfs.
-
-    The rendered file must not live on the host bind mount, so the key never
-    reaches the host filesystem (and therefore not EBS snapshots, backups, etc.).
-    """
-    tmpfs = _load_compose("docker-compose.yml")["services"]["searxng"]["tmpfs"]
-    assert any(str(entry).startswith("/run/searxng") for entry in tmpfs), (
-        f"searxng service must mount a tmpfs at /run/searxng so the rendered "
-        f"settings.yml (with BRAVE_API_KEY) does not touch the host filesystem; "
-        f"got tmpfs={tmpfs!r}"
-    )
 
 
 def test_required_env_vars_are_forwarded_through_compose() -> None:

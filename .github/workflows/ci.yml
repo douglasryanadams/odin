@@ -8,12 +8,6 @@ jobs:
   lint-test:
     name: Lint & Test
     runs-on: ubuntu-latest
-    # searxng/entrypoint.sh refuses to start without BRAVE_API_KEY. Lint and
-    # unit tests bring searxng up as a dependency of the web container, so
-    # provide a dummy value to satisfy the required-check. scripts/test-smoke.sh
-    # uses the same fallback shape.
-    env:
-      BRAVE_API_KEY: ci-dummy
     steps:
       - uses: actions/checkout@v4
 
