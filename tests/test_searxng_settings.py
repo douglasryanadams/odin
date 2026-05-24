@@ -29,6 +29,19 @@ def test_scraping_brave_engine_is_gone() -> None:
     assert not scrapers, "scraping brave engine must be removed when braveapi is enabled"
 
 
+def test_search_ban_backoff_is_long_enough_to_silence_blocked_scrapers() -> None:
+    """Failing engines should back off at least 10 minutes immediately.
+
+    Mojeek and other scraper engines that are blocked from cloud IPs return
+    403 on every request. A short initial ban_time_on_fail makes SearXNG
+    retry every 10s/20s/40s and floods the logs. We start the suspension
+    at 10 minutes and cap at 1 hour so blocked engines fall quiet quickly.
+    """
+    data = _render_template("unused")
+    assert data["search"]["ban_time_on_fail"] >= 600
+    assert data["search"]["max_ban_time_on_fail"] >= 3600
+
+
 def test_known_blocked_scrapers_are_disabled() -> None:
     """startpage/qwant/karmasearch must be present-but-disabled.
 
