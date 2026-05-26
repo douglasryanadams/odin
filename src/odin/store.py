@@ -1,11 +1,12 @@
 """Valkey-backed rate limiting counters and search history."""
 
 import datetime
-import hashlib
 import json
 from typing import Any
 
 from valkey.asyncio import Valkey
+
+from odin.identity import hash_email as _hash_email
 
 _ANON_HISTORY_MAX = 10
 _ANON_HISTORY_TTL = 7 * 24 * 60 * 60  # 7 days in seconds
@@ -21,10 +22,6 @@ def _end_of_day_utc() -> int:
     now = datetime.datetime.now(datetime.UTC)
     tomorrow = (now + datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     return int(tomorrow.timestamp())
-
-
-def _hash_email(email: str) -> str:
-    return hashlib.sha256(email.lower().encode()).hexdigest()[:16]
 
 
 async def consume_magic_jti(client: Valkey, jti: str, exp_ts: int) -> bool:

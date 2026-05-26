@@ -2,9 +2,13 @@
 
 from collections.abc import AsyncIterator
 
+import asyncpg
 import pytest
+from alembic.config import Config
 from valkey.asyncio import Valkey
 
+from alembic import command
+from odin import db
 from odin.config import settings
 
 
@@ -22,3 +26,20 @@ async def _flush_odin_valkey() -> AsyncIterator[None]:  # pyright: ignore[report
         yield
     finally:
         await client.aclose()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _migrate_test_db() -> None:  # pyright: ignore[reportUnusedFunction]
+    """Bring the integration database schema up to head once per session."""
+    command.upgrade(Config("alembic.ini"), "head")
+
+
+@pytest.fixture
+async def db_pool() -> AsyncIterator[asyncpg.Pool]:
+    """Yield an asyncpg pool against a freshly truncated schema for test isolation."""
+    pool = await db.create_pool(settings.database_url)
+    await pool.execute("TRUNCATE signups RESTART IDENTITY CASCADE")
+    try:
+        yield pool
+    finally:
+        await pool.close()

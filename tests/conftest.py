@@ -18,6 +18,7 @@ os.environ["DATABASE_URL"] = "postgresql://odin:odin@odin-postgres:5432/odin"
 import pytest
 from fastapi.testclient import TestClient
 
+from odin import db
 from odin.app import get_search_aggregator, get_valkey_client
 from odin.main import app  # imports routes/* as a side effect of route registration
 from odin.search import SearchAggregator, SearchResult
@@ -98,6 +99,23 @@ def _override_valkey_client(mock_valkey: MagicMock) -> Iterator[None]:  # pyrigh
     app.dependency_overrides[get_valkey_client] = lambda: mock_valkey
     yield
     app.dependency_overrides.pop(get_valkey_client, None)
+
+
+@pytest.fixture
+def mock_db_pool() -> MagicMock:
+    """Mock asyncpg pool covering the methods the app calls."""
+    m = MagicMock()
+    m.execute = AsyncMock(return_value="INSERT 0 1")
+    m.fetchval = AsyncMock(return_value=0)
+    return m
+
+
+@pytest.fixture(autouse=True)
+def _override_db_pool(mock_db_pool: MagicMock) -> Iterator[None]:  # pyright: ignore[reportUnusedFunction]
+    """Inject the mock asyncpg pool wherever the app expects the real one."""
+    app.dependency_overrides[db.get_db_pool] = lambda: mock_db_pool
+    yield
+    app.dependency_overrides.pop(db.get_db_pool, None)
 
 
 @pytest.fixture(autouse=True)

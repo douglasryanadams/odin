@@ -14,6 +14,9 @@ FROM base AS production
 
 COPY config/gunicorn.conf.py ./
 COPY src/ src/
+# Migrations run from the production image via `alembic upgrade head` on deploy.
+COPY alembic.ini ./
+COPY alembic/ alembic/
 
 RUN uv sync --frozen --no-dev
 

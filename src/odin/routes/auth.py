@@ -2,12 +2,13 @@
 
 from typing import Annotated
 
+import asyncpg
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from valkey.asyncio import Valkey
 
 from odin import auth as _auth
-from odin import store
+from odin import db, signups, store
 from odin.app import get_valkey_client, templates
 from odin.config import settings
 from odin.email import send_magic_link
@@ -62,6 +63,7 @@ async def auth_verify(
     request: Request,
     token: str,
     valkey_client: Annotated[Valkey, Depends(get_valkey_client)],
+    db_pool: Annotated[asyncpg.Pool, Depends(db.get_db_pool)],
 ) -> Response:
     """Verify a magic link token and set the session cookie."""
     invalid = templates.TemplateResponse(
@@ -75,6 +77,8 @@ async def auth_verify(
         return invalid
     if not await store.consume_magic_jti(valkey_client, claims.jti, claims.exp):
         return invalid
+    # Ownership of the email is now proven; record the anonymized signup/sign-in.
+    await signups.record_signup(db_pool, claims.email)
     session_value = _auth.create_session_value(claims.email, request.app.state.secret_key)
     resp = RedirectResponse(url="/", status_code=303)
     resp.set_cookie(
