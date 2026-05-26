@@ -38,3 +38,12 @@ services:
         awslogs-group: /odin/odin-valkey
         awslogs-create-group: "true"
         awslogs-stream: odin-valkey
+
+  odin-postgres:
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-west-2
+        awslogs-group: /odin/odin-postgres
+        awslogs-create-group: "true"
+        awslogs-stream: odin-postgres

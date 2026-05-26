@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock, MagicMock
 os.environ["LOG_LEVEL"] = "DEBUG"
 os.environ["SECRET_KEY"] = "test-only-insecure-secret-key-do-not-use"  # noqa: S105
 os.environ["APP_URL"] = "http://localhost:8000"
+# Required by config; unit tests mock the pool and never open a real connection.
+os.environ["DATABASE_URL"] = "postgresql://odin:odin@odin-postgres:5432/odin"
 
 
 import pytest

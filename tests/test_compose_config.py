@@ -69,6 +69,58 @@ def test_web_service_passes_brave_api_key_in_both_compose_files() -> None:
         )
 
 
+def test_postgres_service_persists_data_and_reports_health() -> None:
+    """The durable store must survive container recreation and signal readiness.
+
+    signups and search_history live in odin-postgres. Without a named volume the
+    data is lost on every recreate (deploy.sh runs --force-recreate); without a
+    healthcheck the web container can race ahead and fail its first queries
+    against a Postgres still in crash recovery.
+    """
+    data = _load_compose("docker-compose.yml")
+    postgres = data["services"]["odin-postgres"]
+
+    mounts = postgres.get("volumes", [])
+    data_mounts = [m for m in mounts if m.endswith(":/var/lib/postgresql/data")]
+    assert data_mounts, "odin-postgres must mount a named volume at /var/lib/postgresql/data"
+    volume_name = data_mounts[0].split(":", 1)[0]
+    assert volume_name in data.get("volumes", {}), (
+        f"named volume {volume_name!r} must be declared under top-level volumes:"
+    )
+
+    test_cmd = " ".join(postgres.get("healthcheck", {}).get("test", []))
+    assert "pg_isready" in test_cmd, "odin-postgres healthcheck should use pg_isready"
+
+
+def test_prod_postgres_password_is_required_with_no_repo_default() -> None:
+    """Prod must fail hard rather than fall back to a password baked into the repo.
+
+    The base compose carries a convenience default (POSTGRES_PASSWORD:-odin) for
+    local dev and CI. The prod overlay must override it with the required form
+    (:?), so an unset or empty value aborts `docker compose` and the stack never
+    starts. A regression that reintroduced a :- fallback here would silently run
+    production on a password from the repository.
+    """
+    env = _load_compose("docker-compose.prod.yml")["services"]["odin-postgres"]["environment"]
+    entries = [e for e in env if e.startswith("POSTGRES_PASSWORD=")]
+    assert entries, "prod compose must pin POSTGRES_PASSWORD on odin-postgres"
+    value = entries[0]
+    assert ":?" in value, "prod POSTGRES_PASSWORD must use the required (:?) form so it fails hard"
+    assert ":-" not in value, "prod POSTGRES_PASSWORD must not carry a default fallback"
+
+
+def test_web_waits_for_postgres_health() -> None:
+    """Web must wait for Postgres health before starting.
+
+    The asyncpg pool opens in the FastAPI lifespan at startup; if Postgres is not
+    yet accepting connections the app crashes on boot. A depends_on health
+    condition serializes startup.
+    """
+    web = _load_compose("docker-compose.yml")["services"]["web"]
+    condition = web.get("depends_on", {}).get("odin-postgres", {}).get("condition")
+    assert condition == "service_healthy", "web must depend_on odin-postgres being healthy"
+
+
 def test_required_env_vars_are_forwarded_through_compose() -> None:
     """Required env vars from .env.example must reach a container via compose.
 

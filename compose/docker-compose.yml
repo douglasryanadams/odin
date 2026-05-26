@@ -7,11 +7,14 @@ services:
       - SECRET_KEY
       - APP_URL
       - COOKIE_SECURE
+      - DATABASE_URL=postgresql://odin:${POSTGRES_PASSWORD:-odin}@odin-postgres:5432/odin
     volumes:
       - playwright-state:/var/lib/odin/playwright-state
     depends_on:
       odin-valkey:
         condition: service_started
+      odin-postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 5s
@@ -42,6 +45,25 @@ services:
     volumes:
       - odin-valkey-data:/data/
 
+  odin-postgres:
+    image: docker.io/library/postgres:17-alpine
+    # shared_buffers kept modest: this shares a small host with the web workers,
+    # Chromium, nginx and Valkey.
+    command: postgres -c shared_buffers=128MB
+    environment:
+      - POSTGRES_USER=odin
+      - POSTGRES_DB=odin
+      # Dev/CI default; prod overrides with a required value (no fallback).
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-odin}
+    volumes:
+      - odin-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "odin", "-d", "odin"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   node:
     image: node:20-slim
     working_dir: /workspace
@@ -51,4 +73,5 @@ services:
 
 volumes:
   odin-valkey-data:
+  odin-postgres-data:
   playwright-state:

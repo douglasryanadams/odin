@@ -3,15 +3,21 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-COMPOSE=(docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.prod.yml)
+# Isolated project with ephemeral volumes: Postgres binds POSTGRES_PASSWORD only
+# on first init, so a throwaway stack must own a fresh volume rather than reuse
+# the dev/unit one (which is initialized with a different password).
+COMPOSE=(docker compose -p odin-smoke --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.prod.yml)
 
 export SECRET_KEY=${SECRET_KEY:-smoke-test-only-dummy-secret-key-32chars}
 export APP_URL=${APP_URL:-http://localhost:8000}
 export ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-smoke-dummy}
 export BRAVE_API_KEY=${BRAVE_API_KEY:-smoke-dummy}
+# Prod compose requires POSTGRES_PASSWORD (no fallback); supply a dummy for the
+# throwaway smoke stack. Compose builds DATABASE_URL from it.
+export POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-smoke-dummy-db-pass}
 
 teardown() {
-  "${COMPOSE[@]}" down --remove-orphans >/dev/null 2>&1 || true
+  "${COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
 }
 trap teardown EXIT
 

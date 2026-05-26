@@ -16,7 +16,7 @@ from playwright.async_api import async_playwright
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from valkey.asyncio import Valkey
 
-from odin import curl_fetch, fetch, log, search
+from odin import curl_fetch, db, fetch, log, search
 from odin.config import settings
 
 log.setup()
@@ -46,7 +46,10 @@ _HARDENED_LAUNCH_ARGS = [
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Launch hardened Chrome and connect Valkey on startup; close both on shutdown."""
+    """Launch hardened Chrome, connect Valkey and open the Postgres pool on startup.
+
+    All three are torn down on shutdown.
+    """
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(
             channel=settings.playwright_channel,
@@ -54,14 +57,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             args=_HARDENED_LAUNCH_ARGS,
         )
         valkey_client = Valkey.from_url(settings.odin_valkey_url)
+        db_pool = await db.create_pool(settings.database_url)
         app.state.browser = browser
         app.state.valkey = valkey_client
+        app.state.db_pool = db_pool
         app.state.secret_key = settings.secret_key.encode()
         try:
             yield
         finally:
             await browser.close()
             await valkey_client.aclose()
+            await db_pool.close()
 
 
 app = FastAPI(lifespan=lifespan)
