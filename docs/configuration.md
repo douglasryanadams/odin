@@ -6,7 +6,7 @@ The repo-root [`README.md`](../README.md) is the orientation page. This doc is t
 
 - **Python:** `>= 3.12`. Built with `hatchling`.
 - **Runtime deps:** `anthropic`, `fastapi`, `gunicorn`, `httpx`, `jinja2`, `loguru`, `playwright`, `trafilatura`, `uvicorn[standard]`.
-- **Dev deps:** `bandit`, `djlint`, `respx`, `pyright`, `pytest` (`-asyncio`, `-cov`, `-httpserver`), `radon`, `ruff`, `xenon`.
+- **Dev deps:** `bandit`, `djlint`, `respx`, `pyright`, `pytest` (`-asyncio`, `-cov`, `-httpserver`), `radon`, `ruff`, `xenon`, `textstat` (Markdown readability scoring; see `make readability`).
 
 | Tool | Configured to enforce |
 |---|---|
@@ -50,6 +50,7 @@ Every target runs through `docker-compose` — host needs only Docker + `make`.
 | `make lint-links` | Depends on `node_modules`. Runs `markdown-link-check` over the same set of files. Validates relative file references only; external URLs are skipped by config so the run stays offline. |
 | `make node_modules` | Sentinel target; runs `npm ci` in the `node` sidecar when `package.json` / `package-lock.json` change. |
 | `make metrics` | `radon raw -s .` (informational). |
+| `make readability` | `textstat` reading-level report over every `*.md` (code, tables, and frontmatter stripped). Prints Flesch-Kincaid grade and Flesch Reading Ease per file against the high-school target (grade 12, ease 50). Advisory; always exits zero. |
 | `make test` | `test-unit` → `test-smoke` → `test-integration`. |
 | `make test-unit` | `pytest` (with the default `not integration` filter), then `make test-js`. |
 | `make test-js` | `npx vitest run` in the `node` sidecar; covers `profile.js` helpers. |

@@ -4,10 +4,6 @@
 - Run `make lint`; it must pass before the task is done.
 - Run `make test`; it must pass before the task is done.
 
-# Absolute prohibitions
-
-- Never write display borders (e.g. `────────────`) anywhere in the project — not in source files, comments, CSS, templates, scripts, documentation, git commit messages, or pull request messages. They are terminal UI artifacts and have no place in committed code.
-
 # Process expectations
 
 - Define validation criteria before pursuing each task; execute it before marking complete.
@@ -30,6 +26,13 @@
 # Third-party type stubs
 
 When a library has no bundled types and no `types-*` package on PyPI, create a minimal `.pyi` stub in `stubs/<package>/` covering only the symbols we actually use. Configure pyright to find it with `stubPath = "stubs"` in `[tool.pyright]`. This is preferable to scattered `cast()` calls or `# pyright: ignore` suppressions.
+
+# Markdown and documentation
+
+- When creating or editing any Markdown (agent and skill definitions, documentation, READMEs, this file), apply [`docs/prose-style.md`](./docs/prose-style.md).
+- Target a high-school reading level. Verify two ways and simplify until both agree:
+  - Run `make readability` (textstat): each file's prose, with code, tables, and frontmatter stripped, should reach Flesch-Kincaid grade 12 or lower and Flesch Reading Ease 50 or higher.
+  - Have Claude read the prose and judge its reading level and prose-style fit. textstat scores sentence and word length, not clarity, so this pass catches what the metric misses.
 
 # Coding standards & project orientation
 

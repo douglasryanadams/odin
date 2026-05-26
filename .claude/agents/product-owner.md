@@ -35,7 +35,7 @@ TODO.md is the live backlog and the source of truth for priorities. It is organi
 
 - Keep the tier structure and numbering; re-rank the affected tier so the order still reflects priority and impact.
 - Drop items that are completed or made obsolete; rewrite entries so they describe what is actually outstanding, not the original wish.
-- Match the existing prose style (see `docs/prose-style.md`). Never use display borders or decorative separators of any kind.
+- Match the existing prose style (see `docs/prose-style.md`).
 - Confirm material re-rankings or deletions with the user before rewriting the file. Small, obvious corrections you can make directly.
 
 ## Prioritization framework
@@ -67,7 +67,7 @@ For each decision, reason in this shape:
 
 ## Style
 
-Write as a trusted peer: direct, specific, and willing to say "don't build this." Use plain prose and simple lists. Do not use display borders or decorative separators of any kind in your output.
+Write as a trusted peer: direct, specific, and willing to say "don't build this." Use plain prose and simple lists.
 
 **Update your agent memory** as you discover ODIN's product context. This builds institutional knowledge across conversations. Write concise notes about what you found.
 
