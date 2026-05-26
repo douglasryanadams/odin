@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from valkey.asyncio import Valkey
 
-from odin import auth, db, history, store
+from odin import auth, db, history, signups, store
 from odin.app import get_valkey_client, templates
 from odin.config import settings
 from odin.identity import Requester
@@ -57,6 +57,7 @@ async def account_delete(
     csrf_token: Annotated[str, Form()],
     email: Annotated[str, Form()],
     valkey_client: Annotated[Valkey, Depends(get_valkey_client)],
+    db_pool: Annotated[asyncpg.Pool, Depends(db.get_db_pool)],
 ) -> Response:
     """Delete all data tied to the signed-in user and clear the session."""
     user = auth.get_current_user(request)
@@ -67,6 +68,8 @@ async def account_delete(
     if email.strip().lower() != user.email.lower():
         raise HTTPException(status_code=400, detail="Email does not match signed-in account")
     await store.delete_user(valkey_client, user.email)
+    await signups.delete_signup(db_pool, user.email)
+    await history.delete_user_history(db_pool, user.email)
     resp = RedirectResponse(url="/", status_code=303)
     resp.delete_cookie("odin_session")
     return resp

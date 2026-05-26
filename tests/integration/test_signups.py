@@ -64,3 +64,12 @@ async def test_reporting_counts(db_pool: asyncpg.Pool) -> None:
     now = datetime.datetime.now(datetime.UTC)
     assert await signups.count_since(db_pool, now - datetime.timedelta(hours=1)) == 2
     assert await signups.count_since(db_pool, now + datetime.timedelta(hours=1)) == 0
+
+
+async def test_delete_signup_removes_the_row(db_pool: asyncpg.Pool) -> None:
+    await signups.record_signup(db_pool, "a@example.com")
+    await signups.record_signup(db_pool, "b@example.com")
+
+    await signups.delete_signup(db_pool, "a@example.com")
+
+    assert await signups.total_signups(db_pool) == 1  # only b remains

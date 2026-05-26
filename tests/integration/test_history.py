@@ -47,3 +47,16 @@ async def test_get_history_orders_recent_first_and_limits(db_pool: asyncpg.Pool)
         await history.push_history(db_pool, _USER, query=f"q{i}", category="other")
     entries = await history.get_history(db_pool, _USER, count=2)
     assert [e["q"] for e in entries] == ["q2", "q1"]  # newest first, capped at the limit
+
+
+async def test_delete_user_history_removes_only_that_user(db_pool: asyncpg.Pool) -> None:
+    other_user = Requester("b@example.com", "", "")
+    anon = Requester(None, "cookie", "1.2.3.4")
+    await history.push_history(db_pool, _USER, query="a-query", category="other")
+    await history.push_history(db_pool, other_user, query="b-query", category="other")
+    await history.push_history(db_pool, anon, query="anon-query", category="other")
+
+    await history.delete_user_history(db_pool, "u@example.com")
+
+    remaining = {r["query"] for r in await db_pool.fetch("SELECT query FROM search_history")}
+    assert remaining == {"b-query", "anon-query"}  # other user's and anonymous rows untouched

@@ -123,6 +123,37 @@ def test_account_delete_clears_data_and_logs_out(
     mock_valkey.delete.assert_awaited()
 
 
+@patch("odin.history.delete_user_history")
+@patch("odin.signups.delete_signup")
+def test_account_delete_removes_durable_rows(
+    mock_delete_signup: AsyncMock,
+    mock_delete_history: AsyncMock,
+    client: TestClient,
+    mock_valkey: MagicMock,
+) -> None:
+    """Account deletion also removes the user's signup and search-history rows."""
+    email = "user@example.com"
+    mock_valkey.delete = AsyncMock(return_value=0)
+    mock_valkey.scan_iter = MagicMock(return_value=_async_iter([]))
+    session = _auth.create_session_value(email, TEST_SECRET)
+    client.cookies.set("odin_session", session)
+    csrf = _seed_csrf(client)
+
+    response = client.post(
+        "/account/delete",
+        data={"email": email, **csrf},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    mock_delete_signup.assert_awaited_once()
+    assert mock_delete_signup.await_args is not None
+    assert mock_delete_signup.await_args.args[1] == email
+    mock_delete_history.assert_awaited_once()
+    assert mock_delete_history.await_args is not None
+    assert mock_delete_history.await_args.args[1] == email
+
+
 def test_account_delete_rejects_email_mismatch(client: TestClient) -> None:
     """Submitting a non-matching email returns 400."""
     session = _auth.create_session_value("user@example.com", TEST_SECRET)

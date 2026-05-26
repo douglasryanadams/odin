@@ -41,3 +41,8 @@ async def count_since(pool: asyncpg.Pool, since: datetime.datetime) -> int:
 async def returning_count(pool: asyncpg.Pool) -> int:
     """Return the number of signups that have signed in more than once."""
     return await pool.fetchval("SELECT count(*) FROM signups WHERE login_count > 1")
+
+
+async def delete_signup(pool: asyncpg.Pool, email: str) -> None:
+    """Remove the signup row for an email, on account deletion."""
+    await pool.execute("DELETE FROM signups WHERE email_hash = $1", hash_email(email))

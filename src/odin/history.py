@@ -62,3 +62,11 @@ async def get_history(
         {"q": row["query"], "t": row["created_at"].isoformat(), "cat": row["category"]}
         for row in rows
     ]
+
+
+async def delete_user_history(pool: asyncpg.Pool, email: str) -> None:
+    """Remove a signed-in user's search history on account deletion.
+
+    Anonymous rows carry no email_hash and are left untouched.
+    """
+    await pool.execute("DELETE FROM search_history WHERE email_hash = $1", hash_email(email))

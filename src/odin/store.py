@@ -96,9 +96,13 @@ async def is_rate_limited(
 
 
 async def delete_user(client: Valkey, email: str) -> None:
-    """Remove all per-user data: history, magic-link rate counter, daily rate counters."""
+    """Remove the user's ValKey state: magic-link and daily rate-limit counters.
+
+    Durable data (signups, search history) lives in Postgres and is removed
+    separately during account deletion.
+    """
     user_hash = _hash_email(email)
-    keys: list[str] = [f"history:user:{user_hash}", f"linkrate:email:{user_hash}"]
+    keys: list[str] = [f"linkrate:email:{user_hash}"]
     keys.extend([key.decode() async for key in client.scan_iter(match=f"rate:user:{user_hash}:*")])
     if keys:
         await client.delete(*keys)
