@@ -7,7 +7,8 @@ services:
       - SECRET_KEY
       - APP_URL
       - COOKIE_SECURE
-      - DATABASE_URL=postgresql://odin:${POSTGRES_PASSWORD:-odin}@odin-postgres:5432/odin
+      # Runtime connects as the least-privilege odin_app role, never the owner.
+      - DATABASE_URL=postgresql://odin_app:${ODIN_APP_DB_PASSWORD:-odin_app}@odin-postgres:5432/odin
     volumes:
       - playwright-state:/var/lib/odin/playwright-state
     depends_on:
@@ -53,10 +54,14 @@ services:
     environment:
       - POSTGRES_USER=odin
       - POSTGRES_DB=odin
-      # Dev/CI default; prod overrides with a required value (no fallback).
+      # Dev/CI defaults; prod overrides each with a required value (no fallback).
+      # POSTGRES_PASSWORD is the owner/migrator role; ODIN_APP_DB_PASSWORD is the
+      # least-privilege runtime role created by the initdb script on first init.
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-odin}
+      - ODIN_APP_DB_PASSWORD=${ODIN_APP_DB_PASSWORD:-odin_app}
     volumes:
       - odin-postgres-data:/var/lib/postgresql/data
+      - ./compose/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "odin", "-d", "odin"]
       interval: 5s

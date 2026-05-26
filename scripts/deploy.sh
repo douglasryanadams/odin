@@ -30,12 +30,16 @@ chown ec2-user:ec2-user .env
 
 unset SECRETS_JSON
 
-# Fail fast and clearly if the durable-store password is missing from the secret;
+# Fail fast and clearly if either database password is missing from the secret;
 # compose would otherwise abort with an opaque interpolation error.
-if ! grep -qE '^POSTGRES_PASSWORD=.+' .env; then
-  echo "ERROR: POSTGRES_PASSWORD is missing from the $SECRET_ID secret; add it before deploying." >&2
-  exit 1
-fi
+# POSTGRES_PASSWORD is the owner/migrator role; ODIN_APP_DB_PASSWORD is the
+# least-privilege runtime role.
+for db_pw_var in POSTGRES_PASSWORD ODIN_APP_DB_PASSWORD; do
+  if ! grep -qE "^${db_pw_var}=.+" .env; then
+    echo "ERROR: $db_pw_var is missing from the $SECRET_ID secret; add it before deploying." >&2
+    exit 1
+  fi
+done
 
 COMPOSE=(docker compose
   --project-directory .
@@ -44,9 +48,14 @@ COMPOSE=(docker compose
   -f compose/docker-compose.awslogs.yml)
 
 # Bring the database up and apply migrations with the new image before the app
-# serves the new code.
+# serves the new code. Migrations run as the owner role via DATABASE_MIGRATION_URL,
+# injected into this one-off container only so the long-lived web service never
+# holds credentials that can reshape the schema.
+owner_password=$(sed -n 's/^POSTGRES_PASSWORD=//p' .env | head -n1)
 "${COMPOSE[@]}" up -d --wait odin-postgres
-"${COMPOSE[@]}" run --rm web alembic upgrade head
+"${COMPOSE[@]}" run --rm \
+  -e DATABASE_MIGRATION_URL="postgresql://odin:${owner_password}@odin-postgres:5432/odin" \
+  web alembic upgrade head
 
 "${COMPOSE[@]}" up -d --pull always --force-recreate --wait
 

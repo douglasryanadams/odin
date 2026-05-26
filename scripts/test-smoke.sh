@@ -12,9 +12,11 @@ export SECRET_KEY=${SECRET_KEY:-smoke-test-only-dummy-secret-key-32chars}
 export APP_URL=${APP_URL:-http://localhost:8000}
 export ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-smoke-dummy}
 export BRAVE_API_KEY=${BRAVE_API_KEY:-smoke-dummy}
-# Prod compose requires POSTGRES_PASSWORD (no fallback); supply a dummy for the
-# throwaway smoke stack. Compose builds DATABASE_URL from it.
+# Prod compose requires both database passwords (no fallback); supply dummies for
+# the throwaway smoke stack. Compose builds the app DATABASE_URL from
+# ODIN_APP_DB_PASSWORD, and the initdb script creates the runtime role with it.
 export POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-smoke-dummy-db-pass}
+export ODIN_APP_DB_PASSWORD=${ODIN_APP_DB_PASSWORD:-smoke-dummy-app-pass}
 
 teardown() {
   "${COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true

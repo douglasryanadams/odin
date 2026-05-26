@@ -276,6 +276,7 @@ A single secret named `odin/app` holds every runtime credential as JSON. One bil
      "secret_key": "placeholder",
      "app_url": "placeholder",
      "postgres_password": "placeholder",
+     "odin_app_db_password": "placeholder",
      "smtp_host": "placeholder",
      "smtp_from": "placeholder",
      "smtp_user": "placeholder",
@@ -283,7 +284,7 @@ A single secret named `odin/app` holds every runtime credential as JSON. One bil
    }
    ```
 
-   `postgres_password` is the password for the in-stack `odin-postgres` database; generate a strong random value (e.g. `python -c 'import secrets; print(secrets.token_urlsafe(32))'`). `deploy.sh` aborts if it is missing, and the prod compose refuses to start the database without it, so this is required — there is no fallback in production. `deploy.sh` writes it to `.env` as `POSTGRES_PASSWORD`, and compose builds `DATABASE_URL` from it.
+   The database uses two roles, so it needs two passwords; generate a strong random value for each (e.g. `python -c 'import secrets; print(secrets.token_urlsafe(32))'`). `postgres_password` is the owner/migrator role (`odin`) that runs Alembic migrations; `odin_app_db_password` is the least-privilege runtime role (`odin_app`) the app connects as, which cannot alter schema. `deploy.sh` aborts if either is missing, and the prod compose refuses to start the database without them, so both are required with no fallback in production. `deploy.sh` writes them to `.env` as `POSTGRES_PASSWORD` and `ODIN_APP_DB_PASSWORD`; compose builds the app's `DATABASE_URL` from `ODIN_APP_DB_PASSWORD`, and the deploy injects the owner DSN for migrations only.
 
 4. Encryption key: **aws/secretsmanager** (default).
 5. **Next**.
@@ -340,6 +341,8 @@ Pass:  <password from step 7c.2>
      "brave_api_key": "placeholder",
      "secret_key": "placeholder",
      "app_url": "placeholder",
+     "postgres_password": "placeholder",
+     "odin_app_db_password": "placeholder",
      "smtp_host": "smtp.purelymail.com",
      "smtp_from": "odin@yourdomain.com",
      "smtp_user": "odin@yourdomain.com",
@@ -604,6 +607,8 @@ Region: **us-west-2**.
 | `brave_api_key` | Provision at <https://api-dashboard.search.brave.com/> (CC required; ~$0.003–$0.005/query metered after $5 prepaid credit). Paste the raw key. |
 | `secret_key` | a 64-character hex string for HMAC cookie/magic-link signing. Generate locally with `openssl rand -hex 32`. Min 32 chars. |
 | `app_url` | the public origin used to build magic-link URLs, e.g. `https://yourdomain.com`. No trailing slash. |
+| `postgres_password` | password for the database owner/migrator role. Generate with `python -c 'import secrets; print(secrets.token_urlsafe(32))'`. |
+| `odin_app_db_password` | password for the least-privilege runtime role. Generate a second, distinct value the same way. |
 
 The `smtp_*` keys were already populated in step 7d.
 
@@ -631,6 +636,8 @@ export ANTHROPIC_API_KEY=$(echo "$_SECRETS" | jq -r '.anthropic_api_key')
 export BRAVE_API_KEY=$(echo "$_SECRETS" | jq -r '.brave_api_key')
 export SECRET_KEY=$(echo "$_SECRETS" | jq -r '.secret_key')
 export APP_URL=$(echo "$_SECRETS" | jq -r '.app_url')
+export POSTGRES_PASSWORD=$(echo "$_SECRETS" | jq -r '.postgres_password')
+export ODIN_APP_DB_PASSWORD=$(echo "$_SECRETS" | jq -r '.odin_app_db_password')
 export SMTP_HOST=$(echo "$_SECRETS" | jq -r '.smtp_host')
 export SMTP_FROM=$(echo "$_SECRETS" | jq -r '.smtp_from')
 export SMTP_USER=$(echo "$_SECRETS" | jq -r '.smtp_user')

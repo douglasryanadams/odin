@@ -1,14 +1,17 @@
 """Alembic migration environment.
 
-Runs migrations against the same database the app uses, reading the DSN from
-settings so there is one source of truth. The runtime DSN is a plain
-``postgresql://`` URL for asyncpg; SQLAlchemy's async engine needs the
+Migrations run as the owner/migrator role, which is separate from the
+least-privilege role the application uses at runtime. The owner DSN comes from
+DATABASE_MIGRATION_URL, not from the app's settings.database_url, so the running
+app never holds credentials that can reshape the schema. The DSN is a plain
+``postgresql://`` URL; SQLAlchemy's async engine needs the
 ``postgresql+asyncpg://`` dialect form, so we rewrite the scheme here.
 
 Migrations are hand-written (no autogenerate), so ``target_metadata`` is None.
 """
 
 import asyncio
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -16,14 +19,22 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
-from odin.config import settings
 
 config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-_async_url = settings.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+_migration_url = os.environ.get("DATABASE_MIGRATION_URL")
+if not _migration_url:
+    message = (
+        "DATABASE_MIGRATION_URL is not set. Migrations must run as the owner role, "
+        "not the least-privilege application role. Set DATABASE_MIGRATION_URL to the "
+        "owner DSN (e.g. postgresql://odin:PASSWORD@odin-postgres:5432/odin)."
+    )
+    raise RuntimeError(message)
+
+_async_url = _migration_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 config.set_main_option("sqlalchemy.url", _async_url)
 
 target_metadata = None

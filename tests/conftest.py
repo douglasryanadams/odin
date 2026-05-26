@@ -12,7 +12,11 @@ os.environ["LOG_LEVEL"] = "DEBUG"
 os.environ["SECRET_KEY"] = "test-only-insecure-secret-key-do-not-use"  # noqa: S105
 os.environ["APP_URL"] = "http://localhost:8000"
 # Required by config; unit tests mock the pool and never open a real connection.
-os.environ["DATABASE_URL"] = "postgresql://odin:odin@odin-postgres:5432/odin"
+# The app connects as the least-privilege odin_app role; migrations (integration
+# only) use the owner DSN via DATABASE_MIGRATION_URL. These match the dev/CI
+# passwords the compose initdb script provisions.
+os.environ["DATABASE_URL"] = "postgresql://odin_app:odin_app@odin-postgres:5432/odin"
+os.environ["DATABASE_MIGRATION_URL"] = "postgresql://odin:odin@odin-postgres:5432/odin"
 
 
 import pytest

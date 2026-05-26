@@ -1,5 +1,6 @@
 """Integration test fixtures."""
 
+import os
 from collections.abc import AsyncIterator
 
 import asyncpg
@@ -36,9 +37,19 @@ def _migrate_test_db() -> None:  # pyright: ignore[reportUnusedFunction]
 
 @pytest.fixture
 async def db_pool() -> AsyncIterator[asyncpg.Pool]:
-    """Yield an asyncpg pool against a freshly truncated schema for test isolation."""
+    """Yield a least-privilege (odin_app) pool against a freshly truncated schema.
+
+    Truncation runs over a separate owner connection because TRUNCATE is not
+    granted to the runtime role by design. The yielded pool connects as odin_app,
+    so the tests exercise the same privilege boundary the app runs under.
+    """
+    owner = await asyncpg.connect(os.environ["DATABASE_MIGRATION_URL"])
+    try:
+        await owner.execute("TRUNCATE signups, search_history RESTART IDENTITY CASCADE")
+    finally:
+        await owner.close()
+
     pool = await db.create_pool(settings.database_url)
-    await pool.execute("TRUNCATE signups, search_history RESTART IDENTITY CASCADE")
     try:
         yield pool
     finally:

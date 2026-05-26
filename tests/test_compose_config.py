@@ -105,18 +105,20 @@ def test_deploy_applies_migrations_before_serving() -> None:
 def test_prod_postgres_password_is_required_with_no_repo_default() -> None:
     """Prod must fail hard rather than fall back to a password baked into the repo.
 
-    The base compose carries a convenience default (POSTGRES_PASSWORD:-odin) for
-    local dev and CI. The prod overlay must override it with the required form
-    (:?), so an unset or empty value aborts `docker compose` and the stack never
-    starts. A regression that reintroduced a :- fallback here would silently run
-    production on a password from the repository.
+    The base compose carries convenience defaults (POSTGRES_PASSWORD:-odin,
+    ODIN_APP_DB_PASSWORD:-odin_app) for local dev and CI. The prod overlay must
+    override both with the required form (:?), so an unset or empty value aborts
+    `docker compose` and the stack never starts. A regression that reintroduced a
+    :- fallback here would silently run production on a password from the
+    repository. Both the owner/migrator and the runtime role are covered.
     """
     env = _load_compose("docker-compose.prod.yml")["services"]["odin-postgres"]["environment"]
-    entries = [e for e in env if e.startswith("POSTGRES_PASSWORD=")]
-    assert entries, "prod compose must pin POSTGRES_PASSWORD on odin-postgres"
-    value = entries[0]
-    assert ":?" in value, "prod POSTGRES_PASSWORD must use the required (:?) form so it fails hard"
-    assert ":-" not in value, "prod POSTGRES_PASSWORD must not carry a default fallback"
+    for var in ("POSTGRES_PASSWORD", "ODIN_APP_DB_PASSWORD"):
+        entries = [e for e in env if e.startswith(f"{var}=")]
+        assert entries, f"prod compose must pin {var} on odin-postgres"
+        value = entries[0]
+        assert ":?" in value, f"prod {var} must use the required (:?) form so it fails hard"
+        assert ":-" not in value, f"prod {var} must not carry a default fallback"
 
 
 def test_web_waits_for_postgres_health() -> None:
