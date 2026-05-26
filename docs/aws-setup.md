@@ -19,6 +19,8 @@ Search APIs       → Brave Search, Wikimedia (direct HTTPS from web)
 
 Shield Standard (DDoS) is included free with CloudFront. EC2 port 8000 is locked to the CloudFront origin prefix list — not publicly reachable.
 
+The docker-compose stack also runs two datastores (omitted from the diagram for brevity): `odin-valkey` for ephemeral rate-limit and cache state, and `odin-postgres` for the durable signups and search-history tables. Both persist on the instance's root EBS volume; see [Database & migrations](./configuration.md) and [Backups](#backups).
+
 ---
 
 ## Prerequisites
@@ -273,6 +275,7 @@ A single secret named `odin/app` holds every runtime credential as JSON. One bil
      "brave_api_key": "placeholder",
      "secret_key": "placeholder",
      "app_url": "placeholder",
+     "postgres_password": "placeholder",
      "smtp_host": "placeholder",
      "smtp_from": "placeholder",
      "smtp_user": "placeholder",
@@ -280,9 +283,11 @@ A single secret named `odin/app` holds every runtime credential as JSON. One bil
    }
    ```
 
+   `postgres_password` is the password for the in-stack `odin-postgres` database; generate a strong random value (e.g. `python -c 'import secrets; print(secrets.token_urlsafe(32))'`). `deploy.sh` aborts if it is missing, and the prod compose refuses to start the database without it, so this is required — there is no fallback in production. `deploy.sh` writes it to `.env` as `POSTGRES_PASSWORD`, and compose builds `DATABASE_URL` from it.
+
 4. Encryption key: **aws/secretsmanager** (default).
 5. **Next**.
-6. Secret name: `odin/app`. Description: `Odin runtime credentials — Anthropic, Brave Search, Purelymail SMTP`.
+6. Secret name: `odin/app`. Description: `Odin runtime credentials — Anthropic, Brave Search, Postgres, Purelymail SMTP`.
 7. **Next** through automatic rotation (skip — leave **Disable automatic rotation**).
 8. **Next** → **Store**.
 
@@ -711,7 +716,7 @@ The Budget above is the primary cap. Add a CloudWatch alarm for a faster ping:
 
 ### Named volumes (already configured)
 
-`compose/docker-compose.yml` mounts `odin-valkey-data` as a named volume. It lives on the EC2 root EBS volume and persists across container restarts. Nothing to do here.
+`compose/docker-compose.yml` mounts `odin-valkey-data` and `odin-postgres-data` as named volumes. Both live on the EC2 root EBS volume and persist across container restarts. `odin-postgres-data` holds the durable signups and search-history tables, so the daily EBS snapshots below are its backup. If you later move the database to a managed RDS instance (a `DATABASE_URL` change plus dropping the `odin-postgres` service), RDS's own automated backups take over. Nothing to do here.
 
 ### AWS Backup — daily EBS snapshots
 

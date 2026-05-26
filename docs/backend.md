@@ -75,6 +75,18 @@ Each event is one JSON object on a single SSE `data:` line. The browser consumes
 - **Search** — Queries fan out through the `SearchAggregator` over registered `SearchBackend`s. Today: `BraveBackend` (when `BRAVE_API_KEY` is set) and `WikipediaBackend` (always). Per-query concurrency lives in `pipeline.py`; per-backend timeout and the dedupe/engines-union merge live in `search/aggregator.py`. See [`search.md`](./search.md).
 - **Anthropic** — Five async functions in `claude.py`, each using tool-use to enforce structured output. Haiku for classify/queries/select-urls; Sonnet for synthesis and assessment. See [`claude-api.md`](./claude-api.md).
 
+## Persistence
+
+Two datastores, split by the nature of the data. ValKey holds the ephemeral, TTL-evicted state: rate-limit counters and magic-link nonces (`store.py`) and the 24-hour profile cache (`cache.py`). PostgreSQL holds the durable, queryable data: anonymized signups (`signups.py`) and search history (`history.py`). Postgres runs in-stack as the `odin-postgres` compose service in both dev and prod; lifting it to a managed instance later is a `DATABASE_URL` change.
+
+- **`db.py`** — opens the `asyncpg` pool in the lifespan and exposes the `get_db_pool` dependency (sibling to `get_valkey_client`). Runtime queries are hand-written SQL; SQLAlchemy enters only through Alembic at migration time.
+- **`identity.py`** — `hash_email` (the truncated SHA-256 that keys a user in both stores, so no raw email is stored) and the frozen `Requester` value object (`user_email`, `cookie_id`, `ip_address`) that rate limiting and history take instead of three loose arguments.
+- **`signups.py`** — a row per email recorded on magic-link verify (`record_signup` upserts; reporting helpers count signups), removed on account deletion.
+- **`history.py`** — one row per search; anonymous rows carry both cookie id and IP and are read with an `OR`, so clearing one identifier still surfaces history. Signed-in history is removed on account deletion; anonymous history is retained indefinitely for abuse prevention (no automatic sweep).
+- **`alembic/`** — hand-written migrations; see [`configuration.md`](./configuration.md) (Database & migrations).
+
+Account deletion (`account_delete`) spans both stores: `store.delete_user` clears the ValKey counters, `signups.delete_signup` and `history.delete_user_history` remove the user's Postgres rows.
+
 ## Logging
 
 `log.setup()` configures `loguru`, level from `LOG_LEVEL` (default `INFO`). `_odin_only_at_debug` drops sub-WARNING records from non-`odin` modules. `_InterceptHandler` routes stdlib `logging` into loguru. `HealthCheckFilter` is attached to `uvicorn.access` so healthchecks don't flood the log.

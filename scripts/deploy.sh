@@ -30,11 +30,24 @@ chown ec2-user:ec2-user .env
 
 unset SECRETS_JSON
 
-docker compose \
-  --project-directory . \
-  -f compose/docker-compose.yml \
-  -f compose/docker-compose.prod.yml \
-  -f compose/docker-compose.awslogs.yml \
-  up -d --pull always --force-recreate --wait
+# Fail fast and clearly if the durable-store password is missing from the secret;
+# compose would otherwise abort with an opaque interpolation error.
+if ! grep -qE '^POSTGRES_PASSWORD=.+' .env; then
+  echo "ERROR: POSTGRES_PASSWORD is missing from the $SECRET_ID secret; add it before deploying." >&2
+  exit 1
+fi
+
+COMPOSE=(docker compose
+  --project-directory .
+  -f compose/docker-compose.yml
+  -f compose/docker-compose.prod.yml
+  -f compose/docker-compose.awslogs.yml)
+
+# Bring the database up and apply migrations with the new image before the app
+# serves the new code.
+"${COMPOSE[@]}" up -d --wait odin-postgres
+"${COMPOSE[@]}" run --rm web alembic upgrade head
+
+"${COMPOSE[@]}" up -d --pull always --force-recreate --wait
 
 docker image prune -af

@@ -92,6 +92,16 @@ def test_postgres_service_persists_data_and_reports_health() -> None:
     assert "pg_isready" in test_cmd, "odin-postgres healthcheck should use pg_isready"
 
 
+def test_deploy_applies_migrations_before_serving() -> None:
+    """Deploy must run Alembic migrations so the schema matches the new code.
+
+    Without this step a deploy that ships a new migration would serve code
+    against an un-migrated database.
+    """
+    deploy = (REPO_ROOT / "scripts" / "deploy.sh").read_text()
+    assert "alembic upgrade head" in deploy
+
+
 def test_prod_postgres_password_is_required_with_no_repo_default() -> None:
     """Prod must fail hard rather than fall back to a password baked into the repo.
 
