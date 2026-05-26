@@ -199,6 +199,12 @@ def test_privacy_page_renders(client: TestClient) -> None:
     assert "Brave Search" in body
     assert "Wikipedia" in body or "Wikimedia" in body
     assert "odin@odinseye.info" in body
+    # Retention claims must match reality: signed-in history is kept until account
+    # deletion and anonymous history is retained indefinitely. Guard against
+    # re-introducing the fixed-period promises we no longer enforce.
+    assert "until you delete your account" in body
+    assert "90 days" not in body
+    assert "7 days" not in body
 
 
 def test_terms_page_renders(client: TestClient) -> None:
