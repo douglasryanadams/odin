@@ -1,4 +1,4 @@
-.PHONY: dev prod prod-logs down lint lint-frontend lint-markdown lint-links format metrics test test-smoke test-unit test-integration test-js
+.PHONY: dev prod prod-logs down lint lint-frontend lint-markdown lint-links format metrics readability test test-smoke test-unit test-integration test-js
 
 dev:
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml up --build
@@ -39,6 +39,9 @@ lint-links: node_modules
 
 metrics:
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run radon raw -s .
+
+readability:
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run python scripts/readability.py
 
 test: test-unit test-smoke test-integration
 

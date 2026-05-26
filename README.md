@@ -38,6 +38,7 @@ The first `make dev` builds the Docker image and pulls Valkey (a few minutes). S
 
 | If you want to… | Read |
 |---|---|
+| Understand where the product is heading and why | [`docs/vision.md`](./docs/vision.md) |
 | Understand the pipeline, routes, and module layout | [`docs/backend.md`](./docs/backend.md) |
 | Look up every env var, Make target, or linter setting | [`docs/configuration.md`](./docs/configuration.md) |
 | Touch templates, CSS, JS, or the SSE consumer | [`docs/frontend.md`](./docs/frontend.md) |
