@@ -1,7 +1,7 @@
 """Tests for the authenticated account routes: dashboard, account delete."""
 
 from collections.abc import AsyncIterator
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from conftest import TEST_SECRET
 from fastapi.testclient import TestClient
@@ -41,6 +41,21 @@ def test_dashboard_renders_for_authenticated_user(client: TestClient) -> None:
     assert response.status_code == 200
     assert "user@example.com" in response.text
     assert "searches used today" in response.text
+
+
+@patch("odin.history.get_history")
+def test_dashboard_loads_history_for_the_signed_in_user(
+    mock_get_history: AsyncMock, client: TestClient
+) -> None:
+    """The dashboard reads recent searches from Postgres keyed to the user's email."""
+    mock_get_history.return_value = []
+    session = _auth.create_session_value("user@example.com", TEST_SECRET)
+    response = client.get("/dashboard", cookies={"odin_session": session})
+    assert response.status_code == 200
+    mock_get_history.assert_awaited_once()
+    assert mock_get_history.await_args is not None
+    requester = mock_get_history.await_args.args[1]
+    assert requester.user_email == "user@example.com"
 
 
 def test_dashboard_signout_uses_post_form(client: TestClient) -> None:

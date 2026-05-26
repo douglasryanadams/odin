@@ -270,12 +270,16 @@ def test_profile_stream_cache_normalizes_query(
 
 
 def test_profile_stream_cache_hit_does_not_count_against_quota(
-    client: TestClient, mock_anthropic: MagicMock, mock_valkey: MagicMock
+    client: TestClient,
+    mock_anthropic: MagicMock,
+    mock_valkey: MagicMock,
+    mock_db_pool: MagicMock,
 ) -> None:
     """Cache hit serves the result without consuming quota, but still records history.
 
     A cached response costs us nothing upstream, so the quota counter must not
-    advance; the request still belongs in the user's recent-search history.
+    advance; the request still belongs in the user's recent-search history. Only
+    history writes hit the db pool in this flow, so its execute count tracks them.
     """
     _setup_page_fetcher()
     _stateful_kv(mock_valkey)
@@ -290,14 +294,14 @@ def test_profile_stream_cache_hit_does_not_count_against_quota(
 
     client.get("/profile/stream?q=einstein", cookies={"odin_anon": "test-cookie"})
     rate_incrs_after_fresh = _rate_incr_count()
-    lpush_calls_after_fresh = mock_valkey.lpush.call_count
+    history_writes_after_fresh = mock_db_pool.execute.call_count
     assert rate_incrs_after_fresh > 0
-    assert lpush_calls_after_fresh > 0
+    assert history_writes_after_fresh > 0
 
     client.get("/profile/stream?q=einstein", cookies={"odin_anon": "test-cookie"})
 
     assert _rate_incr_count() == rate_incrs_after_fresh
-    assert mock_valkey.lpush.call_count > lpush_calls_after_fresh
+    assert mock_db_pool.execute.call_count > history_writes_after_fresh
 
 
 def test_profile_stream_does_not_cache_service_unavailable(
@@ -341,13 +345,14 @@ def test_profile_stream_records_query_after_completion(
     client: TestClient,
     mock_anthropic: MagicMock,
     mock_valkey: MagicMock,
+    mock_db_pool: MagicMock,
 ) -> None:
-    """Profile stream calls record_query and push_history after the pipeline finishes."""
+    """Profile stream bumps the ValKey quota counter and writes history to Postgres."""
     _setup_page_fetcher()
     mock_anthropic.messages.create.side_effect = _pipeline_side_effects()
     client.get("/profile/stream?q=foo", cookies={"odin_anon": "test-cookie"})
     mock_valkey.incr.assert_called()
-    mock_valkey.lpush.assert_called()
+    mock_db_pool.execute.assert_called()
 
 
 def test_profile_stream_rate_limited_emits_rate_limited_event(

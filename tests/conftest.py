@@ -107,6 +107,7 @@ def mock_db_pool() -> MagicMock:
     m = MagicMock()
     m.execute = AsyncMock(return_value="INSERT 0 1")
     m.fetchval = AsyncMock(return_value=0)
+    m.fetch = AsyncMock(return_value=[])
     return m
 
 

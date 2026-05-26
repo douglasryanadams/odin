@@ -38,7 +38,7 @@ def _migrate_test_db() -> None:  # pyright: ignore[reportUnusedFunction]
 async def db_pool() -> AsyncIterator[asyncpg.Pool]:
     """Yield an asyncpg pool against a freshly truncated schema for test isolation."""
     pool = await db.create_pool(settings.database_url)
-    await pool.execute("TRUNCATE signups RESTART IDENTITY CASCADE")
+    await pool.execute("TRUNCATE signups, search_history RESTART IDENTITY CASCADE")
     try:
         yield pool
     finally:
