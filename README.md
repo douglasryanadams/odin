@@ -44,6 +44,7 @@ The first `make dev` builds the Docker image and pulls Valkey (a few minutes). S
 | Touch templates, CSS, JS, or the SSE consumer | [`docs/frontend.md`](./docs/frontend.md) |
 | Add or change an Anthropic API call | [`docs/claude-api.md`](./docs/claude-api.md) |
 | Understand or extend the search backends | [`docs/search.md`](./docs/search.md) |
+| Work with the datastores: signups, search history, or migrations | [`docs/backend.md`](./docs/backend.md) (Persistence) and [`docs/configuration.md`](./docs/configuration.md) (Database & migrations) |
 
 New here? Start with [`docs/backend.md`](./docs/backend.md) — the async pipeline is the heart of the project.
 

@@ -20,3 +20,13 @@ services:
 
   odin-valkey:
     restart: always
+
+  odin-postgres:
+    restart: always
+    environment:
+      # Required in prod with no fallback: deploy.sh sources these from the
+      # odin/app secret, so a missing value aborts the deploy instead of
+      # initializing the database with a known password. POSTGRES_PASSWORD is
+      # the owner/migrator role; ODIN_APP_DB_PASSWORD is the runtime role.
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set a strong POSTGRES_PASSWORD in the odin/app secret}
+      - ODIN_APP_DB_PASSWORD=${ODIN_APP_DB_PASSWORD:?set a strong ODIN_APP_DB_PASSWORD in the odin/app secret}

@@ -1,16 +1,16 @@
 """Profile search routes: /profile (HTML) and /profile/stream (SSE)."""
 
-import datetime
 import json
 from collections.abc import AsyncGenerator
 from typing import Annotated, Any
 
+import asyncpg
 from anthropic import AsyncAnthropic
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from valkey.asyncio import Valkey
 
-from odin import auth, cache, fetch, pipeline, store
+from odin import auth, cache, db, fetch, history, pipeline, store
 from odin.app import (
     get_anthropic_client,
     get_page_fetcher,
@@ -19,6 +19,7 @@ from odin.app import (
     templates,
 )
 from odin.config import settings
+from odin.identity import Requester
 from odin.routes._shared import (
     ANON_COOKIE,
     ANON_COOKIE_MAX_AGE,
@@ -43,12 +44,8 @@ async def profile_page(
     """Render the profile page; assign anonymous cookie on first visit."""
     user = auth.get_current_user(request)
     cookie_id = anon_cookie_id(request)
-    used = await store.get_daily_count(
-        valkey_client,
-        user_email=user_email(user),
-        cookie_id=cookie_id,
-        ip_address=request_ip(request),
-    )
+    requester = Requester(user_email(user), cookie_id, request_ip(request))
+    used = await store.get_daily_count(valkey_client, requester)
     limit = settings.auth_daily_limit if user else settings.anon_daily_limit
     csrf = csrf_token_value(request)
     resp = templates.TemplateResponse(
@@ -84,17 +81,17 @@ async def profile_stream(  # noqa: PLR0913
     anthropic: Annotated[AsyncAnthropic, Depends(get_anthropic_client)],
     fetcher: Annotated[fetch.PageFetcher, Depends(get_page_fetcher)],
     valkey_client: Annotated[Valkey, Depends(get_valkey_client)],
+    db_pool: Annotated[asyncpg.Pool, Depends(db.get_db_pool)],
 ) -> StreamingResponse:
     """Stream profile pipeline progress as Server-Sent Events."""
     user = auth.get_current_user(request)
-    cookie_id = request.cookies.get(ANON_COOKIE, "")
-    ip_address = request_ip(request)
+    requester = Requester(
+        user_email(user), request.cookies.get(ANON_COOKIE, ""), request_ip(request)
+    )
 
     if await store.is_rate_limited(
         valkey_client,
-        user_email=user_email(user),
-        cookie_id=cookie_id,
-        ip_address=ip_address,
+        requester,
         anon_limit=settings.anon_daily_limit,
         auth_limit=settings.auth_daily_limit,
     ):
@@ -111,9 +108,7 @@ async def profile_stream(  # noqa: PLR0913
             async for chunk in _replay_cached(cached):
                 yield chunk
             category = _category_from(cached)
-            await _record_cached_query(
-                valkey_client, user_email(user), cookie_id, ip_address, q, category
-            )
+            await _record_cached_query(db_pool, requester, q, category)
         else:
             collected: list[dict[str, Any]] = []
             category = "other"
@@ -122,9 +117,7 @@ async def profile_stream(  # noqa: PLR0913
             category = _category_from(collected) or category
             if not _had_failure(collected):
                 await cache.put(valkey_client, q, collected)
-            await _record_fresh_query(
-                valkey_client, user_email(user), cookie_id, ip_address, q, category
-            )
+            await _record_fresh_query(valkey_client, db_pool, requester, q, category)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -161,38 +154,16 @@ def _had_failure(events: list[dict[str, Any]]) -> bool:
     return any(e.get("type") == "service_unavailable" for e in events)
 
 
-async def _record_cached_query(  # noqa: PLR0913
-    valkey_client: Valkey,
-    email: str | None,
-    cookie_id: str,
-    ip_address: str,
-    q: str,
-    category: str,
+async def _record_cached_query(
+    db_pool: asyncpg.Pool, requester: Requester, q: str, category: str
 ) -> None:
     """Append the query to search history without consuming quota."""
-    await store.push_history(
-        valkey_client,
-        user_email=email,
-        cookie_id=cookie_id,
-        ip_address=ip_address,
-        entry={
-            "q": q,
-            "t": datetime.datetime.now(datetime.UTC).isoformat(),
-            "cat": category,
-        },
-    )
+    await history.push_history(db_pool, requester, query=q, category=category)
 
 
-async def _record_fresh_query(  # noqa: PLR0913
-    valkey_client: Valkey,
-    email: str | None,
-    cookie_id: str,
-    ip_address: str,
-    q: str,
-    category: str,
+async def _record_fresh_query(
+    valkey_client: Valkey, db_pool: asyncpg.Pool, requester: Requester, q: str, category: str
 ) -> None:
     """Consume daily quota and append the query to search history."""
-    await store.record_query(
-        valkey_client, user_email=email, cookie_id=cookie_id, ip_address=ip_address
-    )
-    await _record_cached_query(valkey_client, email, cookie_id, ip_address, q, category)
+    await store.record_query(valkey_client, requester)
+    await _record_cached_query(db_pool, requester, q, category)

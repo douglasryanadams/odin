@@ -52,6 +52,12 @@ class Settings(BaseSettings):
 
     odin_valkey_url: str = "redis://odin-valkey:6379"
 
+    # Required, no default: a Postgres DSN carries a password, so a forgotten env
+    # var must fail closed rather than fall back to known credentials. Compose
+    # builds this from POSTGRES_PASSWORD for the in-stack container; point it at
+    # an external host (e.g. RDS) by overriding DATABASE_URL directly.
+    database_url: str
+
     anon_daily_limit: int = Field(default=3, ge=0)
     auth_daily_limit: int = Field(default=20, ge=0)
 

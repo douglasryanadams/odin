@@ -69,6 +69,70 @@ def test_web_service_passes_brave_api_key_in_both_compose_files() -> None:
         )
 
 
+def test_postgres_service_persists_data_and_reports_health() -> None:
+    """The durable store must survive container recreation and signal readiness.
+
+    signups and search_history live in odin-postgres. Without a named volume the
+    data is lost on every recreate (deploy.sh runs --force-recreate); without a
+    healthcheck the web container can race ahead and fail its first queries
+    against a Postgres still in crash recovery.
+    """
+    data = _load_compose("docker-compose.yml")
+    postgres = data["services"]["odin-postgres"]
+
+    mounts = postgres.get("volumes", [])
+    data_mounts = [m for m in mounts if m.endswith(":/var/lib/postgresql/data")]
+    assert data_mounts, "odin-postgres must mount a named volume at /var/lib/postgresql/data"
+    volume_name = data_mounts[0].split(":", 1)[0]
+    assert volume_name in data.get("volumes", {}), (
+        f"named volume {volume_name!r} must be declared under top-level volumes:"
+    )
+
+    test_cmd = " ".join(postgres.get("healthcheck", {}).get("test", []))
+    assert "pg_isready" in test_cmd, "odin-postgres healthcheck should use pg_isready"
+
+
+def test_deploy_applies_migrations_before_serving() -> None:
+    """Deploy must run Alembic migrations so the schema matches the new code.
+
+    Without this step a deploy that ships a new migration would serve code
+    against an un-migrated database.
+    """
+    deploy = (REPO_ROOT / "scripts" / "deploy.sh").read_text()
+    assert "alembic upgrade head" in deploy
+
+
+def test_prod_postgres_password_is_required_with_no_repo_default() -> None:
+    """Prod must fail hard rather than fall back to a password baked into the repo.
+
+    The base compose carries convenience defaults (POSTGRES_PASSWORD:-odin,
+    ODIN_APP_DB_PASSWORD:-odin_app) for local dev and CI. The prod overlay must
+    override both with the required form (:?), so an unset or empty value aborts
+    `docker compose` and the stack never starts. A regression that reintroduced a
+    :- fallback here would silently run production on a password from the
+    repository. Both the owner/migrator and the runtime role are covered.
+    """
+    env = _load_compose("docker-compose.prod.yml")["services"]["odin-postgres"]["environment"]
+    for var in ("POSTGRES_PASSWORD", "ODIN_APP_DB_PASSWORD"):
+        entries = [e for e in env if e.startswith(f"{var}=")]
+        assert entries, f"prod compose must pin {var} on odin-postgres"
+        value = entries[0]
+        assert ":?" in value, f"prod {var} must use the required (:?) form so it fails hard"
+        assert ":-" not in value, f"prod {var} must not carry a default fallback"
+
+
+def test_web_waits_for_postgres_health() -> None:
+    """Web must wait for Postgres health before starting.
+
+    The asyncpg pool opens in the FastAPI lifespan at startup; if Postgres is not
+    yet accepting connections the app crashes on boot. A depends_on health
+    condition serializes startup.
+    """
+    web = _load_compose("docker-compose.yml")["services"]["web"]
+    condition = web.get("depends_on", {}).get("odin-postgres", {}).get("condition")
+    assert condition == "service_healthy", "web must depend_on odin-postgres being healthy"
+
+
 def test_required_env_vars_are_forwarded_through_compose() -> None:
     """Required env vars from .env.example must reach a container via compose.
 

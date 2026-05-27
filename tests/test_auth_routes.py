@@ -193,6 +193,27 @@ def test_auth_verify_invalid_token_renders_error(client: TestClient) -> None:
     assert "Invalid or expired" in response.text
 
 
+@patch("odin.signups.record_signup")
+def test_auth_verify_records_signup(mock_record: AsyncMock, client: TestClient) -> None:
+    """A valid magic-link verify records the anonymized signup for that email."""
+    token = _auth.generate_magic_token("user@example.com", TEST_SECRET)
+    response = client.get(f"/auth/verify?token={token}", follow_redirects=False)
+    assert response.status_code == 303
+    mock_record.assert_awaited_once()
+    assert mock_record.await_args is not None
+    assert mock_record.await_args.args[1] == "user@example.com"
+
+
+@patch("odin.signups.record_signup")
+def test_auth_verify_invalid_token_records_nothing(
+    mock_record: AsyncMock, client: TestClient
+) -> None:
+    """An invalid link must not record a signup."""
+    response = client.get("/auth/verify?token=garbage.token")
+    assert response.status_code == 200
+    mock_record.assert_not_awaited()
+
+
 def test_auth_verify_rejects_reused_token(client: TestClient, mock_valkey: MagicMock) -> None:
     """A magic-link token can only be redeemed once; replay falls through to login error."""
     # First call: jti claim succeeds (Valkey SET NX returns truthy).

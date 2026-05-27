@@ -19,6 +19,8 @@ Search APIs       → Brave Search, Wikimedia (direct HTTPS from web)
 
 Shield Standard (DDoS) is included free with CloudFront. EC2 port 8000 is locked to the CloudFront origin prefix list — not publicly reachable.
 
+The docker-compose stack also runs two datastores (omitted from the diagram for brevity): `odin-valkey` for ephemeral rate-limit and cache state, and `odin-postgres` for the durable signups and search-history tables. Both persist on the instance's root EBS volume; see [Database & migrations](./configuration.md) and [Backups](#backups).
+
 ---
 
 ## Prerequisites
@@ -273,6 +275,8 @@ A single secret named `odin/app` holds every runtime credential as JSON. One bil
      "brave_api_key": "placeholder",
      "secret_key": "placeholder",
      "app_url": "placeholder",
+     "postgres_password": "placeholder",
+     "odin_app_db_password": "placeholder",
      "smtp_host": "placeholder",
      "smtp_from": "placeholder",
      "smtp_user": "placeholder",
@@ -280,9 +284,11 @@ A single secret named `odin/app` holds every runtime credential as JSON. One bil
    }
    ```
 
+   The database uses two roles, so it needs two passwords; generate a strong random value for each (e.g. `python -c 'import secrets; print(secrets.token_urlsafe(32))'`). `postgres_password` is the owner/migrator role (`odin`) that runs Alembic migrations; `odin_app_db_password` is the least-privilege runtime role (`odin_app`) the app connects as, which cannot alter schema. `deploy.sh` aborts if either is missing, and the prod compose refuses to start the database without them, so both are required with no fallback in production. `deploy.sh` writes them to `.env` as `POSTGRES_PASSWORD` and `ODIN_APP_DB_PASSWORD`; compose builds the app's `DATABASE_URL` from `ODIN_APP_DB_PASSWORD`, and the deploy injects the owner DSN for migrations only.
+
 4. Encryption key: **aws/secretsmanager** (default).
 5. **Next**.
-6. Secret name: `odin/app`. Description: `Odin runtime credentials — Anthropic, Brave Search, Purelymail SMTP`.
+6. Secret name: `odin/app`. Description: `Odin runtime credentials — Anthropic, Brave Search, Postgres, Purelymail SMTP`.
 7. **Next** through automatic rotation (skip — leave **Disable automatic rotation**).
 8. **Next** → **Store**.
 
@@ -335,6 +341,8 @@ Pass:  <password from step 7c.2>
      "brave_api_key": "placeholder",
      "secret_key": "placeholder",
      "app_url": "placeholder",
+     "postgres_password": "placeholder",
+     "odin_app_db_password": "placeholder",
      "smtp_host": "smtp.purelymail.com",
      "smtp_from": "odin@yourdomain.com",
      "smtp_user": "odin@yourdomain.com",
@@ -599,6 +607,8 @@ Region: **us-west-2**.
 | `brave_api_key` | Provision at <https://api-dashboard.search.brave.com/> (CC required; ~$0.003–$0.005/query metered after $5 prepaid credit). Paste the raw key. |
 | `secret_key` | a 64-character hex string for HMAC cookie/magic-link signing. Generate locally with `openssl rand -hex 32`. Min 32 chars. |
 | `app_url` | the public origin used to build magic-link URLs, e.g. `https://yourdomain.com`. No trailing slash. |
+| `postgres_password` | password for the database owner/migrator role. Generate with `python -c 'import secrets; print(secrets.token_urlsafe(32))'`. |
+| `odin_app_db_password` | password for the least-privilege runtime role. Generate a second, distinct value the same way. |
 
 The `smtp_*` keys were already populated in step 7d.
 
@@ -626,6 +636,8 @@ export ANTHROPIC_API_KEY=$(echo "$_SECRETS" | jq -r '.anthropic_api_key')
 export BRAVE_API_KEY=$(echo "$_SECRETS" | jq -r '.brave_api_key')
 export SECRET_KEY=$(echo "$_SECRETS" | jq -r '.secret_key')
 export APP_URL=$(echo "$_SECRETS" | jq -r '.app_url')
+export POSTGRES_PASSWORD=$(echo "$_SECRETS" | jq -r '.postgres_password')
+export ODIN_APP_DB_PASSWORD=$(echo "$_SECRETS" | jq -r '.odin_app_db_password')
 export SMTP_HOST=$(echo "$_SECRETS" | jq -r '.smtp_host')
 export SMTP_FROM=$(echo "$_SECRETS" | jq -r '.smtp_from')
 export SMTP_USER=$(echo "$_SECRETS" | jq -r '.smtp_user')
@@ -711,7 +723,7 @@ The Budget above is the primary cap. Add a CloudWatch alarm for a faster ping:
 
 ### Named volumes (already configured)
 
-`compose/docker-compose.yml` mounts `odin-valkey-data` as a named volume. It lives on the EC2 root EBS volume and persists across container restarts. Nothing to do here.
+`compose/docker-compose.yml` mounts `odin-valkey-data` and `odin-postgres-data` as named volumes. Both live on the EC2 root EBS volume and persist across container restarts. `odin-postgres-data` holds the durable signups and search-history tables, so the daily EBS snapshots below are its backup. If you later move the database to a managed RDS instance (a `DATABASE_URL` change plus dropping the `odin-postgres` service), RDS's own automated backups take over. Nothing to do here.
 
 ### AWS Backup — daily EBS snapshots
 
@@ -877,6 +889,43 @@ docker compose --pull always --force-recreate --wait
         ▼
 container env: BRAVE_API_KEY, ANTHROPIC_API_KEY, SMTP_*, ...
 ```
+
+### Rotating database passwords
+
+`POSTGRES_PASSWORD` and `ODIN_APP_DB_PASSWORD` are written into the database at first container start by `compose/initdb/10-app-role.sh`. Postgres runs that script only once, on an empty data directory — it does not re-run it on an existing volume. Updating Secrets Manager and redeploying is not enough; the passwords inside Postgres stay at the values they had when the volume was first initialized.
+
+To rotate either password on a running production instance:
+
+1. Open an SSM Session Manager shell and switch to `ec2-user`:
+
+   ```bash
+   sudo -i -u ec2-user
+   cd /opt/odin
+   ```
+
+2. Open psql as the owner role:
+
+   ```bash
+   docker compose -f compose/docker-compose.yml -f compose/docker-compose.prod.yml \
+     exec odin-postgres psql -U odin -d odin
+   ```
+
+3. Run the `ALTER ROLE` for the password you are rotating (use the new value you plan to store in Secrets Manager):
+
+   ```sql
+   -- app role:
+   ALTER ROLE odin_app WITH PASSWORD 'new-strong-password';
+   -- owner role:
+   ALTER ROLE odin WITH PASSWORD 'new-strong-password';
+   ```
+
+4. Exit psql (`\q`).
+5. Update the corresponding key in Secrets Manager (`odin_app_db_password` or `postgres_password`) with the same new value.
+6. Trigger a deploy. The next run of `deploy.sh` writes the new value into `.env` and restarts the containers; they will connect with the updated password.
+
+Do the ALTER ROLE before the deploy, not after. Once the database has the new password, the running containers (whose connections are already authenticated) stay up until they restart. If you update the secret first and deploy before changing the database, the restarted containers will fail authentication until step 3 completes.
+
+For local development, rotating passwords is simpler: `docker compose down -v` removes the volume, then `make dev` or `make prod` re-runs the initdb script with whatever `ODIN_APP_DB_PASSWORD` is currently in your `.env`.
 
 ### Adding a new secret
 

@@ -2,13 +2,15 @@
 
 from typing import Annotated
 
+import asyncpg
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from valkey.asyncio import Valkey
 
-from odin import auth, store
+from odin import auth, db, history, signups, store
 from odin.app import get_valkey_client, templates
 from odin.config import settings
+from odin.identity import Requester
 from odin.routes._shared import (
     ANON_COOKIE,
     CSRF_COOKIE,
@@ -24,19 +26,15 @@ router = APIRouter()
 async def dashboard(
     request: Request,
     valkey_client: Annotated[Valkey, Depends(get_valkey_client)],
+    db_pool: Annotated[asyncpg.Pool, Depends(db.get_db_pool)],
 ) -> Response:
     """Render the usage dashboard for authenticated users."""
     user = auth.get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
-    cookie_id = request.cookies.get(ANON_COOKIE, "")
-    ip_address = request_ip(request)
-    used = await store.get_daily_count(
-        valkey_client, user_email=user.email, cookie_id=cookie_id, ip_address=ip_address
-    )
-    history = await store.get_history(
-        valkey_client, user_email=user.email, cookie_id=cookie_id, ip_address=ip_address
-    )
+    requester = Requester(user.email, request.cookies.get(ANON_COOKIE, ""), request_ip(request))
+    used = await store.get_daily_count(valkey_client, requester)
+    recent = await history.get_history(db_pool, requester)
     csrf = csrf_token_value(request)
     resp = templates.TemplateResponse(
         request,
@@ -45,7 +43,7 @@ async def dashboard(
             "user": user,
             "used": used,
             "limit": settings.auth_daily_limit,
-            "history": history,
+            "history": recent,
             "csrf_token": csrf,
         },
     )
@@ -59,6 +57,7 @@ async def account_delete(
     csrf_token: Annotated[str, Form()],
     email: Annotated[str, Form()],
     valkey_client: Annotated[Valkey, Depends(get_valkey_client)],
+    db_pool: Annotated[asyncpg.Pool, Depends(db.get_db_pool)],
 ) -> Response:
     """Delete all data tied to the signed-in user and clear the session."""
     user = auth.get_current_user(request)
@@ -69,6 +68,8 @@ async def account_delete(
     if email.strip().lower() != user.email.lower():
         raise HTTPException(status_code=400, detail="Email does not match signed-in account")
     await store.delete_user(valkey_client, user.email)
+    await signups.delete_signup(db_pool, user.email)
+    await history.delete_user_history(db_pool, user.email)
     resp = RedirectResponse(url="/", status_code=303)
     resp.delete_cookie("odin_session")
     return resp

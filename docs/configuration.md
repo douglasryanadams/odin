@@ -5,7 +5,7 @@ The repo-root [`README.md`](../README.md) is the orientation page. This doc is t
 ## `pyproject.toml`
 
 - **Python:** `>= 3.12`. Built with `hatchling`.
-- **Runtime deps:** `anthropic`, `fastapi`, `gunicorn`, `httpx`, `jinja2`, `loguru`, `playwright`, `trafilatura`, `uvicorn[standard]`.
+- **Runtime deps:** `alembic`, `anthropic`, `asyncpg`, `fastapi`, `gunicorn`, `httpx`, `jinja2`, `loguru`, `playwright`, `trafilatura`, `uvicorn[standard]`, `valkey`.
 - **Dev deps:** `bandit`, `djlint`, `respx`, `pyright`, `pytest` (`-asyncio`, `-cov`, `-httpserver`), `radon`, `ruff`, `xenon`, `textstat` (Markdown readability scoring; see `make readability`).
 
 | Tool | Configured to enforce |
@@ -55,24 +55,32 @@ Every target runs through `docker-compose` — host needs only Docker + `make`.
 | `make test-unit` | `pytest` (with the default `not integration` filter), then `make test-js`. |
 | `make test-js` | `npx vitest run` in the `node` sidecar; covers `profile.js` helpers. |
 | `make test-smoke` | Brings up the full prod compose stack (`web` + `nginx` + dependencies) via `scripts/test-smoke.sh`, then asserts: `/health` proxied, `/static/css/odin.css` served by Nginx with `Cache-Control: public, max-age=86400`, `/favicon.ico` and `/robots.txt` served by Nginx, zero `GET /static/` lines in the `web` log, and `/profile/stream` responses are chunked (proves `proxy_buffering off`). Tears the stack down on exit. |
-| `make test-integration` | Brings up `odin-valkey`, runs `pytest -m integration`, then fails the run if service logs contain `ERROR` / `CRITICAL`. |
+| `make test-integration` | Brings up `odin-valkey` and `odin-postgres`, runs `pytest -m integration` (a session fixture applies migrations; a per-test truncate isolates the Postgres-backed tests), then fails the run if service logs contain `ERROR` / `CRITICAL`. |
 
 ## `Dockerfile`
 
 One multi-stage Dockerfile; two images (`odin-prod`, `odin-dev`).
 
 - **`base`**: `python:3.12-slim` + `uv`. `UV_PROJECT_ENVIRONMENT=/opt/venv`. Venv lives at `/opt/venv` (not `/app/.venv`) so the dev compose bind-mount onto `/app` doesn't shadow it.
-- **`production`** (extends `base`): copies `config/gunicorn.conf.py` + `src/`, `uv sync --frozen --no-dev`, then `playwright install --with-deps chromium` (~300 MB; brings the prod image to ~600 MB), `CMD gunicorn -c gunicorn.conf.py odin.main:app`.
+- **`production`** (extends `base`): copies `config/gunicorn.conf.py`, `src/`, and the Alembic config (`alembic.ini`, `alembic/`) so `alembic upgrade head` can run from the image on deploy; `uv sync --frozen --no-dev`, then `playwright install --with-deps chromium` (~300 MB; brings the prod image to ~600 MB), `CMD gunicorn -c gunicorn.conf.py odin.main:app`.
 - **`development`** (extends `production`): adds `git`, `libatomic1`; `uv sync --frozen` (with dev deps); `CMD uvicorn ... --reload`. Chromium and its system libraries are inherited from the production stage.
 
 ## Compose
 
 Compose files live in [`compose/`](../compose/). Every Make target invokes `docker compose --project-directory . -f compose/...` so relative paths inside the YAML (build context, `.env` discovery) keep resolving from the project root.
 
-- **`compose/docker-compose.yml`** — `nginx` (`8000:8000`, serves `/static/*`, `/favicon.ico`, `/robots.txt` directly and proxies everything else to `web`), `web` (gunicorn on `8000` inside the network only — no host publish, `LOG_LEVEL=DEBUG`, `ANTHROPIC_API_KEY` and `BRAVE_API_KEY` passthrough, `/health` healthcheck), `odin-valkey` (named volume), `node` (`node:20-slim`, mounts `.:/workspace`, gated by the `tools` profile so it stays out of `make dev`). `nginx` mounts `./static` and `./config/nginx.conf` read-only so static-file edits are picked up live without an image rebuild.
+- **`compose/docker-compose.yml`** — `nginx` (`8000:8000`, serves `/static/*`, `/favicon.ico`, `/robots.txt` directly and proxies everything else to `web`), `web` (gunicorn on `8000` inside the network only — no host publish, `LOG_LEVEL=DEBUG`, `ANTHROPIC_API_KEY`, `BRAVE_API_KEY`, and a `DATABASE_URL` built from `ODIN_APP_DB_PASSWORD` for the least-privilege runtime role, `/health` healthcheck, waits for `odin-postgres` healthy), `odin-valkey` (named volume), `odin-postgres` (Postgres 17, named volume, `pg_isready` healthcheck, mounts `./compose/initdb` read-only to create the runtime role on first init), `node` (`node:20-slim`, mounts `.:/workspace`, gated by the `tools` profile so it stays out of `make dev`). `nginx` mounts `./static` and `./config/nginx.conf` read-only so static-file edits are picked up live without an image rebuild.
 - **`compose/docker-compose.override.yml`** — paired with the base file via `-f` for dev targets. Uses `odin-dev`, builds `development`, bind-mounts `.:/app`.
-- **`compose/docker-compose.prod.yml`** — paired with the base file for prod targets. Uses `odin-prod`, builds `production`, `restart: always` on `nginx`.
-- **`compose/docker-compose.awslogs.yml`** — production-only overlay applied on EC2; routes container stdout/stderr to CloudWatch log groups `/odin/web`, `/odin/nginx`, `/odin/odin-valkey`.
+- **`compose/docker-compose.prod.yml`** — paired with the base file for prod targets. Uses `odin-prod`, builds `production`, `restart: always` on `nginx` and `odin-postgres`, and pins both `POSTGRES_PASSWORD` and `ODIN_APP_DB_PASSWORD` to the required form (`${VAR:?...}`, no dev fallback) so a missing secret aborts the deploy instead of running on a known password.
+- **`compose/docker-compose.awslogs.yml`** — production-only overlay applied on EC2; routes container stdout/stderr to CloudWatch log groups `/odin/web`, `/odin/nginx`, `/odin/odin-valkey`, `/odin/odin-postgres`.
+
+## Database & migrations
+
+The durable store is PostgreSQL, run in-stack as the `odin-postgres` compose service (the same container in dev and prod) on a named volume. Signups (`signups.py`) and search history (`history.py`) live here; rate-limit counters, magic-link nonces, and the profile cache stay in ValKey (`store.py`, `cache.py`). Runtime access is `asyncpg` through a small pool opened in the lifespan (`db.py`, dependency `get_db_pool`); the ValKey client comes from `get_valkey_client`. Both are overridden in tests. Hand-written SQL keeps SQLAlchemy out of the request path.
+
+The database uses two roles. The owner role (`odin`, the superuser the image bootstraps) owns the schema and runs migrations. The application connects as a least-privilege role (`odin_app`) that holds `SELECT/INSERT/UPDATE/DELETE` on the tables and `USAGE/SELECT` on sequences, but cannot create, drop, or alter schema. The split keeps DDL rights out of the request path, so an app-layer compromise cannot reshape or destroy the schema. `compose/initdb/10-app-role.sh` creates `odin_app` on first volume init and sets default privileges on the owner so every table a later migration creates is automatically usable; an existing dev volume must be recreated (`docker compose down -v`) to pick up the role. `TRUNCATE` is intentionally not granted, so test isolation truncates over a separate owner connection.
+
+Schema changes use Alembic (`alembic.ini`, `alembic/`). Migrations are hand-written under `alembic/versions/` — no autogenerate — and `alembic/env.py` reads the owner DSN from `DATABASE_MIGRATION_URL` (not the app's `DATABASE_URL`), rewriting it to the asyncpg dialect. Apply them with `docker compose ... run --rm -e DATABASE_MIGRATION_URL=... web alembic upgrade head`; `scripts/deploy.sh` runs exactly this on every deploy, injecting the owner DSN into the one-off migration container only so the long-lived web service never holds owner credentials. There is no automatic history retention: rows accumulate, and anonymous history is kept indefinitely for abuse prevention (the privacy page documents this).
 
 ## `config/gunicorn.conf.py`
 
@@ -96,12 +104,15 @@ Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/defa
 | `BRAVE_API_KEY` | `Settings` in `config.py` (web service's Brave backend) | Consumed directly by the web service's `BraveBackend`. Provision at <https://api-dashboard.search.brave.com/>. When unset, the Brave backend is not constructed and the aggregator falls back to Wikipedia only. In prod, store as `brave_api_key` in the `odin/app` Secrets Manager entry; see [`aws-setup.md` § "How secrets reach the containers"](./aws-setup.md#how-secrets-reach-the-containers). |
 | `SECRET_KEY` | `Settings` in `config.py` | 32+ random bytes; signs session and CSRF cookies. Generate with `python -c 'import secrets; print(secrets.token_urlsafe(48))'`. |
 | `APP_URL` | `Settings` in `config.py`, used by `email.py` | Public base URL of the deployment; embedded into magic-link emails. |
+| `DATABASE_URL` | `Settings` in `config.py`, opened as an asyncpg pool in the lifespan | Postgres DSN for the durable store (signups, search history), connecting as the least-privilege `odin_app` role. No code default — fails closed. Compose builds it from `ODIN_APP_DB_PASSWORD` for the in-stack database; override it directly to point at an external Postgres (e.g. RDS). |
 
 **Required, with safe defaults.** The example file already sets dev-appropriate values.
 
 | Variable | Default | Notes |
 |---|---|---|
 | `COOKIE_SECURE` | `true` (code default; example overrides to `false`) | Production omits the override so `Secure` is set on `Set-Cookie`. Dev needs `false` because HTTP localhost cannot accept `Secure` cookies. |
+| `POSTGRES_PASSWORD` | `odin` (compose dev default; prod requires it, no fallback) | Password for the owner/migrator role (`odin`) on the in-stack database; `deploy.sh` builds `DATABASE_MIGRATION_URL` from it for the migration step. In prod, store as `postgres_password` in the `odin/app` secret; `deploy.sh` aborts if it is missing. |
+| `ODIN_APP_DB_PASSWORD` | `odin_app` (compose dev default; prod requires it, no fallback) | Password for the least-privilege runtime role (`odin_app`); compose builds the app's `DATABASE_URL` from it, and the initdb script sets it on first volume init. In prod, store as `odin_app_db_password` in the `odin/app` secret; `deploy.sh` aborts if it is missing. |
 
 **Optional runtime overrides.**
 

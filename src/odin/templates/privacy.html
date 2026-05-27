@@ -17,10 +17,10 @@
         <strong>Anonymous cookie</strong> — a random ID stored in your browser to count daily searches before sign-in.
       </li>
       <li>
-        <strong>IP address</strong> — used in memory for rate limiting. Not retained after the rate-limit window expires.
+        <strong>IP address</strong> — used for rate limiting and retained with anonymous search history to detect and prevent abuse.
       </li>
       <li>
-        <strong>Search queries</strong> — the text you submit. Tied to your account if signed in, otherwise to the anonymous cookie.
+        <strong>Search queries</strong> — the text you submit. Tied to your account if signed in, otherwise to your anonymous cookie and IP address.
       </li>
     </ul>
     <h2>Where your queries go</h2>
@@ -35,14 +35,16 @@
     </ul>
     <h2>Retention</h2>
     <ul>
-      <li>Anonymous search history: 7 days.</li>
-      <li>Signed-in search history: 90 days.</li>
+      <li>Signed-in search history: kept until you delete your account.</li>
+      <li>
+        Anonymous search history, including IP address: retained indefinitely to detect and prevent abuse.
+      </li>
       <li>Rate-limit counters: until the next UTC midnight.</li>
       <li>Cached profile results: 24 hours.</li>
     </ul>
     <h2>Your rights</h2>
     <p>
-      You can delete your account and all associated data from your dashboard at any time. To request access to or correction of your data, email us.
+      You can delete your account and all associated data from your dashboard at any time. Anonymous search history is retained for abuse prevention and is not tied to an account, so it cannot be individually deleted. To request access to or correction of your data, email us.
     </p>
     <h2>Cookies</h2>
     <p>

@@ -11,11 +11,18 @@ from unittest.mock import AsyncMock, MagicMock
 os.environ["LOG_LEVEL"] = "DEBUG"
 os.environ["SECRET_KEY"] = "test-only-insecure-secret-key-do-not-use"  # noqa: S105
 os.environ["APP_URL"] = "http://localhost:8000"
+# Required by config; unit tests mock the pool and never open a real connection.
+# The app connects as the least-privilege odin_app role; migrations (integration
+# only) use the owner DSN via DATABASE_MIGRATION_URL. These match the dev/CI
+# passwords the compose initdb script provisions.
+os.environ["DATABASE_URL"] = "postgresql://odin_app:odin_app@odin-postgres:5432/odin"
+os.environ["DATABASE_MIGRATION_URL"] = "postgresql://odin:odin@odin-postgres:5432/odin"
 
 
 import pytest
 from fastapi.testclient import TestClient
 
+from odin import db
 from odin.app import get_search_aggregator, get_valkey_client
 from odin.main import app  # imports routes/* as a side effect of route registration
 from odin.search import SearchAggregator, SearchResult
@@ -96,6 +103,24 @@ def _override_valkey_client(mock_valkey: MagicMock) -> Iterator[None]:  # pyrigh
     app.dependency_overrides[get_valkey_client] = lambda: mock_valkey
     yield
     app.dependency_overrides.pop(get_valkey_client, None)
+
+
+@pytest.fixture
+def mock_db_pool() -> MagicMock:
+    """Mock asyncpg pool covering the methods the app calls."""
+    m = MagicMock()
+    m.execute = AsyncMock(return_value="INSERT 0 1")
+    m.fetchval = AsyncMock(return_value=0)
+    m.fetch = AsyncMock(return_value=[])
+    return m
+
+
+@pytest.fixture(autouse=True)
+def _override_db_pool(mock_db_pool: MagicMock) -> Iterator[None]:  # pyright: ignore[reportUnusedFunction]
+    """Inject the mock asyncpg pool wherever the app expects the real one."""
+    app.dependency_overrides[db.get_db_pool] = lambda: mock_db_pool
+    yield
+    app.dependency_overrides.pop(db.get_db_pool, None)
 
 
 @pytest.fixture(autouse=True)

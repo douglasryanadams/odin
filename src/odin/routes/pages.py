@@ -9,6 +9,7 @@ from valkey.asyncio import Valkey
 from odin import auth, store
 from odin.app import get_valkey_client, templates
 from odin.config import settings
+from odin.identity import Requester
 from odin.routes._shared import (
     ANON_COOKIE,
     ANON_COOKIE_MAX_AGE,
@@ -32,12 +33,8 @@ async def index(
     """Render the home page; assign anonymous cookie on first visit."""
     user = auth.get_current_user(request)
     cookie_id = anon_cookie_id(request)
-    used = await store.get_daily_count(
-        valkey_client,
-        user_email=user_email(user),
-        cookie_id=cookie_id,
-        ip_address=request_ip(request),
-    )
+    requester = Requester(user_email(user), cookie_id, request_ip(request))
+    used = await store.get_daily_count(valkey_client, requester)
     limit = settings.auth_daily_limit if user else settings.anon_daily_limit
     if not user and used >= limit:
         return RedirectResponse("/login?reason=limit", status_code=302)

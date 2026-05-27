@@ -7,3 +7,10 @@ services:
     volumes:
       - .:/app
 
+  # Publish Postgres to the host for local access (psql, GUI clients). Bound to
+  # 127.0.0.1 so it stays on this machine, and dev-only so production never
+  # exposes the port.
+  odin-postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+
