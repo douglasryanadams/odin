@@ -97,3 +97,26 @@ def test_html_template_contains_button_anchor_and_expiry_copy() -> None:
     html = _email.render_magic_link_html(link)
     assert f'href="{link}"' in html
     assert "15 minutes" in html
+
+
+def test_html_template_uses_matrix_theme() -> None:
+    """Render the HTML body in the Matrix rebrand theme.
+
+    CRT-black background, a phosphor-green palette, a monospace terminal font, and
+    the uppercase ODIN wordmark, with none of the old warm beige/orange theme left
+    behind.
+    """
+    html = _email.render_magic_link_html("https://odinseye.info/auth/verify?token=abc.def")
+    lowered = html.lower()
+    assert "#050505" in lowered, "expected the CRT-black background"
+    assert "#3dff8a" in lowered, "expected the phosphor-green brand accent"
+    assert "monospace" in lowered, "expected a monospace terminal font stack"
+    assert "ODIN" in html, "expected the uppercase ODIN wordmark"
+    assert "#f4f4f2" not in lowered, "old beige background must be gone"
+    assert "#e07800" not in lowered, "old orange CTA must be gone"
+
+
+def test_text_template_uses_uppercase_wordmark() -> None:
+    """The plain-text body carries the uppercase ODIN wordmark to match the rebrand."""
+    text = _email.render_magic_link_text("https://odinseye.info/auth/verify?token=abc")
+    assert "ODIN" in text

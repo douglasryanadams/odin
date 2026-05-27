@@ -10,7 +10,7 @@ from loguru import logger
 
 from odin.config import settings
 
-_SUBJECT = "Sign in to Odin"
+_SUBJECT = "Sign in to ODIN"
 _TEMPLATE_DIR = Path(__file__).parent / "templates" / "email"
 _jinja = Environment(
     loader=FileSystemLoader(_TEMPLATE_DIR),
