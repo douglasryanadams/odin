@@ -890,6 +890,43 @@ docker compose --pull always --force-recreate --wait
 container env: BRAVE_API_KEY, ANTHROPIC_API_KEY, SMTP_*, ...
 ```
 
+### Rotating database passwords
+
+`POSTGRES_PASSWORD` and `ODIN_APP_DB_PASSWORD` are written into the database at first container start by `compose/initdb/10-app-role.sh`. Postgres runs that script only once, on an empty data directory — it does not re-run it on an existing volume. Updating Secrets Manager and redeploying is not enough; the passwords inside Postgres stay at the values they had when the volume was first initialized.
+
+To rotate either password on a running production instance:
+
+1. Open an SSM Session Manager shell and switch to `ec2-user`:
+
+   ```bash
+   sudo -i -u ec2-user
+   cd /opt/odin
+   ```
+
+2. Open psql as the owner role:
+
+   ```bash
+   docker compose -f compose/docker-compose.yml -f compose/docker-compose.prod.yml \
+     exec odin-postgres psql -U odin -d odin
+   ```
+
+3. Run the `ALTER ROLE` for the password you are rotating (use the new value you plan to store in Secrets Manager):
+
+   ```sql
+   -- app role:
+   ALTER ROLE odin_app WITH PASSWORD 'new-strong-password';
+   -- owner role:
+   ALTER ROLE odin WITH PASSWORD 'new-strong-password';
+   ```
+
+4. Exit psql (`\q`).
+5. Update the corresponding key in Secrets Manager (`odin_app_db_password` or `postgres_password`) with the same new value.
+6. Trigger a deploy. The next run of `deploy.sh` writes the new value into `.env` and restarts the containers; they will connect with the updated password.
+
+Do the ALTER ROLE before the deploy, not after. Once the database has the new password, the running containers (whose connections are already authenticated) stay up until they restart. If you update the secret first and deploy before changing the database, the restarted containers will fail authentication until step 3 completes.
+
+For local development, rotating passwords is simpler: `docker compose down -v` removes the volume, then `make dev` or `make prod` re-runs the initdb script with whatever `ODIN_APP_DB_PASSWORD` is currently in your `.env`.
+
 ### Adding a new secret
 
 1. Add the key to the `odin/app` JSON in Secrets Manager (Console → Secrets Manager → `odin/app` → Edit → Plaintext tab). Key naming: lowercase with underscores (`brave_api_key`, `serper_api_key`). The deploy script uppercases on write.
