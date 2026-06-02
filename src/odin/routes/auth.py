@@ -14,6 +14,7 @@ from odin.config import settings
 from odin.email import send_magic_link
 from odin.routes._shared import (
     CSRF_COOKIE,
+    BotDefenseForm,
     csrf_token_value,
     request_ip,
     set_csrf_cookie_if_absent,
@@ -26,7 +27,10 @@ router = APIRouter()
 async def login_page(request: Request, reason: str | None = None) -> HTMLResponse:
     """Render the login page with an optional reason message."""
     csrf = csrf_token_value(request)
-    resp = templates.TemplateResponse(request, "login.html", {"reason": reason, "csrf_token": csrf})
+    form_ts = _auth.generate_form_timestamp(request.app.state.secret_key)
+    resp = templates.TemplateResponse(
+        request, "login.html", {"reason": reason, "csrf_token": csrf, "form_ts": form_ts}
+    )
     set_csrf_cookie_if_absent(request, resp, csrf)
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     return resp
@@ -38,6 +42,7 @@ async def send_link(
     email: Annotated[str, Form()],
     csrf_token: Annotated[str, Form()],
     valkey_client: Annotated[Valkey, Depends(get_valkey_client)],
+    bot: Annotated[BotDefenseForm, Depends()],
 ) -> HTMLResponse:
     """Generate and send a magic sign-in link."""
     if not _auth.csrf_matches(request.cookies.get(CSRF_COOKIE), csrf_token):
@@ -50,6 +55,8 @@ async def send_link(
     sent_template = templates.TemplateResponse(
         request, "login.html", {"sent": True, "sent_email": email}
     )
+    if bot.website or not _auth.verify_form_timestamp(bot.form_ts, request.app.state.secret_key):
+        return sent_template
     if not await store.claim_email_link_send(valkey_client, email, request_ip(request)):
         return sent_template
     token = _auth.generate_magic_token(email, request.app.state.secret_key)

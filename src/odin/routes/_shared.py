@@ -1,8 +1,9 @@
 """Cookie constants and helpers shared by more than one router module."""
 
 import secrets
+from typing import Annotated
 
-from fastapi import Request
+from fastapi import Form, Request
 from fastapi.responses import Response
 
 from odin import auth
@@ -34,6 +35,18 @@ def user_email(user: auth.SessionUser | None) -> str | None:
 def csrf_token_value(request: Request) -> str:
     """Return the CSRF token to embed in templates (existing cookie or a fresh value)."""
     return request.cookies.get(CSRF_COOKIE) or auth.generate_csrf_token()
+
+
+class BotDefenseForm:
+    """Form dependency grouping the honeypot and timing fields that guard against bots."""
+
+    def __init__(
+        self,
+        website: Annotated[str, Form()] = "",
+        form_ts: Annotated[str, Form()] = "",
+    ) -> None:
+        self.website = website
+        self.form_ts = form_ts
 
 
 def set_csrf_cookie_if_absent(request: Request, response: Response, token: str) -> None:

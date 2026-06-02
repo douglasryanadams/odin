@@ -44,6 +44,34 @@ def csrf_matches(cookie_token: str | None, form_token: str | None) -> bool:
     return hmac.compare_digest(cookie_token, form_token)
 
 
+_FORM_TS_MIN_SECONDS = 2
+
+
+def generate_form_timestamp(secret: bytes) -> str:
+    """Return a signed timestamp token to embed in the login form."""
+    ts = str(int(time.time()))
+    mac = hmac.new(secret, f"formts:{ts}".encode(), hashlib.sha256).hexdigest()
+    return f"{ts}:{mac}"
+
+
+def verify_form_timestamp(
+    token: str, secret: bytes, min_seconds: int = _FORM_TS_MIN_SECONDS
+) -> bool:
+    """Return True if the token has a valid signature and was issued at least min_seconds ago."""
+    try:
+        ts_str, mac = token.split(":", 1)
+    except ValueError:
+        return False
+    expected = hmac.new(secret, f"formts:{ts_str}".encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(mac, expected):
+        return False
+    try:
+        ts = int(ts_str)
+    except ValueError:
+        return False
+    return time.time() - ts >= min_seconds
+
+
 def _sign(payload: dict[str, Any], secret: bytes) -> str:
     body = (
         base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode())
