@@ -5,7 +5,7 @@ Odin uses the [Anthropic API](https://platform.claude.com/docs/en/home) for five
 ## Stages and models
 
 | Stage | Function | Model |
-|---|---|---|
+| --- | --- | --- |
 | Classify a query (person / place / event / other) | `categorize()` | `claude-haiku-4-5-20251001` |
 | Generate 3–5 search queries | `generate_queries()` | `claude-haiku-4-5-20251001` |
 | Select up to 5 URLs from search results | `select_urls()` | `claude-haiku-4-5-20251001` |
@@ -26,7 +26,7 @@ Every call uses tool-use instead of asking for JSON in prose:
 Missing tool block → `RuntimeError`. Errors don't pass silently.
 
 | Function | System prompt | Tool schema | Tool name |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `categorize` | `_CATEGORIZE_SYSTEM` | `_CATEGORIZE_TOOL` | `categorize_result` |
 | `generate_queries` | `_GENERATE_QUERIES_SYSTEM` | `_GENERATE_QUERIES_TOOL` | `generate_queries_result` |
 | `select_urls` | `_SELECT_URLS_SYSTEM` | `_SELECT_URLS_TOOL` | `select_urls_result` |

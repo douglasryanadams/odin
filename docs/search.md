@@ -7,7 +7,7 @@ Odin's search layer is first-party: backends call upstream APIs directly through
 The whole search layer lives under `src/odin/search/`:
 
 | File | Role |
-|---|---|
+| --- | --- |
 | `models.py` | `SearchResult` (`url`, `title`, `content`, `engines: list[str]`). Every backend returns a list of these. |
 | `base.py` | `SearchBackend` Protocol (`name`, `timeout_seconds`, `async search(query)`). Backends raise on upstream failure; the aggregator owns the decision to degrade. |
 | `aggregator.py` | `SearchAggregator` and the `merge_results` helper. Runs each backend concurrently under its own timeout, swallows per-backend timeouts and exceptions (partial results allowed), and dedupes the merged set by URL while unioning the `engines` list. |
@@ -20,7 +20,7 @@ The whole search layer lives under `src/odin/search/`:
 ## Configuration
 
 | Env var | Default | Effect |
-|---|---|---|
+| --- | --- | --- |
 | `BRAVE_API_KEY` | unset | When set, `_brave_factory` constructs `BraveBackend`; when missing, the factory returns `None` and Brave is skipped. Provision a key at <https://api-dashboard.search.brave.com/> (paid, ~$3–$5 per 1k queries). |
 | `SEARCH_TIMEOUT_SECONDS` | `30.0` | Per-backend call ceiling enforced by the aggregator. |
 | `CONTACT_EMAIL` | `odin@odinseye.info` | Composed into the Wikipedia backend's `User-Agent` for Wikimedia policy compliance. |

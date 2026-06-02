@@ -53,7 +53,7 @@ Based on *The Elements of Style* by Strunk & White (4th ed.).
 ## Words to avoid
 
 | Avoid | Use instead |
-|---|---|
+| --- | --- |
 | `utilize` | `use` |
 | `finalize` | `complete`, `finish` |
 | `leverage` (verb) | `use`, `apply` |

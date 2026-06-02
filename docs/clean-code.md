@@ -82,7 +82,7 @@ Based on *Clean Code* by Robert C. Martin.
 ## Common smells and fixes
 
 | Smell | Fix |
-|---|---|
+| --- | --- |
 | Flag argument | Split into two functions |
 | Output argument | Change state on `self`/`this` instead |
 | Magic number | Replace with a named constant |
