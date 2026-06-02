@@ -5,7 +5,7 @@ Jinja2 templates, a per-concern CSS module tree under `@layer`, and two JavaScri
 ## Files
 
 | Path | Purpose |
-|---|---|
+| --- | --- |
 | `templates/_base.html` | Layout shell: head, fonts, header (`ODIN` wordmark + actions slot), sticky-bottom status bar (signed-in only), `<main>`, footer, scripts slot. |
 | `templates/index.html` | Landing page with the search form. Hero markup carries `data-typewriter-text` on the tagline for the type-on reveal. |
 | `templates/profile.html` | Result page: title, category badge, summary, single-line ASCII progress bar, 6-section main column (exposition + events + highlights + lowlights + sources) plus an anchored sidebar (Subject Compass + Source Audit). Sets `meta[name=odin-query]` for the SSE bootstrap. |
@@ -95,7 +95,7 @@ Vanilla CSS with OKLCH custom properties; no framework, no preprocessor.
 All four front-end gates run via `make lint` / `make test` inside Docker:
 
 | Tool | Scope | Config |
-|---|---|---|
+| --- | --- | --- |
 | `djlint` | `src/odin/templates/` | `[tool.djlint]` in `pyproject.toml` (jinja profile, 2-space indent, 100-char lines). |
 | `stylelint` | `static/css/**/*.css` (includes the `static/css/odin/` module tree) | `config/.stylelintrc.json` — `stylelint-config-standard` plus a BEM `selector-class-pattern`. |
 | `eslint` | `static/js/**/*.js` | `config/eslint.config.js` — flat config, browser globals, `no-undef` error. |

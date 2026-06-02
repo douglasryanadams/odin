@@ -17,7 +17,7 @@ This repository contains the full service: pipeline, search infrastructure, fetc
 You'll need [Docker](https://docs.docker.com/get-docker/), `make`, and three secrets:
 
 | Key | How to get it |
-|---|---|
+| --- | --- |
 | `ANTHROPIC_API_KEY` | Create one at <https://console.anthropic.com/>. |
 | `BRAVE_API_KEY` | Create one at <https://api-dashboard.search.brave.com/>. Optional in dev: if omitted, the search aggregator falls back to Wikipedia only. |
 | `SECRET_KEY` | 32+ random bytes that sign session and CSRF cookies. Generate with `python -c 'import secrets; print(secrets.token_urlsafe(48))'`. |
@@ -37,7 +37,7 @@ The first `make dev` builds the Docker image and pulls Valkey (a few minutes). S
 ## Where to go next
 
 | If you want to… | Read |
-|---|---|
+| --- | --- |
 | Understand where the product is heading and why | [`docs/vision.md`](./docs/vision.md) |
 | Understand the pipeline, routes, and module layout | [`docs/backend.md`](./docs/backend.md) |
 | Look up every env var, Make target, or linter setting | [`docs/configuration.md`](./docs/configuration.md) |

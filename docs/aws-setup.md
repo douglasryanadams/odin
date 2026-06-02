@@ -584,7 +584,7 @@ DNS propagates in a minute or two. After CloudFront finishes deploying, `https:/
 2. Under **Repository secrets**, click **New repository secret** and add each of these in turn:
 
 | Name | Value |
-|---|---|
+| --- | --- |
 | `AWS_ACCOUNT_ID` | your 12-digit account ID (from step 1) |
 | `EC2_INSTANCE_ID` | the instance ID from step 8b |
 
@@ -602,7 +602,7 @@ Region: **us-west-2**.
 2. Replace the remaining placeholders with the real values, then **Save**:
 
 | Key | Value |
-|---|---|
+| --- | --- |
 | `anthropic_api_key` | `sk-ant-your-real-key-here` |
 | `brave_api_key` | Provision at <https://api-dashboard.search.brave.com/> (CC required; ~$0.003–$0.005/query metered after $5 prepaid credit). Paste the raw key. |
 | `secret_key` | a 64-character hex string for HMAC cookie/magic-link signing. Generate locally with `openssl rand -hex 32`. Min 32 chars. |
@@ -960,7 +960,7 @@ If `.env` has the value but the container does not, the passthrough is missing f
 ## Cost Reference
 
 | Item | Monthly |
-|---|---|
+| --- | --- |
 | EC2 t4g.small (on-demand) | ~$12 |
 | Elastic IP (attached) | $0 |
 | CloudFront Free plan (1M req + 100 GB + WAF + Shield Standard) | $0 |

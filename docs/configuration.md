@@ -9,7 +9,7 @@ The repo-root [`README.md`](../README.md) is the orientation page. This doc is t
 - **Dev deps:** `bandit`, `djlint`, `respx`, `pyright`, `pytest` (`-asyncio`, `-cov`, `-httpserver`), `radon`, `ruff`, `xenon`, `textstat` (Markdown readability scoring; see `make readability`).
 
 | Tool | Configured to enforce |
-|---|---|
+| --- | --- |
 | `ruff format` | 100-char lines; the formatter is the source of truth for style. |
 | `ruff check` | `select = ["ALL"]` (with formatter-conflict and docstring-conflict ignores). McCabe ≤ 8. `tests/**` ignores `S101` and `PLR2004`. |
 | `pyright` | Python 3.12, strict mode. |
@@ -23,7 +23,7 @@ The repo-root [`README.md`](../README.md) is the orientation page. This doc is t
 Eslint, stylelint, vitest, markdownlint-cli2, and markdown-link-check all run inside a `node:20-slim` container that lives in the `tools` Docker Compose profile, so the default `make dev` never starts it. `package.json` and `package-lock.json` are committed for reproducible `npm ci` installs; the `node_modules` Make target is a sentinel that re-runs `npm ci` only when `package.json` / `package-lock.json` change.
 
 | File | Purpose |
-|---|---|
+| --- | --- |
 | `package.json` | Pins eslint, stylelint, stylelint-config-standard, vitest, happy-dom, globals, markdownlint-cli2, markdown-link-check. |
 | `package-lock.json` | Locked install graph for `npm ci`. |
 | `config/eslint.config.js` | Flat config. Targets `static/js/**/*.js` as `script` source type with browser globals + `ODIN_QUERY` readonly; `no-undef` error, `no-unused-vars` warn. |
@@ -40,7 +40,7 @@ The scratch file `.notes.md` is excluded from both markdown linters.
 Every target runs through `docker-compose` — host needs only Docker + `make`.
 
 | Target | Notes |
-|---|---|
+| --- | --- |
 | `make dev` | `docker compose -f compose/docker-compose.yml -f compose/docker-compose.override.yml up --build` (uvicorn `--reload`). |
 | `make prod` | Swaps the override for `compose/docker-compose.prod.yml`; gunicorn. |
 | `make format` | `ruff format .` plus `djlint --reformat` on the templates. |
@@ -99,7 +99,7 @@ Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/defa
 **Required to run.** No defaults — the app fails closed if these are missing.
 
 | Variable | Read where | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `ANTHROPIC_API_KEY` | `AsyncAnthropic()` via the SDK | Used by every Haiku and Sonnet call in `claude.py`. |
 | `BRAVE_API_KEY` | `Settings` in `config.py` (web service's Brave backend) | Consumed directly by the web service's `BraveBackend`. Provision at <https://api-dashboard.search.brave.com/>. When unset, the Brave backend is not constructed and the aggregator falls back to Wikipedia only. In prod, store as `brave_api_key` in the `odin/app` Secrets Manager entry; see [`aws-setup.md` § "How secrets reach the containers"](./aws-setup.md#how-secrets-reach-the-containers). |
 | `SECRET_KEY` | `Settings` in `config.py` | 32+ random bytes; signs session and CSRF cookies. Generate with `python -c 'import secrets; print(secrets.token_urlsafe(48))'`. |
@@ -109,7 +109,7 @@ Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/defa
 **Required, with safe defaults.** The example file already sets dev-appropriate values.
 
 | Variable | Default | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `COOKIE_SECURE` | `true` (code default; example overrides to `false`) | Production omits the override so `Secure` is set on `Set-Cookie`. Dev needs `false` because HTTP localhost cannot accept `Secure` cookies. |
 | `POSTGRES_PASSWORD` | `odin` (compose dev default; prod requires it, no fallback) | Password for the owner/migrator role (`odin`) on the in-stack database; `deploy.sh` builds `DATABASE_MIGRATION_URL` from it for the migration step. In prod, store as `postgres_password` in the `odin/app` secret; `deploy.sh` aborts if it is missing. |
 | `ODIN_APP_DB_PASSWORD` | `odin_app` (compose dev default; prod requires it, no fallback) | Password for the least-privilege runtime role (`odin_app`); compose builds the app's `DATABASE_URL` from it, and the initdb script sets it on first volume init. In prod, store as `odin_app_db_password` in the `odin/app` secret; `deploy.sh` aborts if it is missing. |
@@ -117,7 +117,7 @@ Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/defa
 **Optional runtime overrides.**
 
 | Variable | Default | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `LOG_LEVEL` | `INFO` (compose dev sets `DEBUG`) | Loguru level. |
 | `WORKERS` | `(cpu_count * 2) + 1` | Each gunicorn worker holds ~200 MB Chromium — set explicitly on small boxes. |
 | `PLAYWRIGHT_HEADLESS` | `true` | `false` launches a visible Chromium; only useful on a host with a display server. |
@@ -131,7 +131,7 @@ Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/defa
 **Production-only.**
 
 | Variable | Default | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `SMTP_HOST` | `smtp.purelymail.com` | Used by `email.py`. |
 | `SMTP_PORT` | `587` | Submission port. |
 | `SMTP_FROM` | `odin@odinseye.info` | `From:` header. |
@@ -141,7 +141,7 @@ Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/defa
 **Test-only.**
 
 | Variable | Default | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `SMTP_TEST_RECIPIENT` | unset | Required for `tests/integration/test_email_smtp.py`; set to your own address so devs don't share an inbox. |
 
 `.env` is gitignored and is the conventional place for secrets in dev. `traces/` is gitignored for `PLAYWRIGHT_TRACE_DIR` output.
@@ -171,7 +171,7 @@ PLAYWRIGHT_HEADLESS=false uv run uvicorn odin.main:app --reload --port 8000
 GitHub Actions workflows live in `.github/workflows/`:
 
 | File | Trigger | What it does |
-|---|---|---|
+| --- | --- | --- |
 | `ci.yml` | Pull request → `main` | Builds dev image, runs `make lint` + `make test-unit test-smoke` |
 | `deploy.yml` | Push → `main` | Builds prod image, pushes to ECR, deploys to EC2 via SSM |
 
