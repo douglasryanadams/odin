@@ -1,5 +1,8 @@
 """Tests for the auth routes: login form, magic-link send/verify, logout."""
 
+import hashlib
+import hmac
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,6 +18,13 @@ def _seed_csrf(client: TestClient) -> dict[str, str]:
     """Set a CSRF cookie on the client and return matching form-data."""
     client.cookies.set("csrf_token", _CSRF)
     return {"csrf_token": _CSRF}
+
+
+def _valid_form_ts(age_seconds: int = 3) -> str:
+    """Return a signed form_ts token that is age_seconds old (passes the timing check)."""
+    ts = str(int(time.time()) - age_seconds)
+    mac = hmac.new(TEST_SECRET, f"formts:{ts}".encode(), hashlib.sha256).hexdigest()
+    return f"{ts}:{mac}"
 
 
 def _stateful_incr(mock_valkey: MagicMock) -> dict[str, int]:
@@ -83,7 +93,7 @@ def test_send_link_renders_confirmation(mock_send: MagicMock, client: TestClient
     mock_send.return_value = None
     response = client.post(
         "/auth/send-link",
-        data={"email": "user@example.com", **_seed_csrf(client)},
+        data={"email": "user@example.com", "form_ts": _valid_form_ts(), **_seed_csrf(client)},
     )
     assert response.status_code == 200
     assert "user@example.com" in response.text
@@ -96,7 +106,7 @@ def test_send_link_normalizes_email(mock_send: MagicMock, client: TestClient) ->
     mock_send.return_value = None
     client.post(
         "/auth/send-link",
-        data={"email": "  USER@EXAMPLE.COM  ", **_seed_csrf(client)},
+        data={"email": "  USER@EXAMPLE.COM  ", "form_ts": _valid_form_ts(), **_seed_csrf(client)},
     )
     called_email = mock_send.call_args[0][0]
     assert called_email == "user@example.com"
@@ -110,9 +120,14 @@ def test_send_link_rejects_second_email_within_hour_silently(
     _stateful_incr(mock_valkey)
     mock_send.return_value = None
     csrf = _seed_csrf(client)
+    form_ts = _valid_form_ts()
 
-    first = client.post("/auth/send-link", data={"email": "user@example.com", **csrf})
-    second = client.post("/auth/send-link", data={"email": "user@example.com", **csrf})
+    first = client.post(
+        "/auth/send-link", data={"email": "user@example.com", "form_ts": form_ts, **csrf}
+    )
+    second = client.post(
+        "/auth/send-link", data={"email": "user@example.com", "form_ts": form_ts, **csrf}
+    )
 
     assert first.status_code == 200
     assert second.status_code == 200
@@ -130,7 +145,10 @@ def test_send_link_rejects_sixth_ip_within_hour(
     csrf = _seed_csrf(client)
 
     for i in range(6):
-        client.post("/auth/send-link", data={"email": f"u{i}@example.com", **csrf})
+        client.post(
+            "/auth/send-link",
+            data={"email": f"u{i}@example.com", "form_ts": _valid_form_ts(), **csrf},
+        )
 
     assert mock_send.call_count == 5
 
@@ -153,11 +171,82 @@ def test_send_link_keys_ip_rate_limit_by_x_forwarded_for(
 
     client.post(
         "/auth/send-link",
-        data={"email": "user@example.com", **csrf},
+        data={"email": "user@example.com", "form_ts": _valid_form_ts(), **csrf},
         headers={"X-Forwarded-For": "198.51.100.7"},
     )
 
     assert "linkrate:ip:198.51.100.7" in counts
+
+
+# ---------------------------------------------------------------------------
+# Bot defenses
+# ---------------------------------------------------------------------------
+
+
+@patch("odin.routes.auth.send_magic_link")
+def test_send_link_honeypot_filled_silently_rejects(
+    mock_send: MagicMock, client: TestClient
+) -> None:
+    """Honeypot field filled → confirmation page returned, no email sent."""
+    mock_send.return_value = None
+    response = client.post(
+        "/auth/send-link",
+        data={
+            "email": "victim@example.com",
+            "website": "http://spam.example.com",
+            "form_ts": _valid_form_ts(),
+            **_seed_csrf(client),
+        },
+    )
+    assert response.status_code == 200
+    mock_send.assert_not_called()
+
+
+@patch("odin.routes.auth.send_magic_link")
+def test_send_link_missing_form_ts_silently_rejects(
+    mock_send: MagicMock, client: TestClient
+) -> None:
+    """Missing form_ts → confirmation page returned, no email sent."""
+    mock_send.return_value = None
+    response = client.post(
+        "/auth/send-link",
+        data={"email": "victim@example.com", **_seed_csrf(client)},
+    )
+    assert response.status_code == 200
+    mock_send.assert_not_called()
+
+
+@patch("odin.routes.auth.send_magic_link")
+def test_send_link_tampered_form_ts_silently_rejects(
+    mock_send: MagicMock, client: TestClient
+) -> None:
+    """Invalid form_ts signature → confirmation page returned, no email sent."""
+    mock_send.return_value = None
+    response = client.post(
+        "/auth/send-link",
+        data={
+            "email": "victim@example.com",
+            "form_ts": "1000000:invalidsignature",
+            **_seed_csrf(client),
+        },
+    )
+    assert response.status_code == 200
+    mock_send.assert_not_called()
+
+
+@patch("odin.routes.auth.send_magic_link")
+def test_send_link_too_fast_silently_rejects(mock_send: MagicMock, client: TestClient) -> None:
+    """form_ts submitted less than 2 seconds after issue → silently rejects."""
+    mock_send.return_value = None
+    # Token issued 1 second ago — too fast
+    ts = str(int(time.time()) - 1)
+    mac = hmac.new(TEST_SECRET, f"formts:{ts}".encode(), hashlib.sha256).hexdigest()
+    response = client.post(
+        "/auth/send-link",
+        data={"email": "victim@example.com", "form_ts": f"{ts}:{mac}", **_seed_csrf(client)},
+    )
+    assert response.status_code == 200
+    mock_send.assert_not_called()
 
 
 @patch("odin.routes.auth.send_magic_link")

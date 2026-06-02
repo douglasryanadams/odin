@@ -4,6 +4,7 @@ import time
 from unittest.mock import MagicMock, patch
 
 import pytest
+from freezegun import freeze_time
 
 from odin import auth
 
@@ -97,3 +98,36 @@ def test_get_current_user_returns_none_when_no_cookie() -> None:
 def test_get_current_user_returns_none_for_invalid_cookie() -> None:
     request = _mock_request("garbage.value")
     assert auth.get_current_user(request) is None
+
+
+# ---------------------------------------------------------------------------
+# Form timestamp
+# ---------------------------------------------------------------------------
+
+
+def test_form_timestamp_roundtrip() -> None:
+    with freeze_time("2025-01-01 12:00:00"):
+        token = auth.generate_form_timestamp(_SECRET)
+    with freeze_time("2025-01-01 12:00:03"):
+        assert auth.verify_form_timestamp(token, _SECRET) is True
+
+
+def test_form_timestamp_wrong_secret_returns_false() -> None:
+    with freeze_time("2025-01-01 12:00:00"):
+        token = auth.generate_form_timestamp(_SECRET)
+    with freeze_time("2025-01-01 12:00:03"):
+        assert auth.verify_form_timestamp(token, b"wrong-secret") is False
+
+
+def test_form_timestamp_too_fast_returns_false() -> None:
+    with freeze_time("2025-01-01 12:00:00"):
+        token = auth.generate_form_timestamp(_SECRET)
+    with freeze_time("2025-01-01 12:00:01"):
+        assert auth.verify_form_timestamp(token, _SECRET) is False
+
+
+def test_form_timestamp_malformed_returns_false() -> None:
+    assert auth.verify_form_timestamp("", _SECRET) is False
+    assert auth.verify_form_timestamp("notvalid", _SECRET) is False
+    assert auth.verify_form_timestamp("abc:def", _SECRET) is False
+    assert auth.verify_form_timestamp("nan:abc", _SECRET) is False

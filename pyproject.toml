@@ -39,6 +39,7 @@ dev = [
     "radon>=6.0.1",
     "ruff>=0.15.12",
     "xenon>=0.9.3",
+    "freezegun>=1.5.0",
     "textstat>=0.7.13",
 ]
 
