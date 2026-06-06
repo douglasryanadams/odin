@@ -167,6 +167,43 @@ async def test_pipeline_emits_synthesizing_and_assessing_events_at_phase_boundar
     assert trace.index("yield:assessing") < trace.index("call:assess")
 
 
+@dataclass(frozen=True)
+class _EmptyFetcher:
+    """Fetcher that always returns empty content — simulates all pages failing."""
+
+    async def fetch_pages(self, urls: list[str]) -> dict[str, str]:
+        return dict.fromkeys(urls, "")
+
+
+async def test_pipeline_yields_service_unavailable_when_all_fetched_content_is_empty() -> None:
+    """When every fetched page returns empty content, pipeline yields service_unavailable.
+
+    This guards against handing Claude an empty context and letting it fabricate
+    an answer from its priors instead of real sources.
+    """
+
+    async def fake_search(_q: str) -> list[SearchResult]:
+        return [SearchResult(url="https://example.com", title="t", content="snippet")]
+
+    with (
+        patch.object(pipeline.claude, "categorize", AsyncMock(return_value="other")),
+        patch.object(pipeline.claude, "generate_queries", AsyncMock(return_value=["q1"])),
+        patch.object(
+            pipeline.claude, "select_urls", AsyncMock(return_value=["https://example.com"])
+        ),
+        patch.object(pipeline.claude, "synthesize") as mock_synth,
+    ):
+        stages = [
+            ev.stage
+            async for ev in pipeline.build_profile(
+                "foo", _FakeBackend(fake_search), MagicMock(), _EmptyFetcher()
+            )
+        ]
+
+    assert "service_unavailable" in stages
+    mock_synth.assert_not_called()
+
+
 async def test_pipeline_filters_disallowed_urls_before_select(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

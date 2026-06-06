@@ -7,7 +7,7 @@ from typing import Any, cast
 
 from valkey.asyncio import Valkey
 
-_PREFIX = "cache:profile"
+_PREFIX = "cache:profile:v2"
 _TTL_SECONDS = 24 * 60 * 60
 
 _WHITESPACE = re.compile(r"\s+")

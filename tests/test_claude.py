@@ -80,6 +80,76 @@ async def test_synthesize_makes_single_call_with_content(mock_client: MagicMock)
 
 
 @pytest.mark.asyncio
+async def test_synthesize_citation_resolves_when_content_key_has_trailing_slash(
+    mock_client: MagicMock,
+) -> None:
+    """Citations resolve when the content key URL has a trailing slash the source URL lacks.
+
+    select_urls is a model call; Claude may return a URL with a trailing slash
+    even though the original search result did not have one.  The fetcher keys
+    content by the URL it received, so synthesize sees the slash form in the
+    section header and Claude cites the slash form.  The lookup must still
+    resolve it to the matching SearchResult.
+    """
+    sources = [
+        SearchResult(url="https://example.com/page", title="Example Page", content="A snippet"),
+    ]
+    # Content keyed by the trailing-slash variant (what select_urls returned)
+    content = {"https://example.com/page/": "Marie Curie was a physicist."}
+    # Claude cites the URL it sees in the section header — the slash form
+    profile_data = {**_PROFILE_DATA, "citations": ["https://example.com/page/"]}
+    mock_client.messages.create.return_value = api_response(
+        [tool_block("create_profile", profile_data)]
+    )
+
+    result = await claude.synthesize(mock_client, "Marie Curie", "person", content, sources)
+
+    assert len(result.citations) == 1
+    assert result.citations[0].url == "https://example.com/page"
+    assert result.citations[0].title == "Example Page"
+
+
+@pytest.mark.asyncio
+async def test_synthesize_citation_resolves_when_source_has_trailing_slash(
+    mock_client: MagicMock,
+) -> None:
+    """Citations resolve when the source URL has a trailing slash the content key lacks."""
+    sources = [
+        SearchResult(url="https://example.com/page/", title="Example Page", content="A snippet"),
+    ]
+    content = {"https://example.com/page": "Marie Curie was a physicist."}
+    profile_data = {**_PROFILE_DATA, "citations": ["https://example.com/page"]}
+    mock_client.messages.create.return_value = api_response(
+        [tool_block("create_profile", profile_data)]
+    )
+
+    result = await claude.synthesize(mock_client, "Marie Curie", "person", content, sources)
+
+    assert len(result.citations) == 1
+    assert result.citations[0].url == "https://example.com/page/"
+
+
+@pytest.mark.asyncio
+async def test_synthesize_citation_dropped_when_url_has_no_matching_source(
+    mock_client: MagicMock,
+) -> None:
+    """A citation URL that does not match any source after normalization is dropped."""
+    sources = [
+        SearchResult(url="https://example.com/page", title="Example Page", content="snippet"),
+    ]
+    content = {"https://example.com/page": "Some text."}
+    # Claude hallucinates a URL not in sources and not a trailing-slash variant
+    profile_data = {**_PROFILE_DATA, "citations": ["https://totally-different.com/other"]}
+    mock_client.messages.create.return_value = api_response(
+        [tool_block("create_profile", profile_data)]
+    )
+
+    result = await claude.synthesize(mock_client, "Marie Curie", "person", content, sources)
+
+    assert result.citations == []
+
+
+@pytest.mark.asyncio
 async def test_select_urls_includes_engine_tags(mock_client: MagicMock) -> None:
     """select_urls includes 'Found by' engine tags for results that have engines."""
     mock_client.messages.create.return_value = api_response(

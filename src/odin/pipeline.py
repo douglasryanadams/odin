@@ -15,6 +15,7 @@ from odin.search import SearchBackend, SearchResult, merge_results
 SEARCH_QUERY_CONCURRENCY = 2
 
 _SERVICE_UNAVAILABLE_MESSAGE = "Odin is temporarily paused. Please try again in a little while."
+_NO_SOURCES_MESSAGE = "No usable sources were found for this query. Please try rephrasing."
 
 
 def _is_billing_error(exc: BadRequestError) -> bool:
@@ -98,6 +99,10 @@ async def _run_pipeline(
 
     content = await fetcher.fetch_pages(selected_urls)
     logger.debug("pages fetched count={}", len(content))
+    if not any(text.strip() for text in content.values()):
+        logger.warning("all fetched pages empty, refusing to synthesize query={!r}", query)
+        yield StageEvent(stage="service_unavailable", data={"message": _NO_SOURCES_MESSAGE})
+        return
     yield StageEvent(stage="synthesizing", data={"page_count": len(content)})
 
     profile = await claude.synthesize(anthropic_client, query, category, content, allowed_results)
