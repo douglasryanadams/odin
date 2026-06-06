@@ -289,6 +289,29 @@ _ASSESS_TOOL: dict[str, Any] = {
 }
 
 
+def _make_citation_lookup(
+    sources: list[SearchResult], content: dict[str, str]
+) -> dict[str, SearchResult]:
+    """Map citation URLs to SearchResults, covering trailing-slash variants.
+
+    Claude cites the URL it sees as the content section header, which comes from
+    `content.keys()`.  Those keys may differ from `sources` URLs by a trailing
+    slash if `select_urls` normalised the URL slightly.  Index by both forms so
+    either resolves to the same SearchResult.
+    """
+    exact: dict[str, SearchResult] = {s.url: s for s in sources}
+    lookup: dict[str, SearchResult] = dict(exact)
+    for content_url in content:
+        if content_url in lookup:
+            continue
+        normalized = content_url.rstrip("/")
+        for src in sources:
+            if src.url.rstrip("/") == normalized:
+                lookup[content_url] = src
+                break
+    return lookup
+
+
 def _find_tool_block(content: list[Any], name: str) -> Any | None:  # noqa: ANN401
     return next(
         (b for b in content if getattr(b, "type", None) == "tool_use" and b.name == name),
@@ -399,7 +422,7 @@ async def synthesize(
         msg = "synthesize: no create_profile tool block in response"
         raise RuntimeError(msg)
     parsed = _SynthesizeOutput(**block.input)
-    lookup = {s.url: s for s in sources}
+    lookup = _make_citation_lookup(sources, content)
     citations = [
         Citation(url=lookup[u].url, title=lookup[u].title, snippet=lookup[u].content)
         for u in parsed.citations
