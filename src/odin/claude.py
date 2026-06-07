@@ -3,7 +3,7 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, get_args
 
 from anthropic import (
     APIConnectionError,
@@ -66,9 +66,25 @@ async def _create_with_retries(stage: str, request: Callable[[], Awaitable[Messa
             await asyncio.sleep(delay)
 
 
+_CATEGORIES = get_args(Category)
+
+
 @dataclass(frozen=True)
 class _CategorizeOutput:
+    """The categorize tool's parsed output.
+
+    This is the one Claude-tool-use result that flows to the frontend with no
+    Pydantic model downstream to catch a value outside the schema — it goes
+    straight into an SSE event the browser renders verbatim. Validate it here,
+    at the boundary, rather than let an off-schema string travel silently.
+    """
+
     category: Category
+
+    def __post_init__(self) -> None:
+        if self.category not in _CATEGORIES:
+            msg = f"categorize: unexpected category {self.category!r} from Claude"
+            raise RuntimeError(msg)
 
 
 @dataclass(frozen=True)
@@ -100,6 +116,26 @@ class _AssessOutput:
     law_chaos: float
     good_evil: float
     caveats: list[Caveat]
+
+
+@dataclass(frozen=True)
+class _ToolCallSpec:
+    """The fixed shape of one Claude call.
+
+    Bundles the model, token budget, system prompt, and the single tool
+    Claude is forced to use. Each Claude-calling function builds one of these
+    as a module-level constant (`_CATEGORIZE_CALL` and its siblings, defined
+    alongside the tool schemas below) and hands it to `_call_tool` with that
+    call's messages. Bundling the static shape keeps `_call_tool`'s signature
+    small, and means the tool's name and the `tool_choice` name — which must
+    always match — are derived from one place rather than kept in sync by hand.
+    """
+
+    model: str
+    max_tokens: int
+    system: str | list[dict[str, Any]]
+    tool: dict[str, Any]
+    error_context: str
 
 
 _HAIKU = "claude-haiku-4-5-20251001"
@@ -337,6 +373,51 @@ _ASSESS_TOOL: dict[str, Any] = {
 }
 
 
+def _cached_system(text: str) -> list[dict[str, Any]]:
+    """Wrap a system prompt for prompt-caching, as the longer prompts below need."""
+    return [{"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}]
+
+
+# Each constant below pairs one system prompt and tool schema (above) with its
+# model, token budget, and error context — the complete, fixed shape of one
+# Claude call. `_call_tool` takes one of these plus that call's messages.
+_CATEGORIZE_CALL = _ToolCallSpec(
+    model=_HAIKU,
+    max_tokens=100,
+    system=_CATEGORIZE_SYSTEM,
+    tool=_CATEGORIZE_TOOL,
+    error_context="categorize",
+)
+_GENERATE_QUERIES_CALL = _ToolCallSpec(
+    model=_HAIKU,
+    max_tokens=300,
+    system=_GENERATE_QUERIES_SYSTEM,
+    tool=_GENERATE_QUERIES_TOOL,
+    error_context="generate_queries",
+)
+_SELECT_URLS_CALL = _ToolCallSpec(
+    model=_HAIKU,
+    max_tokens=300,
+    system=_cached_system(_SELECT_URLS_SYSTEM),
+    tool=_SELECT_URLS_TOOL,
+    error_context="select_urls",
+)
+_SYNTHESIZE_CALL = _ToolCallSpec(
+    model=_SONNET,
+    max_tokens=4096,
+    system=_cached_system(_SYNTHESIZE_SYSTEM),
+    tool=_CREATE_PROFILE_TOOL,
+    error_context="synthesize",
+)
+_ASSESS_CALL = _ToolCallSpec(
+    model=_SONNET,
+    max_tokens=1024,
+    system=_cached_system(_ASSESS_SYSTEM),
+    tool=_ASSESS_TOOL,
+    error_context="assess",
+)
+
+
 def _make_citation_lookup(
     sources: list[SearchResult], content: dict[str, str]
 ) -> dict[str, SearchResult]:
@@ -367,25 +448,48 @@ def _find_tool_block(content: list[Any], name: str) -> Any | None:  # noqa: ANN4
     )
 
 
+async def _call_tool(
+    client: AsyncAnthropic, spec: _ToolCallSpec, *, messages: list[dict[str, Any]]
+) -> Any:  # noqa: ANN401
+    """Run one forced-tool Claude call and return the matching block's input.
+
+    Every Claude call in this module shares this shape: pick one tool, force
+    Claude to use it, then unpack the resulting `tool_use` block. Centralizing
+    it here means "Claude answered without using the tool" — the one failure
+    mode every caller has to handle — lives in one place instead of five, and
+    is the natural seam for retry-on-transient-error logic later.
+
+    Raises RuntimeError naming both the caller (`spec.error_context`) and the
+    expected tool if no matching `tool_use` block comes back.
+    """
+    tool_name = spec.tool["name"]
+    response = await client.messages.create(
+        model=spec.model,
+        max_tokens=spec.max_tokens,
+        system=spec.system,  # type: ignore[arg-type]
+        tools=[spec.tool],  # type: ignore[arg-type]
+        tool_choice={"type": "tool", "name": tool_name},  # type: ignore[arg-type]
+        messages=messages,  # type: ignore[arg-type]
+    )
+    block = _find_tool_block(list(response.content), tool_name)
+    if block is None:
+        msg = f"{spec.error_context}: no {tool_name} tool block in response"
+        raise RuntimeError(msg)
+    return block.input
+
+
 async def categorize(client: AsyncAnthropic, query: str) -> Category:
     """Classify the query as person, place, event, or other."""
     logger.debug("categorize query={!r}", query)
     response = await _create_with_retries(
         "categorize",
-        lambda: client.messages.create(
-            model=_HAIKU,
-            max_tokens=100,
-            system=_CATEGORIZE_SYSTEM,
-            tools=[_CATEGORIZE_TOOL],  # type: ignore[arg-type]
-            tool_choice={"type": "tool", "name": "categorize_result"},  # type: ignore[arg-type]
+        lambda: _call_tool(
+            client,
+            _CATEGORIZE_CALL,
             messages=[{"role": "user", "content": f"Categorize this search term: {query}"}],
         ),
     )
-    block = _find_tool_block(list(response.content), "categorize_result")
-    if block is None:
-        msg = "categorize: no tool_use block in response"
-        raise RuntimeError(msg)
-    return _CategorizeOutput(**block.input).category
+    return _CategorizeOutput(**response).category  # type:ignore[reportCallIssue]
 
 
 async def generate_queries(client: AsyncAnthropic, query: str, category: Category) -> list[str]:
@@ -393,20 +497,13 @@ async def generate_queries(client: AsyncAnthropic, query: str, category: Categor
     logger.debug("generate_queries query={!r} category={}", query, category)
     response = await _create_with_retries(
         "generate_queries",
-        lambda: client.messages.create(
-            model=_HAIKU,
-            max_tokens=300,
-            system=_GENERATE_QUERIES_SYSTEM,
-            tools=[_GENERATE_QUERIES_TOOL],  # type: ignore[arg-type]
-            tool_choice={"type": "tool", "name": "generate_queries_result"},  # type: ignore[arg-type]
+        lambda: _call_tool(
+            client,
+            _GENERATE_QUERIES_CALL,
             messages=[{"role": "user", "content": f"Subject: {query}\nCategory: {category}"}],
         ),
     )
-    block = _find_tool_block(list(response.content), "generate_queries_result")
-    if block is None:
-        msg = "generate_queries: no tool_use block in response"
-        raise RuntimeError(msg)
-    return _GenerateQueriesOutput(**block.input).queries
+    return _GenerateQueriesOutput(**response).queries  # type:ignore[reportCallIssue]
 
 
 def _format_result(r: SearchResult) -> str:
@@ -427,28 +524,15 @@ async def select_urls(
     formatted = "\n".join(_format_result(r) for r in results)
     response = await _create_with_retries(
         "select_urls",
-        lambda: client.messages.create(
-            model=_HAIKU,
-            max_tokens=300,
-            system=[  # type: ignore[arg-type]
-                {
-                    "type": "text",
-                    "text": _SELECT_URLS_SYSTEM,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            tools=[_SELECT_URLS_TOOL],  # type: ignore[arg-type]
-            tool_choice={"type": "tool", "name": "select_urls_result"},  # type: ignore[arg-type]
+        lambda: _call_tool(
+            client,
+            _SELECT_URLS_CALL,
             messages=[
                 {"role": "user", "content": f"Subject: {query}\n\nSearch results:\n{formatted}"}
             ],
         ),
     )
-    block = _find_tool_block(list(response.content), "select_urls_result")
-    if block is None:
-        msg = "select_urls: no tool_use block in response"
-        raise RuntimeError(msg)
-    return _SelectUrlsOutput(**block.input).urls
+    return _SelectUrlsOutput(**response).urls  # type:ignore[reportCallIssue]
 
 
 async def synthesize(
@@ -464,26 +548,13 @@ async def synthesize(
     user_message = f"Build a {category} profile for: {query}\n\nSource content:\n{sections}"
     response = await _create_with_retries(
         "synthesize",
-        lambda: client.messages.create(
-            model=_SONNET,
-            max_tokens=4096,
-            system=[  # type: ignore[arg-type]
-                {
-                    "type": "text",
-                    "text": _SYNTHESIZE_SYSTEM,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            tools=[_CREATE_PROFILE_TOOL],  # type: ignore[arg-type]
-            tool_choice={"type": "tool", "name": "create_profile"},  # type: ignore[arg-type]
-            messages=[{"role": "user", "content": user_message}],  # type: ignore[arg-type]
+        lambda: _call_tool(
+            client,
+            _SYNTHESIZE_CALL,
+            messages=[{"role": "user", "content": user_message}],
         ),
     )
-    block = _find_tool_block(list(response.content), "create_profile")
-    if block is None:
-        msg = "synthesize: no create_profile tool block in response"
-        raise RuntimeError(msg)
-    parsed = _SynthesizeOutput(**block.input)
+    parsed = _SynthesizeOutput(**response)  # type:ignore[reportCallIssue]
     lookup = _make_citation_lookup(sources, content)
     citations = [
         Citation(url=lookup[u].url, title=lookup[u].title, snippet=lookup[u].content)
@@ -532,26 +603,13 @@ async def assess(
     user_message = f"Subject: {query}\n\nProfile:\n{profile_block}\n\nSource content:\n{sections}"
     response = await _create_with_retries(
         "assess",
-        lambda: client.messages.create(
-            model=_SONNET,
-            max_tokens=1024,
-            system=[  # type: ignore[arg-type]
-                {
-                    "type": "text",
-                    "text": _ASSESS_SYSTEM,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            tools=[_ASSESS_TOOL],  # type: ignore[arg-type]
-            tool_choice={"type": "tool", "name": "assess_profile"},  # type: ignore[arg-type]
-            messages=[{"role": "user", "content": user_message}],  # type: ignore[arg-type]
+        lambda: _call_tool(
+            client,
+            _ASSESS_CALL,
+            messages=[{"role": "user", "content": user_message}],
         ),
     )
-    block = _find_tool_block(list(response.content), "assess_profile")
-    if block is None:
-        msg = "assess: no assess_profile tool block in response"
-        raise RuntimeError(msg)
-    parsed = _AssessOutput(**block.input)
+    parsed = _AssessOutput(**response)  # type:ignore[reportCallIssue]
     return Assessment(
         public_sentiment=parsed.public_sentiment,
         subject_political_bias=parsed.subject_political_bias,

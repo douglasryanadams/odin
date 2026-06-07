@@ -212,6 +212,27 @@ def test_profile_has_single_h1(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_profile_stream_categorized_event_carries_claudes_category(
+    client: TestClient, mock_anthropic: MagicMock
+) -> None:
+    """The 'categorized' SSE event carries the exact category Claude returned.
+
+    This is the one place an unvalidated string crosses straight from Claude's
+    tool-use response to the frontend with no Pydantic model in between — pin
+    the happy-path contract here so adding schema validation on the categorize
+    side can't silently change what a valid category looks like on the wire.
+    """
+    _setup_page_fetcher()
+    side_effects = _pipeline_side_effects()
+    side_effects[0] = api_response([tool_block("categorize_result", {"category": "person"})])
+    mock_anthropic.messages.create.side_effect = side_effects
+
+    response = client.get("/profile/stream?q=foo")
+    categorized = next(e for e in _parse_sse_events(response.text) if e["type"] == "categorized")
+
+    assert categorized == {"type": "categorized", "category": "person"}
+
+
 def test_profile_stream_emits_service_unavailable_on_rate_limit_error(
     client: TestClient, mock_anthropic: MagicMock
 ) -> None:
