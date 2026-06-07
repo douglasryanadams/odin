@@ -76,6 +76,23 @@ async def build_profile(
         )
 
 
+async def _gather_search_results(queries: list[str], searcher: SearchBackend) -> list[SearchResult]:
+    """Search for every query with bounded concurrency, then merge duplicate URLs.
+
+    Caps in-flight backend.search calls at SEARCH_QUERY_CONCURRENCY so a long
+    query list can't overwhelm the search backend, then hands the per-query
+    batches to merge_results to dedupe by URL and union engines.
+    """
+    semaphore = asyncio.Semaphore(SEARCH_QUERY_CONCURRENCY)
+
+    async def _throttled_search(q: str) -> list[SearchResult]:
+        async with semaphore:
+            return await searcher.search(q)
+
+    results_per_query = await asyncio.gather(*[_throttled_search(q) for q in queries])
+    return merge_results(results_per_query)
+
+
 async def _run_pipeline(
     query: str,
     searcher: SearchAggregator,
@@ -90,14 +107,7 @@ async def _run_pipeline(
     logger.debug("queries generated count={}", len(queries))
     yield StageEvent(stage="queries", data={"queries": queries})
 
-    semaphore = asyncio.Semaphore(SEARCH_QUERY_CONCURRENCY)
-
-    async def _throttled_search(q: str) -> list[SearchResult]:
-        async with semaphore:
-            return await searcher.search(q)
-
-    results_per_query = await asyncio.gather(*[_throttled_search(q) for q in queries])
-    unique_results = merge_results(results_per_query)
+    unique_results = await _gather_search_results(queries, searcher)
     allowed_results = url_filter.filter_search_results(
         unique_results, blocked_domains=settings.url_domain_blocklist
     )

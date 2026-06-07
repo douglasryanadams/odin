@@ -69,6 +69,61 @@ async def test_pipeline_bounds_search_concurrency() -> None:
     assert max_inflight >= 2, "sanity: the test should actually exercise concurrency"
 
 
+async def test_gather_search_results_bounds_concurrency() -> None:
+    """_gather_search_results caps in-flight backend.search calls at SEARCH_QUERY_CONCURRENCY.
+
+    Same guarantee as test_pipeline_bounds_search_concurrency, aimed directly
+    at the extracted function rather than driven through the whole pipeline.
+    """
+    inflight = 0
+    max_inflight = 0
+
+    async def fake_search(q: str) -> list[SearchResult]:
+        nonlocal inflight, max_inflight
+        inflight += 1
+        max_inflight = max(max_inflight, inflight)
+        await asyncio.sleep(0.05)
+        inflight -= 1
+        return [SearchResult(url=f"https://e/{q}", title=q, content="", engines=["x"])]
+
+    queries = [f"q{i}" for i in range(6)]
+
+    await pipeline._gather_search_results(queries, _FakeBackend(fake_search))  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+
+    assert max_inflight <= pipeline.SEARCH_QUERY_CONCURRENCY
+    assert max_inflight >= 2, "sanity: the test should actually exercise concurrency"
+
+
+async def test_gather_search_results_merges_duplicates_across_queries() -> None:
+    """Results that surface from more than one query are merged, not duplicated.
+
+    merge_results dedupes by URL in first-seen order and unions engines —
+    pin that _gather_search_results actually feeds it the per-query batches
+    in query order, so a result every query finds keeps its first slot and
+    accumulates every engine that found it.
+    """
+
+    async def fake_search(q: str) -> list[SearchResult]:
+        return [
+            SearchResult(url="https://shared.example", title="Shared", content="c", engines=[q]),
+            SearchResult(url=f"https://only/{q}", title=q, content="c", engines=[q]),
+        ]
+
+    queries = ["q0", "q1", "q2"]
+
+    results = await pipeline._gather_search_results(queries, _FakeBackend(fake_search))  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+
+    urls = [result.url for result in results]
+    assert urls == [
+        "https://shared.example",
+        "https://only/q0",
+        "https://only/q1",
+        "https://only/q2",
+    ]
+    shared = results[0]
+    assert shared.engines == ["q0", "q1", "q2"]
+
+
 def _make_tracing_pipeline_doubles() -> tuple[
     list[str],
     dict[str, object],
