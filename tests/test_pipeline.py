@@ -9,7 +9,7 @@ import pytest
 
 from odin import pipeline
 from odin.models import Assessment, Profile
-from odin.search import SearchResult
+from odin.search import SearchAggregator, SearchResult
 
 
 @dataclass(frozen=True)
@@ -58,7 +58,10 @@ async def test_pipeline_bounds_search_concurrency() -> None:
         patch.object(pipeline.claude, "assess", AsyncMock(side_effect=Exception("skip"))),
     ):
         async for _ in pipeline.build_profile(
-            "foo", _FakeBackend(fake_search), anthropic, _FakeFetcher()
+            "foo",
+            SearchAggregator(backends=(_FakeBackend(fake_search),)),
+            anthropic,
+            _FakeFetcher(),
         ):
             pass
 
@@ -146,7 +149,7 @@ async def test_pipeline_emits_synthesizing_and_assessing_events_at_phase_boundar
     ):
         events: list[str] = []
         async for ev in pipeline.build_profile(
-            "foo", _FakeBackend(search_fn), MagicMock(), fetcher_cls()
+            "foo", SearchAggregator(backends=(_FakeBackend(search_fn),)), MagicMock(), fetcher_cls()
         ):
             trace.append(f"yield:{ev.stage}")
             events.append(ev.stage)
@@ -196,7 +199,10 @@ async def test_pipeline_yields_service_unavailable_when_all_fetched_content_is_e
         stages = [
             ev.stage
             async for ev in pipeline.build_profile(
-                "foo", _FakeBackend(fake_search), MagicMock(), _EmptyFetcher()
+                "foo",
+                SearchAggregator(backends=(_FakeBackend(fake_search),)),
+                MagicMock(),
+                _EmptyFetcher(),
             )
         ]
 
@@ -244,10 +250,96 @@ async def test_pipeline_filters_disallowed_urls_before_select(
         patch.object(pipeline.claude, "assess", AsyncMock(side_effect=Exception("skip"))),
     ):
         async for _ in pipeline.build_profile(
-            "foo", _FakeBackend(fake_search), MagicMock(), _FakeFetcher()
+            "foo",
+            SearchAggregator(backends=(_FakeBackend(fake_search),)),
+            MagicMock(),
+            _FakeFetcher(),
         ):
             pass
 
     assert len(received) == 1
     forwarded = [r.url for r in received[0]]
     assert forwarded == ["https://example.com/article", "https://example.org/page"]
+
+
+def _profile_double() -> Profile:
+    return Profile(
+        name="n",
+        category="other",
+        summary="s",
+        highlights=[],
+        lowlights=[],
+        timeline=[],
+        citations=[],
+    )
+
+
+async def test_pipeline_names_backends_that_contributed_no_results() -> None:
+    """The searching event names backends absent from the merged results' provenance.
+
+    A backend can come up empty because it errored, timed out, or genuinely had
+    nothing relevant — the aggregator does not distinguish these (and shouldn't
+    have to: see _guarded). The user-facing message only needs the fact a reader
+    cares about — which backends shaped this profile — not a guess at why one
+    didn't.
+    """
+
+    async def brave_search(_q: str) -> list[SearchResult]:
+        return [SearchResult(url="https://example.com/a", title="a", engines=["brave"])]
+
+    async def wikipedia_search(_q: str) -> list[SearchResult]:
+        return []
+
+    aggregator = SearchAggregator(
+        backends=(
+            _FakeBackend(brave_search, name="brave"),
+            _FakeBackend(wikipedia_search, name="wikipedia"),
+        )
+    )
+
+    with (
+        patch.object(pipeline.claude, "categorize", AsyncMock(return_value="other")),
+        patch.object(pipeline.claude, "generate_queries", AsyncMock(return_value=["q1", "q2"])),
+        patch.object(pipeline.claude, "select_urls", AsyncMock(return_value=[])),
+        patch.object(pipeline.claude, "synthesize", AsyncMock(return_value=_profile_double())),
+        patch.object(pipeline.claude, "assess", AsyncMock(side_effect=Exception("skip"))),
+    ):
+        events = [
+            ev
+            async for ev in pipeline.build_profile("foo", aggregator, MagicMock(), _FakeFetcher())
+        ]
+
+    searching = next(ev for ev in events if ev.stage == "searching")
+    assert searching.data["missing_backends"] == ["wikipedia"]
+
+
+async def test_pipeline_reports_no_missing_backends_when_all_contribute() -> None:
+    """When every configured backend's results survive into the merged set, nothing is missing."""
+
+    async def brave_search(_q: str) -> list[SearchResult]:
+        return [SearchResult(url="https://example.com/a", title="a", engines=["brave"])]
+
+    async def wikipedia_search(_q: str) -> list[SearchResult]:
+        return [SearchResult(url="https://example.com/b", title="b", engines=["wikipedia"])]
+
+    aggregator = SearchAggregator(
+        backends=(
+            _FakeBackend(brave_search, name="brave"),
+            _FakeBackend(wikipedia_search, name="wikipedia"),
+        )
+    )
+
+    with (
+        patch.object(pipeline.claude, "categorize", AsyncMock(return_value="other")),
+        patch.object(pipeline.claude, "generate_queries", AsyncMock(return_value=["q1"])),
+        patch.object(pipeline.claude, "select_urls", AsyncMock(return_value=[])),
+        patch.object(pipeline.claude, "synthesize", AsyncMock(return_value=_profile_double())),
+        patch.object(pipeline.claude, "assess", AsyncMock(side_effect=Exception("skip"))),
+    ):
+        events = [
+            ev
+            async for ev in pipeline.build_profile("foo", aggregator, MagicMock(), _FakeFetcher())
+        ]
+
+    searching = next(ev for ev in events if ev.stage == "searching")
+    assert searching.data["missing_backends"] == []
