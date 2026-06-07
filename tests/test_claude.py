@@ -84,6 +84,24 @@ async def test_call_tool_raises_runtime_error_naming_the_tool_when_block_missing
 
 
 @pytest.mark.asyncio
+async def test_categorize_raises_when_claude_returns_an_unexpected_category(
+    mock_client: MagicMock,
+) -> None:
+    """Categorize raises a clear error if Claude's tool call drifts off its category schema.
+
+    The category crosses straight into an SSE event with no Pydantic model
+    downstream to catch a bad value — this is the one place to fail loudly
+    before an off-schema string reaches the frontend.
+    """
+    mock_client.messages.create.return_value = api_response(
+        [tool_block("categorize_result", {"category": "robot"})]
+    )
+
+    with pytest.raises(RuntimeError, match=r"categorize: unexpected category 'robot' from Claude"):
+        await claude.categorize(mock_client, "test query")
+
+
+@pytest.mark.asyncio
 async def test_synthesize_makes_single_call_with_content(mock_client: MagicMock) -> None:
     """synthesize() makes exactly one API call and embeds source content in the user message."""
     mock_client.messages.create.return_value = api_response(

@@ -3,7 +3,7 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, get_args
 
 from anthropic import (
     APIConnectionError,
@@ -66,9 +66,25 @@ async def _create_with_retries(stage: str, request: Callable[[], Awaitable[Messa
             await asyncio.sleep(delay)
 
 
+_CATEGORIES = get_args(Category)
+
+
 @dataclass(frozen=True)
 class _CategorizeOutput:
+    """The categorize tool's parsed output.
+
+    This is the one Claude-tool-use result that flows to the frontend with no
+    Pydantic model downstream to catch a value outside the schema — it goes
+    straight into an SSE event the browser renders verbatim. Validate it here,
+    at the boundary, rather than let an off-schema string travel silently.
+    """
+
     category: Category
+
+    def __post_init__(self) -> None:
+        if self.category not in _CATEGORIES:
+            msg = f"categorize: unexpected category {self.category!r} from Claude"
+            raise RuntimeError(msg)
 
 
 @dataclass(frozen=True)
