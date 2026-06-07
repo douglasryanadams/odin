@@ -38,3 +38,6 @@ traces/
 
 # Claude Code resume marker
 .resume_claude
+
+# Claude Code worktrees (full repo copies with their own .venv/node_modules)
+.claude/worktrees/

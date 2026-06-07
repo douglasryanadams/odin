@@ -32,10 +32,10 @@ lint-frontend: node_modules
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node npx eslint --config config/eslint.config.js "static/js/**/*.js"
 
 lint-markdown: node_modules
-	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node npx markdownlint-cli2 --config config/.markdownlint.jsonc "**/*.md" "!node_modules" "!.git" "!.ruff_cache" "!.pytest_cache" "!.notes.md"
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node npx markdownlint-cli2 --config config/.markdownlint.jsonc "**/*.md" "!node_modules" "!.git" "!.ruff_cache" "!.pytest_cache" "!.notes.md" "!**/.venv" "!.claude/worktrees"
 
 lint-links: node_modules
-	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node sh -c "find . -name '*.md' -not -path './node_modules/*' -not -path './.git/*' -not -path './.ruff_cache/*' -not -path './.pytest_cache/*' -not -name '.notes.md' -print0 | xargs -0 -n1 npx markdown-link-check --quiet --config config/.markdown-link-check.json"
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm node sh -c "find . -name '*.md' -not -path './node_modules/*' -not -path './.git/*' -not -path './.ruff_cache/*' -not -path './.pytest_cache/*' -not -name '.notes.md' -not -path '*/.venv/*' -not -path './.claude/worktrees/*' -print0 | xargs -0 -n1 npx markdown-link-check --quiet --config config/.markdown-link-check.json"
 
 metrics:
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run radon raw -s .
