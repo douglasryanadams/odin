@@ -59,6 +59,31 @@ def mock_client() -> MagicMock:
 
 
 @pytest.mark.asyncio
+async def test_call_tool_raises_runtime_error_naming_the_tool_when_block_missing(
+    mock_client: MagicMock,
+) -> None:
+    """_call_tool raises a RuntimeError that names both the caller and the missing tool.
+
+    This is the one path every one of the five Claude-calling functions relies
+    on but none of them tests directly — Claude returned a response with no
+    matching tool_use block (e.g. it answered in plain text instead).
+    """
+    mock_client.messages.create.return_value = api_response([])
+    spec = claude._ToolCallSpec(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+        model="claude-haiku-4-5-20251001",
+        max_tokens=100,
+        system="system prompt",
+        tool={"name": "categorize_result", "input_schema": {}},
+        error_context="categorize",
+    )
+
+    with pytest.raises(RuntimeError, match=r"^categorize: no categorize_result tool block"):
+        await claude._call_tool(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+            mock_client, spec, messages=[{"role": "user", "content": "hello"}]
+        )
+
+
+@pytest.mark.asyncio
 async def test_synthesize_makes_single_call_with_content(mock_client: MagicMock) -> None:
     """synthesize() makes exactly one API call and embeds source content in the user message."""
     mock_client.messages.create.return_value = api_response(
