@@ -1,11 +1,16 @@
 """Tests for the claude module."""
 
-from unittest.mock import AsyncMock, MagicMock
+from collections.abc import Iterator, Mapping
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
+from anthropic import BadRequestError, RateLimitError
+from loguru import logger
 
 from helpers import api_response, tool_block
 from odin import claude
+from odin.config import settings
 from odin.models import Profile
 from odin.search import SearchResult
 
@@ -170,3 +175,185 @@ async def test_select_urls_includes_engine_tags(mock_client: MagicMock) -> None:
     user_message = mock_client.messages.create.call_args.kwargs["messages"][0]["content"]
     assert "Found by: google, bing" in user_message
     assert user_message.count("Found by") == 1
+
+
+def _rate_limit_error() -> Exception:
+    """Build a real RateLimitError (retryable) backed by an httpx 429 response."""
+    response = httpx.Response(429, request=httpx.Request("POST", "https://api.anthropic.com"))
+    return RateLimitError("rate limited", response=response, body=None)
+
+
+def _bad_request_error() -> Exception:
+    """Build a real BadRequestError (not retryable) backed by an httpx 400 response."""
+    response = httpx.Response(400, request=httpx.Request("POST", "https://api.anthropic.com"))
+    return BadRequestError("malformed request", response=response, body=None)
+
+
+@pytest.fixture(autouse=True)
+def mock_sleep() -> Iterator[AsyncMock]:
+    """Patch asyncio.sleep in the claude module so retry backoff doesn't slow the suite down.
+
+    Autouse because every test in this module exercises retry paths that sleep
+    between attempts; tests that assert on backoff timing request it by name.
+    """
+    with patch("odin.claude.asyncio.sleep", new_callable=AsyncMock) as sleep:
+        yield sleep
+
+
+_CATEGORIZE_RESPONSE = api_response([tool_block("categorize_result", {"category": "person"})])
+
+
+@pytest.mark.asyncio
+async def test_categorize_retries_transient_error_then_succeeds(
+    mock_client: MagicMock, mock_sleep: AsyncMock
+) -> None:
+    """categorize() retries once on a transient RateLimitError and returns on success."""
+    mock_client.messages.create = AsyncMock(side_effect=[_rate_limit_error(), _CATEGORIZE_RESPONSE])
+
+    category = await claude.categorize(mock_client, "Marie Curie")
+
+    assert category == "person"
+    assert mock_client.messages.create.call_count == 2
+    mock_sleep.assert_awaited_once_with(1.0)
+
+
+@pytest.mark.asyncio
+async def test_categorize_raises_after_exhausting_retry_bound(
+    mock_client: MagicMock, mock_sleep: AsyncMock
+) -> None:
+    """categorize() raises the transient error after exactly max_retries + 1 attempts."""
+    mock_client.messages.create = AsyncMock(side_effect=_rate_limit_error())
+
+    with patch.object(settings, "claude_max_retries", 2), pytest.raises(RateLimitError):
+        await claude.categorize(mock_client, "Marie Curie")
+
+    assert mock_client.messages.create.call_count == 3
+    assert mock_sleep.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_categorize_does_not_retry_non_retryable_error(
+    mock_client: MagicMock, mock_sleep: AsyncMock
+) -> None:
+    """A permanent error such as BadRequestError propagates on the first attempt."""
+    mock_client.messages.create = AsyncMock(side_effect=_bad_request_error())
+
+    with pytest.raises(BadRequestError):
+        await claude.categorize(mock_client, "Marie Curie")
+
+    assert mock_client.messages.create.call_count == 1
+    mock_sleep.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_categorize_retry_backoff_doubles_each_attempt(
+    mock_client: MagicMock, mock_sleep: AsyncMock
+) -> None:
+    """Backoff delay doubles with each retry, starting at the base delay."""
+    mock_client.messages.create = AsyncMock(
+        side_effect=[_rate_limit_error(), _rate_limit_error(), _CATEGORIZE_RESPONSE]
+    )
+
+    await claude.categorize(mock_client, "Marie Curie")
+
+    assert [c.args[0] for c in mock_sleep.await_args_list] == [1.0, 2.0]
+
+
+@pytest.mark.asyncio
+async def test_categorize_logs_stage_name_when_retries_exhausted(
+    mock_client: MagicMock,
+) -> None:
+    """Exhausting retries emits exactly one ERROR record naming the failed stage."""
+    mock_client.messages.create = AsyncMock(side_effect=_rate_limit_error())
+    records: list[dict[str, object]] = []
+    sink_id = logger.add(
+        lambda msg: records.append(
+            {"level": msg.record["level"].name, "message": msg.record["message"]}
+        ),
+        level="WARNING",
+    )
+    try:
+        with patch.object(settings, "claude_max_retries", 1), pytest.raises(RateLimitError):
+            await claude.categorize(mock_client, "Marie Curie")
+    finally:
+        logger.remove(sink_id)
+
+    errors = [r for r in records if r["level"] == "ERROR"]
+    assert len(errors) == 1, f"expected exactly one ERROR, got {records}"
+    assert "categorize" in str(errors[0]["message"])
+
+
+@pytest.mark.asyncio
+async def test_generate_queries_retries_transient_error_then_succeeds(
+    mock_client: MagicMock,
+) -> None:
+    """generate_queries is wired through the retry wrapper like categorize."""
+    response = api_response([tool_block("generate_queries_result", {"queries": ["q1", "q2"]})])
+    mock_client.messages.create = AsyncMock(side_effect=[_rate_limit_error(), response])
+
+    queries = await claude.generate_queries(mock_client, "Marie Curie", "person")
+
+    assert queries == ["q1", "q2"]
+    assert mock_client.messages.create.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_select_urls_retries_transient_error_then_succeeds(
+    mock_client: MagicMock,
+) -> None:
+    """select_urls is wired through the retry wrapper like categorize."""
+    response = api_response([tool_block("select_urls_result", {"urls": ["https://example.com"]})])
+    mock_client.messages.create = AsyncMock(side_effect=[_rate_limit_error(), response])
+    results = [SearchResult(url="https://example.com", title="A", content="x")]
+
+    urls = await claude.select_urls(mock_client, "test", results)
+
+    assert urls == ["https://example.com"]
+    assert mock_client.messages.create.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_synthesize_retries_transient_error_then_succeeds(
+    mock_client: MagicMock,
+) -> None:
+    """synthesize() is wired through the retry wrapper like categorize()."""
+    response = api_response([tool_block("create_profile", _PROFILE_DATA)])
+    mock_client.messages.create = AsyncMock(side_effect=[_rate_limit_error(), response])
+    sources = [SearchResult(url="https://example.com", title="Example", content="snippet")]
+    content = {"https://example.com": "Marie Curie was a physicist."}
+
+    profile = await claude.synthesize(mock_client, "Marie Curie", "person", content, sources)
+
+    assert isinstance(profile, Profile)
+    assert mock_client.messages.create.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_assess_retries_transient_error_then_succeeds(
+    mock_client: MagicMock,
+) -> None:
+    """assess() is wired through the retry wrapper like categorize()."""
+    assess_data: Mapping[str, object] = {
+        "public_sentiment": 0.0,
+        "subject_political_bias": 0.0,
+        "source_political_bias": 0.0,
+        "law_chaos": 0.0,
+        "good_evil": 0.0,
+        "caveats": [],
+    }
+    response = api_response([tool_block("assess_profile", assess_data)])
+    mock_client.messages.create = AsyncMock(side_effect=[_rate_limit_error(), response])
+    profile = Profile(
+        name="Marie Curie",
+        category="person",
+        summary="A physicist.",
+        highlights=[],
+        lowlights=[],
+        timeline=[],
+    )
+    content = {"https://example.com": "Marie Curie was a physicist."}
+
+    assessment = await claude.assess(mock_client, "Marie Curie", profile, content)
+
+    assert assessment.public_sentiment == 0.0
+    assert mock_client.messages.create.call_count == 2

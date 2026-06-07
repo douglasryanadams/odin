@@ -1,11 +1,20 @@
 """Claude API client functions for the profile pipeline."""
 
+import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from anthropic import AsyncAnthropic
+from anthropic import (
+    APIConnectionError,
+    AsyncAnthropic,
+    InternalServerError,
+    RateLimitError,
+)
+from anthropic.types import Message
 from loguru import logger
 
+from odin.config import settings
 from odin.models import (
     Assessment,
     Category,
@@ -16,6 +25,45 @@ from odin.models import (
     TimelineEntry,
 )
 from odin.search import SearchResult
+
+# Transient, retryable SDK errors: rate limits, 5xx, and connection/timeout
+# issues (APITimeoutError subclasses APIConnectionError). Anything else (bad
+# requests, auth, missing tool blocks) is a permanent failure — retrying it
+# would just waste the bound.
+_RETRYABLE_EXCEPTIONS = (RateLimitError, InternalServerError, APIConnectionError)
+_RETRY_BASE_DELAY_SECONDS = 1.0
+
+
+async def _create_with_retries(stage: str, request: Callable[[], Awaitable[Message]]) -> Message:
+    """Run a Claude request, retrying transient errors with exponential backoff.
+
+    Bounded by settings.claude_max_retries; backoff doubles each attempt
+    starting at _RETRY_BASE_DELAY_SECONDS. Each retry and the final exhaustion
+    are logged with the stage name so failures are attributable per call site.
+    """
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            return await request()
+        except _RETRYABLE_EXCEPTIONS as exc:
+            if attempt > settings.claude_max_retries:
+                logger.error(
+                    "claude stage={} exhausted retries attempts={} error={}",
+                    stage,
+                    attempt,
+                    exc,
+                )
+                raise
+            delay = _RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
+            logger.warning(
+                "claude retry stage={} attempt={} delay={:.1f}s error={}",
+                stage,
+                attempt,
+                delay,
+                exc,
+            )
+            await asyncio.sleep(delay)
 
 
 @dataclass(frozen=True)
@@ -322,13 +370,16 @@ def _find_tool_block(content: list[Any], name: str) -> Any | None:  # noqa: ANN4
 async def categorize(client: AsyncAnthropic, query: str) -> Category:
     """Classify the query as person, place, event, or other."""
     logger.debug("categorize query={!r}", query)
-    response = await client.messages.create(
-        model=_HAIKU,
-        max_tokens=100,
-        system=_CATEGORIZE_SYSTEM,
-        tools=[_CATEGORIZE_TOOL],  # type: ignore[arg-type]
-        tool_choice={"type": "tool", "name": "categorize_result"},  # type: ignore[arg-type]
-        messages=[{"role": "user", "content": f"Categorize this search term: {query}"}],
+    response = await _create_with_retries(
+        "categorize",
+        lambda: client.messages.create(
+            model=_HAIKU,
+            max_tokens=100,
+            system=_CATEGORIZE_SYSTEM,
+            tools=[_CATEGORIZE_TOOL],  # type: ignore[arg-type]
+            tool_choice={"type": "tool", "name": "categorize_result"},  # type: ignore[arg-type]
+            messages=[{"role": "user", "content": f"Categorize this search term: {query}"}],
+        ),
     )
     block = _find_tool_block(list(response.content), "categorize_result")
     if block is None:
@@ -340,13 +391,16 @@ async def categorize(client: AsyncAnthropic, query: str) -> Category:
 async def generate_queries(client: AsyncAnthropic, query: str, category: Category) -> list[str]:
     """Generate 3-5 targeted search queries for the given subject."""
     logger.debug("generate_queries query={!r} category={}", query, category)
-    response = await client.messages.create(
-        model=_HAIKU,
-        max_tokens=300,
-        system=_GENERATE_QUERIES_SYSTEM,
-        tools=[_GENERATE_QUERIES_TOOL],  # type: ignore[arg-type]
-        tool_choice={"type": "tool", "name": "generate_queries_result"},  # type: ignore[arg-type]
-        messages=[{"role": "user", "content": f"Subject: {query}\nCategory: {category}"}],
+    response = await _create_with_retries(
+        "generate_queries",
+        lambda: client.messages.create(
+            model=_HAIKU,
+            max_tokens=300,
+            system=_GENERATE_QUERIES_SYSTEM,
+            tools=[_GENERATE_QUERIES_TOOL],  # type: ignore[arg-type]
+            tool_choice={"type": "tool", "name": "generate_queries_result"},  # type: ignore[arg-type]
+            messages=[{"role": "user", "content": f"Subject: {query}\nCategory: {category}"}],
+        ),
     )
     block = _find_tool_block(list(response.content), "generate_queries_result")
     if block is None:
@@ -371,19 +425,24 @@ async def select_urls(
     """Select the most relevant URLs from search results."""
     logger.debug("select_urls query={!r} candidates={}", query, len(results))
     formatted = "\n".join(_format_result(r) for r in results)
-    response = await client.messages.create(
-        model=_HAIKU,
-        max_tokens=300,
-        system=[  # type: ignore[arg-type]
-            {
-                "type": "text",
-                "text": _SELECT_URLS_SYSTEM,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        tools=[_SELECT_URLS_TOOL],  # type: ignore[arg-type]
-        tool_choice={"type": "tool", "name": "select_urls_result"},  # type: ignore[arg-type]
-        messages=[{"role": "user", "content": f"Subject: {query}\n\nSearch results:\n{formatted}"}],
+    response = await _create_with_retries(
+        "select_urls",
+        lambda: client.messages.create(
+            model=_HAIKU,
+            max_tokens=300,
+            system=[  # type: ignore[arg-type]
+                {
+                    "type": "text",
+                    "text": _SELECT_URLS_SYSTEM,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            tools=[_SELECT_URLS_TOOL],  # type: ignore[arg-type]
+            tool_choice={"type": "tool", "name": "select_urls_result"},  # type: ignore[arg-type]
+            messages=[
+                {"role": "user", "content": f"Subject: {query}\n\nSearch results:\n{formatted}"}
+            ],
+        ),
     )
     block = _find_tool_block(list(response.content), "select_urls_result")
     if block is None:
@@ -403,19 +462,22 @@ async def synthesize(
     logger.debug("synthesize query={!r} category={} sources={}", query, category, len(content))
     sections = "\n\n".join(f"--- {url} ---\n{text}" for url, text in content.items())
     user_message = f"Build a {category} profile for: {query}\n\nSource content:\n{sections}"
-    response = await client.messages.create(
-        model=_SONNET,
-        max_tokens=4096,
-        system=[  # type: ignore[arg-type]
-            {
-                "type": "text",
-                "text": _SYNTHESIZE_SYSTEM,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        tools=[_CREATE_PROFILE_TOOL],  # type: ignore[arg-type]
-        tool_choice={"type": "tool", "name": "create_profile"},  # type: ignore[arg-type]
-        messages=[{"role": "user", "content": user_message}],  # type: ignore[arg-type]
+    response = await _create_with_retries(
+        "synthesize",
+        lambda: client.messages.create(
+            model=_SONNET,
+            max_tokens=4096,
+            system=[  # type: ignore[arg-type]
+                {
+                    "type": "text",
+                    "text": _SYNTHESIZE_SYSTEM,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            tools=[_CREATE_PROFILE_TOOL],  # type: ignore[arg-type]
+            tool_choice={"type": "tool", "name": "create_profile"},  # type: ignore[arg-type]
+            messages=[{"role": "user", "content": user_message}],  # type: ignore[arg-type]
+        ),
     )
     block = _find_tool_block(list(response.content), "create_profile")
     if block is None:
@@ -468,19 +530,22 @@ async def assess(
     profile_block = _format_profile_for_assess(profile)
     sections = "\n\n".join(f"--- {url} ---\n{text}" for url, text in content.items())
     user_message = f"Subject: {query}\n\nProfile:\n{profile_block}\n\nSource content:\n{sections}"
-    response = await client.messages.create(
-        model=_SONNET,
-        max_tokens=1024,
-        system=[  # type: ignore[arg-type]
-            {
-                "type": "text",
-                "text": _ASSESS_SYSTEM,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        tools=[_ASSESS_TOOL],  # type: ignore[arg-type]
-        tool_choice={"type": "tool", "name": "assess_profile"},  # type: ignore[arg-type]
-        messages=[{"role": "user", "content": user_message}],  # type: ignore[arg-type]
+    response = await _create_with_retries(
+        "assess",
+        lambda: client.messages.create(
+            model=_SONNET,
+            max_tokens=1024,
+            system=[  # type: ignore[arg-type]
+                {
+                    "type": "text",
+                    "text": _ASSESS_SYSTEM,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            tools=[_ASSESS_TOOL],  # type: ignore[arg-type]
+            tool_choice={"type": "tool", "name": "assess_profile"},  # type: ignore[arg-type]
+            messages=[{"role": "user", "content": user_message}],  # type: ignore[arg-type]
+        ),
     )
     block = _find_tool_block(list(response.content), "assess_profile")
     if block is None:
