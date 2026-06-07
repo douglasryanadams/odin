@@ -102,8 +102,12 @@ def get_search_aggregator() -> search.SearchAggregator:
 
 
 def get_anthropic_client() -> AsyncAnthropic:
-    """Return an Anthropic client using ANTHROPIC_API_KEY from the environment."""
-    return AsyncAnthropic()
+    """Return an Anthropic client using ANTHROPIC_API_KEY from the environment.
+
+    max_retries=0 disables the SDK's built-in retry so claude._create_with_retries
+    is the single source of truth for attempt counts, backoff, and failure logging.
+    """
+    return AsyncAnthropic(max_retries=0)
 
 
 def get_page_fetcher(request: Request) -> fetch.PageFetcher:
