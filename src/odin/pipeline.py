@@ -10,7 +10,7 @@ from loguru import logger
 
 from odin import claude, fetch, url_filter
 from odin.config import settings
-from odin.search import SearchBackend, SearchResult, merge_results
+from odin.search import SearchAggregator, SearchBackend, SearchResult, merge_results
 
 SEARCH_QUERY_CONCURRENCY = 2
 
@@ -28,6 +28,20 @@ def _is_billing_error(exc: BadRequestError) -> bool:
     return cast("dict[str, Any]", error).get("type") == "billing_error"
 
 
+def _missing_backend_names(
+    results: list[SearchResult], backends: tuple[SearchBackend, ...]
+) -> list[str]:
+    """Name configured backends absent from the merged results' provenance.
+
+    A backend can contribute nothing for many reasons — error, timeout, or
+    genuinely nothing relevant — and the aggregator does not distinguish them
+    (see _guarded). Naming the backend states only the fact a reader cares
+    about: which sources did not shape this profile.
+    """
+    contributed = {engine for result in results for engine in result.engines}
+    return [backend.name for backend in backends if backend.name not in contributed]
+
+
 @dataclass
 class StageEvent:
     """A pipeline progress event yielded by build_profile."""
@@ -38,7 +52,7 @@ class StageEvent:
 
 async def build_profile(
     query: str,
-    searcher: SearchBackend,
+    searcher: SearchAggregator,
     anthropic_client: AsyncAnthropic,
     fetcher: fetch.PageFetcher,
 ) -> AsyncGenerator[StageEvent, None]:
@@ -64,7 +78,7 @@ async def build_profile(
 
 async def _run_pipeline(
     query: str,
-    searcher: SearchBackend,
+    searcher: SearchAggregator,
     anthropic_client: AsyncAnthropic,
     fetcher: fetch.PageFetcher,
 ) -> AsyncGenerator[StageEvent, None]:
@@ -91,7 +105,14 @@ async def _run_pipeline(
     if dropped:
         logger.debug("url_filter dropped count={} kept={}", dropped, len(allowed_results))
     logger.debug("search complete unique_results={}", len(allowed_results))
-    yield StageEvent(stage="searching", data={"result_count": len(allowed_results)})
+
+    missing_backends = _missing_backend_names(unique_results, searcher.backends)
+    if missing_backends:
+        logger.debug("backends contributed nothing names={}", missing_backends)
+    yield StageEvent(
+        stage="searching",
+        data={"result_count": len(allowed_results), "missing_backends": missing_backends},
+    )
 
     selected_urls = await claude.select_urls(anthropic_client, query, allowed_results)
     logger.debug("urls selected count={}", len(selected_urls))

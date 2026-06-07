@@ -37,6 +37,13 @@ const CATEGORY_ICONS = {
   other: "fa-circle-nodes",
 };
 
+// Display names for search backend identifiers, used when reporting which
+// ones did not shape a profile (see renderSourceNote).
+const BACKEND_DISPLAY_NAMES = {
+  brave: "Brave Search",
+  wikipedia: "Wikipedia",
+};
+
 // Visual layout for the ASCII progress bar
 const SEG_WIDTH = 10;       // chars per stage segment
 const STAGE_FILL_MS = 2400; // time to visually fill one segment while waiting
@@ -219,6 +226,24 @@ function setCategory(category) {
   }
   const kicker = $("kicker-category");
   if (kicker) kicker.textContent = category.charAt(0).toUpperCase() + category.slice(1);
+}
+
+// A backend can come up empty for many reasons (error, timeout, or simply
+// nothing relevant); the note only states the fact a reader cares about —
+// which backends did not shape this profile — not a guess at why.
+function renderSourceNote(data) {
+  const note = $("source-note");
+  if (!note) return;
+  const missing = data.missing_backends || [];
+  if (!missing.length) {
+    note.hidden = true;
+    return;
+  }
+  const names = missing.map((id) => BACKEND_DISPLAY_NAMES[id] || id);
+  const joined =
+    names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  note.textContent = `${joined} did not return results for this search.`;
+  note.hidden = false;
 }
 
 function renderEvents(listEl, items) {
@@ -504,7 +529,7 @@ function buildSentimentGauge({ label, leftLabel, rightLabel, value, neutral = fa
 const EVENT_HANDLERS = {
   categorized:  { active: "queries",     render: (d) => setCategory(d.category) },
   queries:      { active: "searching" },
-  searching:    { active: "fetching" },
+  searching:    { active: "fetching", render: renderSourceNote },
   fetching:     { active: "fetching" },
   synthesizing: { active: "synthesizing" },
   profile:      { active: "assessing", render: renderProfile },

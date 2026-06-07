@@ -341,6 +341,36 @@ def test_profile_stream_returns_sse(client: TestClient, mock_anthropic: MagicMoc
     ]
 
 
+def test_profile_stream_searching_event_names_backends_with_no_results(
+    client: TestClient,
+    mock_anthropic: MagicMock,
+    fake_search: FakeSearchBackend,
+) -> None:
+    """The searching SSE event names backends absent from the merged results' provenance.
+
+    The configured backend is named "fake", but here its results carry a
+    different engine stamp — standing in for a backend whose results never made
+    it into the merged set the profile draws from, whether from error, timeout,
+    or genuinely nothing relevant. The end-to-end SSE payload should name it,
+    not just the in-process pipeline generator (see test_pipeline.py).
+    """
+    _setup_page_fetcher()
+    fake_search.results = [
+        SearchResult(
+            url="https://example.com",
+            title="Example",
+            content="Example content",
+            engines=["other-backend"],
+        ),
+    ]
+    mock_anthropic.messages.create.side_effect = _pipeline_side_effects()
+
+    response = client.get("/profile/stream?q=foo")
+
+    searching_event = next(e for e in _parse_sse_events(response.text) if e["type"] == "searching")
+    assert searching_event["missing_backends"] == ["fake"]
+
+
 def test_profile_stream_records_query_after_completion(
     client: TestClient,
     mock_anthropic: MagicMock,
