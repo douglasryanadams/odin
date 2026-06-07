@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     anon_daily_limit: int = Field(default=3, ge=0)
     auth_daily_limit: int = Field(default=20, ge=0)
 
+    # Bounded retries with exponential backoff around transient Claude errors
+    # (rate limits, 5xx, connection issues). 3 caps worst-case added latency
+    # at 1+2+4 = 7s per stage; see claude._create_with_retries.
+    claude_max_retries: int = Field(default=3, ge=0)
+
     # Magic-link delivery defaults to Purelymail; override host/from for other providers.
     # Without SMTP_USER/SMTP_PASS the link is logged instead of sent (dev mode).
     smtp_host: str = "smtp.purelymail.com"
