@@ -119,6 +119,11 @@ class _AssessOutput:
 
 
 @dataclass(frozen=True)
+class _IdentifyGapsOutput:
+    queries: list[str]
+
+
+@dataclass(frozen=True)
 class _ToolCallSpec:
     """The fixed shape of one Claude call.
 
@@ -209,6 +214,16 @@ _ASSESS_SYSTEM = (
     "  Avoid generic disclaimers. If you cannot find anything noteworthy, return one item\n"
     "  with a brief like 'No significant audit findings.' and a short detail explaining why.\n"
     "Respond using the assess_profile tool."
+)
+
+_IDENTIFY_GAPS_SYSTEM = (
+    "You are a research assistant reviewing a draft profile built from an initial round of\n"
+    "research on a search subject. Identify up to 2 real gaps — aspects of the subject that\n"
+    "remain unexplored or thinly covered in the draft — and propose one targeted follow-up\n"
+    "search query for each gap that would help close it.\n"
+    "If the draft already covers the subject comprehensively, return an empty list: do not\n"
+    "invent a gap just to have something to report.\n"
+    "Respond using the identify_gaps_result tool."
 )
 
 
@@ -373,6 +388,30 @@ _ASSESS_TOOL: dict[str, Any] = {
 }
 
 
+_IDENTIFY_GAPS_TOOL: dict[str, Any] = {
+    "name": "identify_gaps_result",
+    "description": (
+        "Report follow-up search queries that would close coverage gaps in a draft profile, "
+        "or none if the draft already looks comprehensive."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "queries": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": 2,  # mirrors pipeline.DEEP_MODE_MAX_ROUNDS — the loop's hard cap
+                "description": (
+                    "0-2 targeted follow-up search queries, one per identified gap. "
+                    "Empty if the draft already covers the subject comprehensively."
+                ),
+            }
+        },
+        "required": ["queries"],
+    },
+}
+
+
 def _cached_system(text: str) -> list[dict[str, Any]]:
     """Wrap a system prompt for prompt-caching, as the longer prompts below need."""
     return [{"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}]
@@ -415,6 +454,13 @@ _ASSESS_CALL = _ToolCallSpec(
     system=_cached_system(_ASSESS_SYSTEM),
     tool=_ASSESS_TOOL,
     error_context="assess",
+)
+_IDENTIFY_GAPS_CALL = _ToolCallSpec(
+    model=_HAIKU,
+    max_tokens=200,
+    system=_IDENTIFY_GAPS_SYSTEM,
+    tool=_IDENTIFY_GAPS_TOOL,
+    error_context="identify_gaps",
 )
 
 
@@ -618,3 +664,30 @@ async def assess(
         good_evil=parsed.good_evil,
         caveats=parsed.caveats,
     )
+
+
+async def identify_gaps(
+    client: AsyncAnthropic,
+    query: str,
+    category: Category,
+    profile: Profile,
+) -> list[str]:
+    """Propose up to 2 follow-up queries that would close gaps in a draft profile.
+
+    Feeds Claude the same formatted draft `assess` reads — a structured,
+    cheap-to-send signal that's far more focused for gap-spotting than raw
+    page content would be. An empty result means the draft already looks
+    comprehensive; the deep pipeline's round loop relies on that to stop.
+    """
+    logger.debug("identify_gaps query={!r} category={}", query, category)
+    profile_block = _format_profile_for_assess(profile)
+    user_message = f"Subject: {query}\nCategory: {category}\n\nDraft profile:\n{profile_block}"
+    response = await _create_with_retries(
+        "identify_gaps",
+        lambda: _call_tool(
+            client,
+            _IDENTIFY_GAPS_CALL,
+            messages=[{"role": "user", "content": user_message}],
+        ),
+    )
+    return _IdentifyGapsOutput(**response).queries  # type:ignore[reportCallIssue]

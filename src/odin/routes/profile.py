@@ -40,6 +40,7 @@ async def profile_page(
     request: Request,
     q: Annotated[str, Query(max_length=MAX_QUERY_LEN)],
     valkey_client: Annotated[Valkey, Depends(get_valkey_client)],
+    deep: Annotated[bool, Query()] = False,  # noqa: FBT002 — HTTP query param, not a behavior switch
 ) -> HTMLResponse:
     """Render the profile page; assign anonymous cookie on first visit."""
     user = auth.get_current_user(request)
@@ -53,6 +54,7 @@ async def profile_page(
         "profile.html",
         {
             "query": q,
+            "deep": deep,
             "user": user,
             "used": used,
             "limit": limit,
@@ -82,6 +84,7 @@ async def profile_stream(  # noqa: PLR0913
     fetcher: Annotated[fetch.PageFetcher, Depends(get_page_fetcher)],
     valkey_client: Annotated[Valkey, Depends(get_valkey_client)],
     db_pool: Annotated[asyncpg.Pool, Depends(db.get_db_pool)],
+    deep: Annotated[bool, Query()] = False,  # noqa: FBT002 — HTTP query param, not a behavior switch
 ) -> StreamingResponse:
     """Stream profile pipeline progress as Server-Sent Events."""
     user = auth.get_current_user(request)
@@ -102,21 +105,28 @@ async def profile_stream(  # noqa: PLR0913
 
         return StreamingResponse(_rate_limited(), media_type="text/event-stream")
 
+    mode = "deep" if deep else "fast"
+
     async def event_generator() -> AsyncGenerator[str, None]:
-        cached = await cache.get(valkey_client, q)
+        cached = await cache.get(valkey_client, q, mode)
         if cached is not None:
             async for chunk in _replay_cached(cached):
                 yield chunk
             category = _category_from(cached)
             await _record_cached_query(db_pool, requester, q, category)
         else:
+            pipeline_events = (
+                pipeline.build_deep_profile(q, searcher, anthropic, fetcher)
+                if deep
+                else pipeline.build_profile(q, searcher, anthropic, fetcher)
+            )
             collected: list[dict[str, Any]] = []
             category = "other"
-            async for chunk in _stream_pipeline(q, searcher, anthropic, fetcher, collected):
+            async for chunk in _stream_pipeline(pipeline_events, collected):
                 yield chunk
             category = _category_from(collected) or category
             if not _had_failure(collected):
-                await cache.put(valkey_client, q, collected)
+                await cache.put(valkey_client, q, mode, collected)
             await _record_fresh_query(valkey_client, db_pool, requester, q, category)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -129,13 +139,10 @@ async def _replay_cached(events: list[dict[str, Any]]) -> AsyncGenerator[str, No
 
 
 async def _stream_pipeline(
-    q: str,
-    searcher: SearchAggregator,
-    anthropic: AsyncAnthropic,
-    fetcher: fetch.PageFetcher,
+    pipeline_events: AsyncGenerator[pipeline.StageEvent, None],
     collected: list[dict[str, Any]],
 ) -> AsyncGenerator[str, None]:
-    async for event in pipeline.build_profile(q, searcher, anthropic, fetcher):
+    async for event in pipeline_events:
         payload = {"type": event.stage, **event.data}
         collected.append(payload)
         yield f"data: {json.dumps(payload)}\n\n"
