@@ -343,6 +343,75 @@ function renderCitations(listEl, items) {
   if (counter) counter.textContent = `${items.length} cited`;
 }
 
+const CONNECTION_KIND_LABELS = {
+  corroboration: "Corroborates",
+  contradiction: "Contradicts",
+  link: "Links",
+};
+
+// Render a click-to-expand connection row: kind badge + assertion at rest,
+// detail and resolved source citations revealed on click. Mirrors
+// renderFinding's <details>/<summary> shape.
+function renderConnection(item) {
+  const details = el("details", "connection");
+  const summary = el("summary");
+
+  const kind = item.kind || "";
+  summary.appendChild(el("span", `connection__kind connection__kind--${kind}`, CONNECTION_KIND_LABELS[kind] || kind));
+  summary.appendChild(el("span", "connection__assertion", item.assertion || ""));
+
+  const more = el("span", "finding__more");
+  more.appendChild(el("span", "finding__chev", "▸"));
+  more.appendChild(el("span", "finding__more-label"));
+  summary.appendChild(more);
+
+  details.appendChild(summary);
+
+  const detail = el("div", "connection__detail");
+  detail.appendChild(el("p", null, item.detail || ""));
+
+  const citations = el("ul", "connection__citations");
+  (item.citations || []).forEach((citation) => {
+    const li = el("li", "connection__citation");
+    const link = el("a", "connection__citation-link", citation.title || domainOf(citation.url));
+    link.href = citation.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    li.appendChild(link);
+    li.appendChild(el("span", "connection__citation-domain mono", domainOf(citation.url)));
+    citations.appendChild(li);
+  });
+  detail.appendChild(citations);
+
+  details.appendChild(detail);
+  return details;
+}
+
+function renderConnections(listEl, items) {
+  listEl.replaceChildren();
+  if (!items || !items.length) {
+    listEl.appendChild(el("li", "findings__empty muted", listEl.dataset.empty || ""));
+    return;
+  }
+  items.forEach((item) => {
+    const li = el("li", "findings__item");
+    li.appendChild(renderConnection(item));
+    listEl.appendChild(li);
+  });
+  const hint = $("connections-hint");
+  if (hint && items.length) {
+    hint.textContent = `${items.length} items // click any for detail`;
+  }
+}
+
+// EVENT_HANDLERS render hooks receive the raw event payload and locate their
+// own section, the same way renderSourceNote/renderProfile do — `connections`
+// arrives as its own StageEvent, not nested in the profile payload.
+function renderConnectionsEvent(data) {
+  const listEl = document.querySelector("#section-connections .findings");
+  if (listEl) renderConnections(listEl, data.connections || []);
+}
+
 function renderProfile(data) {
   const name = data.name || "";
   const sidebarName = $("sidebar-name");
@@ -543,6 +612,8 @@ const EVENT_HANDLERS = {
   deep_gap_analysis:  { active: "synthesizing" },
   deep_searching:     { active: "searching" },
   deep_fetching:      { active: "fetching" },
+  deep_connecting:    { active: "synthesizing" },
+  connections:        { active: "synthesizing", render: renderConnectionsEvent },
 };
 
 function handleEvent(data) {

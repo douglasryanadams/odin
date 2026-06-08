@@ -15,6 +15,7 @@ from odin.search import SearchAggregator, SearchBackend, SearchResult, merge_res
 
 SEARCH_QUERY_CONCURRENCY = 2
 DEEP_MODE_MAX_ROUNDS = 2
+_CONNECTION_MIN_SOURCES = 2
 
 _SERVICE_UNAVAILABLE_MESSAGE = "Odin is temporarily paused. Please try again in a little while."
 _NO_SOURCES_MESSAGE = "No usable sources were found for this query. Please try rephrasing."
@@ -283,6 +284,39 @@ async def _run_followup_rounds(  # noqa: PLR0913 — bundling searcher/anthropic
         state.content = {**state.content, **new_content}
 
 
+async def _run_connection_pass(
+    query: str,
+    category: Category,
+    sources: list[SearchResult],
+    content: dict[str, str],
+    anthropic_client: AsyncAnthropic,
+) -> AsyncGenerator[StageEvent, None]:
+    """Look for corroboration, contradiction, and links across the gathered pages.
+
+    Runs once on the full merged set the follow-up rounds produced — never
+    per round, so this adds exactly one bounded Sonnet call to deep mode's
+    fixed cost regardless of how many rounds ran. Gated on `content` rather
+    than `sources`: `state.sources` carries every search result that survived
+    the URL filter (provenance for citation lookup), but `find_connections`
+    compares fetched *page text* against itself, and only a fraction of those
+    sources ever get fetched. Skipped silently below two fetched pages —
+    "cross-source" is meaningless with one, and spending a call to confirm
+    that would cost without ever returning anything, the same
+    cost-consciousness `_run_followup_rounds` already applies per round.
+    `claude.find_connections` does the actual grounding — every connection it
+    returns has already resolved to two distinct cited sources.
+    """
+    if len(content) < _CONNECTION_MIN_SOURCES:
+        logger.debug("connection pass skipped, only {} page(s) fetched", len(content))
+        return
+    yield StageEvent(stage="deep_connecting", data={"source_count": len(content)})
+    connections = await claude.find_connections(anthropic_client, query, category, content, sources)
+    logger.debug("connections found count={}", len(connections))
+    yield StageEvent(
+        stage="connections", data={"connections": [c.model_dump() for c in connections]}
+    )
+
+
 async def _run_deep_pipeline(
     query: str,
     searcher: SearchAggregator,
@@ -350,6 +384,11 @@ async def _run_deep_pipeline(
             query, gap_queries, state, searcher, anthropic_client, fetcher
         ):
             yield event
+
+    async for event in _run_connection_pass(
+        query, category, state.sources, state.content, anthropic_client
+    ):
+        yield event
 
     async for event in _finish_pipeline(
         query, category, state.content, state.sources, anthropic_client

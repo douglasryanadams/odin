@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from odin import pipeline
-from odin.models import Assessment, Profile
+from odin.models import Assessment, Connection, Profile
 from odin.search import SearchAggregator, SearchResult
 
 
@@ -424,6 +424,21 @@ def _final_profile() -> Profile:
     )
 
 
+def _constant_double[T](trace: list[str], label: str, value: T) -> Callable[..., Awaitable[T]]:
+    """Build an async double that records `call:{label}` and returns a fixed value.
+
+    Several deep-pipeline doubles do nothing but trace their call and hand
+    back a precomputed value — factored out so _make_deep_pipeline_doubles
+    doesn't repeat that shape per stage and stay under the complexity limit.
+    """
+
+    async def _double(*_args: object, **_kw: object) -> T:
+        trace.append(f"call:{label}")
+        return value
+
+    return _double
+
+
 def _make_deep_pipeline_doubles(
     gap_queries: list[str],
 ) -> tuple[
@@ -441,14 +456,6 @@ def _make_deep_pipeline_doubles(
     """
     trace: list[str] = []
     synth_calls = 0
-
-    async def trace_categorize(*_args: object, **_kw: object) -> str:
-        trace.append("call:categorize")
-        return "other"
-
-    async def trace_generate_queries(*_args: object, **_kw: object) -> list[str]:
-        trace.append("call:generate_queries")
-        return ["initial query"]
 
     async def trace_select_urls(
         _client: object, _query: str, results: list[SearchResult]
@@ -468,17 +475,6 @@ def _make_deep_pipeline_doubles(
         trace.append("call:synthesize")
         return _draft_profile() if synth_calls == 1 else _final_profile()
 
-    async def trace_assess(*_args: object, **_kw: object) -> Assessment:
-        trace.append("call:assess")
-        return Assessment(
-            public_sentiment=0.0,
-            subject_political_bias=0.0,
-            source_political_bias=0.0,
-            law_chaos=0.0,
-            good_evil=0.0,
-            caveats=[],
-        )
-
     async def trace_search(q: str) -> list[SearchResult]:
         trace.append(f"call:search:{q}")
         return [SearchResult(url=f"https://e/{q}", title=q, content="", engines=["x"])]
@@ -489,13 +485,23 @@ def _make_deep_pipeline_doubles(
             trace.append("call:fetch_pages")
             return dict.fromkeys(urls, "body")
 
+    empty_connections: list[Connection] = []
+    assessment = Assessment(
+        public_sentiment=0.0,
+        subject_political_bias=0.0,
+        source_political_bias=0.0,
+        law_chaos=0.0,
+        good_evil=0.0,
+        caveats=[],
+    )
     doubles: dict[str, object] = {
-        "categorize": trace_categorize,
-        "generate_queries": trace_generate_queries,
+        "categorize": _constant_double(trace, "categorize", "other"),
+        "generate_queries": _constant_double(trace, "generate_queries", ["initial query"]),
         "select_urls": trace_select_urls,
         "synthesize": trace_synthesize,
         "identify_gaps": AsyncMock(return_value=gap_queries),
-        "assess": trace_assess,
+        "find_connections": _constant_double(trace, "find_connections", empty_connections),
+        "assess": _constant_double(trace, "assess", assessment),
     }
     return trace, doubles, _TraceFetcher, trace_search
 
@@ -514,6 +520,7 @@ async def test_deep_profile_runs_followup_rounds_and_synthesizes_exactly_twice()
         patch.object(pipeline.claude, "select_urls", side_effect=doubles["select_urls"]),
         patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
         patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
+        patch.object(pipeline.claude, "find_connections", side_effect=doubles["find_connections"]),
         patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
     ):
         events = [
@@ -538,6 +545,8 @@ async def test_deep_profile_runs_followup_rounds_and_synthesizes_exactly_twice()
         "deep_fetching",
         "deep_searching",
         "deep_fetching",
+        "deep_connecting",
+        "connections",
         "synthesizing",
         "profile",
         "assessing",
@@ -564,6 +573,7 @@ async def test_deep_profile_skips_followup_rounds_when_no_gaps_identified() -> N
         patch.object(pipeline.claude, "select_urls", side_effect=doubles["select_urls"]),
         patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
         patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
+        patch.object(pipeline.claude, "find_connections", side_effect=doubles["find_connections"]),
         patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
     ):
         events = [
@@ -599,6 +609,7 @@ async def test_deep_profile_caps_followup_rounds_at_the_hard_limit() -> None:
         patch.object(pipeline.claude, "select_urls", side_effect=doubles["select_urls"]),
         patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
         patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
+        patch.object(pipeline.claude, "find_connections", side_effect=doubles["find_connections"]),
         patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
     ):
         events = [
@@ -643,6 +654,7 @@ async def test_deep_profile_skips_a_round_whose_results_all_dedupe_against_exist
         patch.object(pipeline.claude, "select_urls", side_effect=doubles["select_urls"]),
         patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
         patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
+        patch.object(pipeline.claude, "find_connections", side_effect=doubles["find_connections"]),
         patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
     ):
         events = [
@@ -687,6 +699,7 @@ async def test_deep_profile_final_synthesis_sees_merged_sources_and_content() ->
         patch.object(pipeline.claude, "select_urls", side_effect=doubles["select_urls"]),
         patch.object(pipeline.claude, "synthesize", side_effect=capturing_synthesize),
         patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
+        patch.object(pipeline.claude, "find_connections", side_effect=doubles["find_connections"]),
         patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
     ):
         async for _ in pipeline.build_deep_profile(
@@ -704,3 +717,95 @@ async def test_deep_profile_final_synthesis_sees_merged_sources_and_content() ->
     assert set(final_content) == {"https://e/initial query", "https://e/gap query"}
     assert {s.url for s in final_sources} == {"https://e/initial query", "https://e/gap query"}
     assert {s.url for s in draft_sources} <= {s.url for s in final_sources}
+
+
+async def test_deep_profile_runs_connection_pass_with_merged_sources_before_final_synthesis() -> (
+    None
+):
+    """The connection pass runs once, after the gap rounds, on the full merged source set.
+
+    It must see what the final synthesis sees — connections found only from
+    the initial pass would miss whatever the follow-up rounds turned up, and
+    citing sources the final profile never drew from would be its own kind of
+    ungrounded claim.
+    """
+    connection_calls: list[tuple[dict[str, str], list[SearchResult]]] = []
+
+    async def capturing_find_connections(
+        _client: object,
+        _query: str,
+        _category: str,
+        content: dict[str, str],
+        sources: list[SearchResult],
+    ) -> list[Connection]:
+        connection_calls.append((dict(content), list(sources)))
+        return []
+
+    _trace, doubles, fetcher_cls, search_fn = _make_deep_pipeline_doubles(["gap query"])
+    with (
+        patch.object(pipeline.claude, "categorize", side_effect=doubles["categorize"]),
+        patch.object(pipeline.claude, "generate_queries", side_effect=doubles["generate_queries"]),
+        patch.object(pipeline.claude, "select_urls", side_effect=doubles["select_urls"]),
+        patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
+        patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
+        patch.object(pipeline.claude, "find_connections", side_effect=capturing_find_connections),
+        patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
+    ):
+        events = [
+            ev
+            async for ev in pipeline.build_deep_profile(
+                "foo",
+                SearchAggregator(backends=(_FakeBackend(search_fn),)),
+                MagicMock(),
+                fetcher_cls(),
+            )
+        ]
+
+    stages = [ev.stage for ev in events]
+    assert stages.index("deep_fetching") < stages.index("deep_connecting")
+    assert stages.index("deep_connecting") < stages.index("connections")
+    assert stages.index("connections") < stages.index("synthesizing")
+
+    assert len(connection_calls) == 1
+    content, sources = connection_calls[0]
+    assert set(content) == {"https://e/initial query", "https://e/gap query"}
+    assert {s.url for s in sources} == {"https://e/initial query", "https://e/gap query"}
+
+    connecting_event = next(ev for ev in events if ev.stage == "deep_connecting")
+    assert connecting_event.data["source_count"] == 2
+    connections_event = next(ev for ev in events if ev.stage == "connections")
+    assert connections_event.data["connections"] == []
+
+
+async def test_deep_profile_skips_connection_pass_when_fewer_than_two_sources_gathered() -> None:
+    """A single surviving source skips the connection pass entirely — no call, no events.
+
+    "Cross-source" is meaningless with one source; spending a Sonnet call to
+    confirm that would cost without ever returning anything, the same
+    cost-consciousness `_run_followup_rounds` already applies when a round
+    turns up nothing new.
+    """
+    trace, doubles, fetcher_cls, search_fn = _make_deep_pipeline_doubles([])
+    with (
+        patch.object(pipeline.claude, "categorize", side_effect=doubles["categorize"]),
+        patch.object(pipeline.claude, "generate_queries", side_effect=doubles["generate_queries"]),
+        patch.object(pipeline.claude, "select_urls", side_effect=doubles["select_urls"]),
+        patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
+        patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
+        patch.object(pipeline.claude, "find_connections", side_effect=doubles["find_connections"]),
+        patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
+    ):
+        events = [
+            ev
+            async for ev in pipeline.build_deep_profile(
+                "foo",
+                SearchAggregator(backends=(_FakeBackend(search_fn),)),
+                MagicMock(),
+                fetcher_cls(),
+            )
+        ]
+
+    stages = [ev.stage for ev in events]
+    assert "deep_connecting" not in stages
+    assert "connections" not in stages
+    assert "call:find_connections" not in trace

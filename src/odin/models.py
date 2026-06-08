@@ -47,6 +47,24 @@ class Profile(BaseModel):
     citations: list[Citation] = []
 
 
+ConnectionKind = Literal["corroboration", "contradiction", "link"]
+
+
+class Connection(BaseModel):
+    """A corroboration, contradiction, or link found across multiple sources.
+
+    `citations` always names at least two distinct sources — a claim grounded
+    in a single source isn't a cross-source connection, and
+    `claude.find_connections` drops any candidate that doesn't resolve to two
+    distinct fetched pages before it ever reaches here.
+    """
+
+    kind: ConnectionKind
+    assertion: str
+    detail: str
+    citations: list[Citation]
+
+
 class Caveat(BaseModel):
     """A single audit caveat: short headline + expanded note."""
 

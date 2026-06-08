@@ -87,6 +87,16 @@
         <ul class="findings findings--down" data-empty="No lowlights identified.">
         </ul>
       </section>
+      {% if deep %}
+        <section id="section-connections">
+          <h2>
+            Cross-source connections <span class="profile__hint" id="connections-hint"></span>
+          </h2>
+          <ul class="findings findings--connections"
+              data-empty="No cross-source connections identified.">
+          </ul>
+        </section>
+      {% endif %}
       <section id="section-sources">
         <h2>
           Sources <span class="profile__hint" id="sources-count"></span>
