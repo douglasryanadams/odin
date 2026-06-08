@@ -20,6 +20,7 @@ from odin.models import (
     Category,
     Caveat,
     Citation,
+    Connection,
     Profile,
     ProfileHighlight,
     TimelineEntry,
@@ -124,6 +125,19 @@ class _IdentifyGapsOutput:
 
 
 @dataclass(frozen=True)
+class _FindConnectionsOutput:
+    """Raw connection candidates, before citation resolution drops the ungrounded ones.
+
+    Unlike `_SynthesizeOutput`'s nested lists, `connections` stays untyped
+    dicts here — `find_connections` must inspect each candidate's `citations`
+    individually to resolve and dedupe them, so there's no single pydantic
+    boundary to hand the raw list to wholesale.
+    """
+
+    connections: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
 class _ToolCallSpec:
     """The fixed shape of one Claude call.
 
@@ -224,6 +238,28 @@ _IDENTIFY_GAPS_SYSTEM = (
     "If the draft already covers the subject comprehensively, return an empty list: do not\n"
     "invent a gap just to have something to report.\n"
     "Respond using the identify_gaps_result tool."
+)
+
+_FIND_CONNECTIONS_SYSTEM = (
+    "You are a research analyst comparing multiple independently-sourced pages about the same\n"
+    "subject against each other — looking for patterns a reader skimming one source at a time\n"
+    "would miss. Identify up to 5 genuine connections, each one of:\n"
+    "- corroboration: two or more sources independently support the same claim\n"
+    "- contradiction: sources disagree on a fact, date, attribution, or interpretation\n"
+    "- link: a substantive relationship that only becomes visible when sources are read\n"
+    "  together, e.g. a person named in one source turns out to be central to an event\n"
+    "  described in another\n"
+    "Each connection has four fields:\n"
+    "    kind      — corroboration, contradiction, or link\n"
+    "    assertion — the connection itself, stated plainly in one or two sentences\n"
+    "    detail    — 2-4 sentences: what each source says and how they relate\n"
+    "    citations — the URLs of the *at least two distinct* source pages this connection\n"
+    "                bridges. A claim resting on a single source is not a cross-source\n"
+    "                connection — leave it out.\n"
+    "Only report connections you can support with specific content from the provided pages.\n"
+    "If you find no genuine cross-source connections, return an empty list — do not invent\n"
+    "one just to have something to report.\n"
+    "Respond using the find_connections_result tool."
 )
 
 
@@ -412,6 +448,50 @@ _IDENTIFY_GAPS_TOOL: dict[str, Any] = {
 }
 
 
+_FIND_CONNECTIONS_TOOL: dict[str, Any] = {
+    "name": "find_connections_result",
+    "description": (
+        "Report corroborations, contradictions, and links found across multiple sources, "
+        "each grounded in the specific source pages it bridges."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "connections": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "kind": {
+                            "type": "string",
+                            "enum": ["corroboration", "contradiction", "link"],
+                        },
+                        "assertion": {"type": "string"},
+                        "detail": {"type": "string"},
+                        "citations": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "minItems": 2,
+                            "description": (
+                                "URLs of the at least two distinct source pages this "
+                                "connection bridges. A connection grounded in only one "
+                                "source is not a cross-source connection."
+                            ),
+                        },
+                    },
+                    "required": ["kind", "assertion", "detail", "citations"],
+                },
+                "maxItems": 5,
+                "description": (
+                    "0-5 genuine cross-source connections. Empty if none survive scrutiny."
+                ),
+            }
+        },
+        "required": ["connections"],
+    },
+}
+
+
 def _cached_system(text: str) -> list[dict[str, Any]]:
     """Wrap a system prompt for prompt-caching, as the longer prompts below need."""
     return [{"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}]
@@ -461,6 +541,13 @@ _IDENTIFY_GAPS_CALL = _ToolCallSpec(
     system=_IDENTIFY_GAPS_SYSTEM,
     tool=_IDENTIFY_GAPS_TOOL,
     error_context="identify_gaps",
+)
+_FIND_CONNECTIONS_CALL = _ToolCallSpec(
+    model=_SONNET,
+    max_tokens=2048,
+    system=_cached_system(_FIND_CONNECTIONS_SYSTEM),
+    tool=_FIND_CONNECTIONS_TOOL,
+    error_context="find_connections",
 )
 
 
@@ -691,3 +778,74 @@ async def identify_gaps(
         ),
     )
     return _IdentifyGapsOutput(**response).queries  # type:ignore[reportCallIssue]
+
+
+def _resolve_connection_citations(
+    citation_urls: list[str], lookup: dict[str, SearchResult]
+) -> list[Citation]:
+    """Resolve a candidate connection's cited URLs to distinct fetched sources.
+
+    Mirrors `_make_citation_lookup`'s trailing-slash handling, then dedupes by
+    the resolved source's own URL — citing the same source through two URL
+    variants must not look like two distinct sources. Returns fewer than two
+    entries when the candidate doesn't actually bridge two distinct sources;
+    `find_connections` drops those candidates entirely.
+    """
+    resolved: dict[str, SearchResult] = {}
+    for url in citation_urls:
+        source = lookup.get(url)
+        if source is not None:
+            resolved[source.url] = source
+    return [Citation(url=s.url, title=s.title, snippet=s.content) for s in resolved.values()]
+
+
+_CONNECTION_MIN_DISTINCT_SOURCES = 2
+
+
+async def find_connections(
+    client: AsyncAnthropic,
+    query: str,
+    category: Category,
+    content: dict[str, str],
+    sources: list[SearchResult],
+) -> list[Connection]:
+    """Look for corroboration, contradiction, and links across multiple sources.
+
+    The cross-source connection is the highest fabrication-risk artifact in
+    the product — an LLM is good at inventing plausible, false links. So this
+    is the one place grounding is enforced per-claim rather than per-profile:
+    each candidate's citations are resolved the same way `synthesize` resolves
+    whole-profile citations, then any candidate that doesn't bridge at least
+    two *distinct* fetched sources is dropped before it ever ships. "A
+    connection without its supporting citations does not ship."
+    """
+    logger.debug(
+        "find_connections query={!r} category={} sources={}", query, category, len(content)
+    )
+    sections = "\n\n".join(f"--- {url} ---\n{text}" for url, text in content.items())
+    user_message = f"Subject: {query}\n\nSource content:\n{sections}"
+    response = await _create_with_retries(
+        "find_connections",
+        lambda: _call_tool(
+            client,
+            _FIND_CONNECTIONS_CALL,
+            messages=[{"role": "user", "content": user_message}],
+        ),
+    )
+    parsed = _FindConnectionsOutput(**response)  # type:ignore[reportCallIssue]
+    lookup = _make_citation_lookup(sources, content)
+    connections: list[Connection] = []
+    for raw in parsed.connections:
+        citations = _resolve_connection_citations(raw["citations"], lookup)
+        if len(citations) < _CONNECTION_MIN_DISTINCT_SOURCES:
+            continue
+        connections.append(
+            Connection(
+                kind=raw["kind"],
+                assertion=raw["assertion"],
+                detail=raw["detail"],
+                citations=citations,
+            )
+        )
+    logger.debug("find_connections grounded={}/{}", len(connections), len(parsed.connections))
+    return connections

@@ -198,6 +198,84 @@ async def test_synthesize_citation_dropped_when_url_has_no_matching_source(
 
 
 @pytest.mark.asyncio
+async def test_find_connections_drops_connections_that_resolve_to_fewer_than_two_sources(
+    mock_client: MagicMock,
+) -> None:
+    """A connection whose citations don't resolve to two distinct sources never ships.
+
+    Citing the same URL twice, or pairing a real URL with one that was never
+    fetched, both collapse to fewer than two distinct sources after
+    resolution — the gate that keeps the highest fabrication-risk artifact in
+    the product from shipping ungrounded. "A connection without its supporting
+    citations does not ship."
+    """
+    sources = [
+        SearchResult(url="https://a.com", title="A", content="snippet a"),
+        SearchResult(url="https://b.com", title="B", content="snippet b"),
+    ]
+    content = {"https://a.com": "Text from A.", "https://b.com": "Text from B."}
+    connections_data = {
+        "connections": [
+            {
+                "kind": "corroboration",
+                "assertion": "Both sources agree on the date.",
+                "detail": "Citing the same source twice proves nothing across sources.",
+                "citations": ["https://a.com", "https://a.com"],
+            },
+            {
+                "kind": "link",
+                "assertion": "A connects to a source that was never fetched.",
+                "detail": "One of the two citations does not resolve to a fetched page.",
+                "citations": ["https://a.com", "https://unknown.com"],
+            },
+        ]
+    }
+    mock_client.messages.create.return_value = api_response(
+        [tool_block("find_connections_result", connections_data)]
+    )
+
+    result = await claude.find_connections(mock_client, "Test Subject", "other", content, sources)
+
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_find_connections_resolves_citations_to_distinct_sources(
+    mock_client: MagicMock,
+) -> None:
+    """A connection grounded in two distinct sources passes through with resolved citations."""
+    sources = [
+        SearchResult(url="https://a.com", title="A", content="snippet a"),
+        SearchResult(url="https://b.com", title="B", content="snippet b"),
+    ]
+    content = {"https://a.com": "Text from A.", "https://b.com": "Text from B."}
+    connections_data = {
+        "connections": [
+            {
+                "kind": "contradiction",
+                "assertion": "The sources disagree on the founding year.",
+                "detail": "A says 1990; B says 1991.",
+                "citations": ["https://a.com", "https://b.com"],
+            }
+        ]
+    }
+    mock_client.messages.create.return_value = api_response(
+        [tool_block("find_connections_result", connections_data)]
+    )
+
+    result = await claude.find_connections(mock_client, "Test Subject", "other", content, sources)
+
+    assert len(result) == 1
+    connection = result[0]
+    assert connection.kind == "contradiction"
+    assert connection.assertion == "The sources disagree on the founding year."
+    assert connection.detail == "A says 1990; B says 1991."
+    assert {c.url for c in connection.citations} == {"https://a.com", "https://b.com"}
+    assert {c.title for c in connection.citations} == {"A", "B"}
+    assert {c.snippet for c in connection.citations} == {"snippet a", "snippet b"}
+
+
+@pytest.mark.asyncio
 async def test_select_urls_includes_engine_tags(mock_client: MagicMock) -> None:
     """select_urls includes 'Found by' engine tags for results that have engines."""
     mock_client.messages.create.return_value = api_response(
