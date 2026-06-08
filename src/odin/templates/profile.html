@@ -5,7 +5,10 @@
 {% endblock %}
 {% block social_meta %}{% endblock %}
 {% block body_class %}page-profile{% endblock %}
-{% block head_extra %}<meta name="odin-query" content="{{ query }}" />{% endblock %}
+{% block head_extra %}
+  <meta name="odin-query" content="{{ query }}" />
+  <meta name="odin-deep" content="{{ 'true' if deep else 'false' }}" />
+{% endblock %}
 {% block header_actions %}
   <form class="header-search" method="get" action="/profile" role="search">
     <label class="header-search__field">
@@ -17,6 +20,10 @@
              name="q"
              placeholder="New search…"
              autocomplete="off" />
+    </label>
+    <label class="header-search__deep-toggle">
+      <input type="checkbox" name="deep" value="true" />
+      <span>Deep</span>
     </label>
   </form>
   {% if user %}

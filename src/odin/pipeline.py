@@ -10,9 +10,11 @@ from loguru import logger
 
 from odin import claude, fetch, url_filter
 from odin.config import settings
+from odin.models import Category
 from odin.search import SearchAggregator, SearchBackend, SearchResult, merge_results
 
 SEARCH_QUERY_CONCURRENCY = 2
+DEEP_MODE_MAX_ROUNDS = 2
 
 _SERVICE_UNAVAILABLE_MESSAGE = "Odin is temporarily paused. Please try again in a little while."
 _NO_SOURCES_MESSAGE = "No usable sources were found for this query. Please try rephrasing."
@@ -50,17 +52,18 @@ class StageEvent:
     data: dict[str, Any]
 
 
-async def build_profile(
-    query: str,
-    searcher: SearchAggregator,
-    anthropic_client: AsyncAnthropic,
-    fetcher: fetch.PageFetcher,
+async def _run_with_degraded_errors(
+    pipeline: AsyncGenerator[StageEvent, None],
 ) -> AsyncGenerator[StageEvent, None]:
-    """Run the profile pipeline, yielding a StageEvent at each step."""
-    logger.debug("pipeline start query={!r}", query)
+    """Run a pipeline generator, turning Anthropic capacity errors into a degraded event.
 
+    A rate limit or billing cap means Odin itself is temporarily unable to
+    serve, not that this particular query failed — both fast and deep
+    pipelines surface that the same way, as a `service_unavailable` event
+    rather than a stack trace.
+    """
     try:
-        async for event in _run_pipeline(query, searcher, anthropic_client, fetcher):
+        async for event in pipeline:
             yield event
     except RateLimitError as exc:
         logger.warning("anthropic rate-limited: {}", exc)
@@ -74,6 +77,38 @@ async def build_profile(
         yield StageEvent(
             stage="service_unavailable", data={"message": _SERVICE_UNAVAILABLE_MESSAGE}
         )
+
+
+async def build_profile(
+    query: str,
+    searcher: SearchAggregator,
+    anthropic_client: AsyncAnthropic,
+    fetcher: fetch.PageFetcher,
+) -> AsyncGenerator[StageEvent, None]:
+    """Run the profile pipeline, yielding a StageEvent at each step."""
+    logger.debug("pipeline start query={!r}", query)
+    async for event in _run_with_degraded_errors(
+        _run_pipeline(query, searcher, anthropic_client, fetcher)
+    ):
+        yield event
+
+
+async def build_deep_profile(
+    query: str,
+    searcher: SearchAggregator,
+    anthropic_client: AsyncAnthropic,
+    fetcher: fetch.PageFetcher,
+) -> AsyncGenerator[StageEvent, None]:
+    """Run the deep-research pipeline: an initial pass plus bounded follow-up rounds.
+
+    Same degraded-error handling as `build_profile` — the only difference is
+    which orchestration runs underneath.
+    """
+    logger.debug("deep pipeline start query={!r}", query)
+    async for event in _run_with_degraded_errors(
+        _run_deep_pipeline(query, searcher, anthropic_client, fetcher)
+    ):
+        yield event
 
 
 async def _gather_search_results(queries: list[str], searcher: SearchBackend) -> list[SearchResult]:
@@ -130,13 +165,39 @@ async def _run_pipeline(
 
     content = await fetcher.fetch_pages(selected_urls)
     logger.debug("pages fetched count={}", len(content))
-    if not any(text.strip() for text in content.values()):
+
+    async for event in _finish_pipeline(
+        query, category, content, allowed_results, anthropic_client
+    ):
+        yield event
+
+
+def _all_pages_empty(content: dict[str, str]) -> bool:
+    """Report whether every fetched page came back blank, so callers can refuse to synthesize."""
+    return not any(text.strip() for text in content.values())
+
+
+async def _finish_pipeline(
+    query: str,
+    category: Category,
+    content: dict[str, str],
+    sources: list[SearchResult],
+    anthropic_client: AsyncAnthropic,
+) -> AsyncGenerator[StageEvent, None]:
+    """Run the shared tail both pipelines end with: synthesize, then assess.
+
+    Guards against empty content, then synthesizes the final profile and
+    assesses it, degrading gracefully if assessment itself fails. Identical
+    for fast and deep modes — the deep pipeline's extra rounds only change
+    what `content`/`sources` contain by the time this runs.
+    """
+    if _all_pages_empty(content):
         logger.warning("all fetched pages empty, refusing to synthesize query={!r}", query)
         yield StageEvent(stage="service_unavailable", data={"message": _NO_SOURCES_MESSAGE})
         return
     yield StageEvent(stage="synthesizing", data={"page_count": len(content)})
 
-    profile = await claude.synthesize(anthropic_client, query, category, content, allowed_results)
+    profile = await claude.synthesize(anthropic_client, query, category, content, sources)
     logger.debug("profile synthesized name={!r} citations={}", profile.name, len(profile.citations))
     yield StageEvent(stage="profile", data=profile.model_dump())
 
@@ -150,3 +211,147 @@ async def _run_pipeline(
         return
     logger.debug("assessment ready caveats={}", len(assessment.caveats))
     yield StageEvent(stage="assessment", data=assessment.model_dump())
+
+
+@dataclass
+class _ResearchState:
+    """Mutable accumulator the follow-up round loop updates in place.
+
+    Mirrors the pass-a-mutable-collection-and-update-it shape
+    routes/profile.py::_stream_pipeline already uses for `collected` — each
+    successful round merges its new sources and content into the running set
+    the final synthesis sees.
+    """
+
+    sources: list[SearchResult]
+    content: dict[str, str]
+
+
+async def _run_followup_rounds(  # noqa: PLR0913 — bundling searcher/anthropic_client/fetcher would obscure the round shape
+    query: str,
+    gap_queries: list[str],
+    state: _ResearchState,
+    searcher: SearchAggregator,
+    anthropic_client: AsyncAnthropic,
+    fetcher: fetch.PageFetcher,
+) -> AsyncGenerator[StageEvent, None]:
+    """Run one bounded round of search, select, and fetch per gap query.
+
+    Sliced to DEEP_MODE_MAX_ROUNDS regardless of how many queries identify_gaps
+    returns — the tool schema already caps it, but the loop does not rely on
+    that alone to bound cost. Each round dedupes its candidates against
+    `state.content` before spending a select_urls call and again before
+    fetching, and is skipped silently — no events, no extra calls — when
+    nothing new survives either check, so a round that can't add anything
+    doesn't cost anything either.
+    """
+    for round_number, gap_query in enumerate(gap_queries[:DEEP_MODE_MAX_ROUNDS], start=1):
+        results = await searcher.search(gap_query)
+        allowed_results = url_filter.filter_search_results(
+            results, blocked_domains=settings.url_domain_blocklist
+        )
+        new_results = [result for result in allowed_results if result.url not in state.content]
+        if not new_results:
+            logger.debug(
+                "deep round {} query={!r} found nothing new, skipping", round_number, gap_query
+            )
+            continue
+        yield StageEvent(
+            stage="deep_searching",
+            data={"round": round_number, "query": gap_query, "result_count": len(new_results)},
+        )
+
+        selected_urls = await claude.select_urls(anthropic_client, query, new_results)
+        new_urls = [url for url in selected_urls if url not in state.content]
+        if not new_urls:
+            logger.debug(
+                "deep round {} query={!r} selected nothing new, skipping fetch",
+                round_number,
+                gap_query,
+            )
+            continue
+        yield StageEvent(
+            stage="deep_fetching",
+            data={"round": round_number, "query": gap_query, "url_count": len(new_urls)},
+        )
+
+        new_content = await fetcher.fetch_pages(new_urls)
+        logger.debug(
+            "deep round {} query={!r} fetched count={}", round_number, gap_query, len(new_content)
+        )
+        state.sources = merge_results([state.sources, new_results])
+        state.content = {**state.content, **new_content}
+
+
+async def _run_deep_pipeline(
+    query: str,
+    searcher: SearchAggregator,
+    anthropic_client: AsyncAnthropic,
+    fetcher: fetch.PageFetcher,
+) -> AsyncGenerator[StageEvent, None]:
+    """Run an initial pass, draft and analyze it for gaps, then run bounded follow-up rounds.
+
+    The initial pass mirrors `_run_pipeline`'s exactly — kept as its own copy
+    rather than shared, since deep mode's first pass may reasonably diverge
+    later (e.g. fewer initial queries to leave room for follow-ups). After the
+    first fetch, a draft synthesis gives `identify_gaps` a structured signal
+    to spot real coverage gaps from, rather than guessing off raw snippets.
+    The draft is deliberately never yielded as a `profile` event — the
+    renderer treats that as *the* answer, and surfacing an interim one would
+    need new frontend machinery to "upgrade" it later, which is slice 3's job.
+    """
+    category = await claude.categorize(anthropic_client, query)
+    logger.debug("categorized category={}", category)
+    yield StageEvent(stage="categorized", data={"category": category})
+
+    queries = await claude.generate_queries(anthropic_client, query, category)
+    logger.debug("queries generated count={}", len(queries))
+    yield StageEvent(stage="queries", data={"queries": queries})
+
+    unique_results = await _gather_search_results(queries, searcher)
+    allowed_results = url_filter.filter_search_results(
+        unique_results, blocked_domains=settings.url_domain_blocklist
+    )
+    dropped = len(unique_results) - len(allowed_results)
+    if dropped:
+        logger.debug("url_filter dropped count={} kept={}", dropped, len(allowed_results))
+    logger.debug("search complete unique_results={}", len(allowed_results))
+
+    missing_backends = _missing_backend_names(unique_results, searcher.backends)
+    if missing_backends:
+        logger.debug("backends contributed nothing names={}", missing_backends)
+    yield StageEvent(
+        stage="searching",
+        data={"result_count": len(allowed_results), "missing_backends": missing_backends},
+    )
+
+    selected_urls = await claude.select_urls(anthropic_client, query, allowed_results)
+    logger.debug("urls selected count={}", len(selected_urls))
+    yield StageEvent(stage="fetching", data={"url_count": len(selected_urls)})
+
+    content = await fetcher.fetch_pages(selected_urls)
+    logger.debug("pages fetched count={}", len(content))
+    if _all_pages_empty(content):
+        logger.warning("all fetched pages empty, refusing to synthesize query={!r}", query)
+        yield StageEvent(stage="service_unavailable", data={"message": _NO_SOURCES_MESSAGE})
+        return
+
+    yield StageEvent(stage="draft_synthesizing", data={"page_count": len(content)})
+    draft = await claude.synthesize(anthropic_client, query, category, content, allowed_results)
+    logger.debug("draft profile synthesized name={!r}", draft.name)
+
+    gap_queries = await claude.identify_gaps(anthropic_client, query, category, draft)
+    logger.debug("gap analysis queries={}", gap_queries)
+    yield StageEvent(stage="deep_gap_analysis", data={"queries": gap_queries})
+
+    state = _ResearchState(sources=list(allowed_results), content=dict(content))
+    if gap_queries:
+        async for event in _run_followup_rounds(
+            query, gap_queries, state, searcher, anthropic_client, fetcher
+        ):
+            yield event
+
+    async for event in _finish_pipeline(
+        query, category, state.content, state.sources, anthropic_client
+    ):
+        yield event

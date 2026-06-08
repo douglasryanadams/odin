@@ -398,3 +398,309 @@ async def test_pipeline_reports_no_missing_backends_when_all_contribute() -> Non
 
     searching = next(ev for ev in events if ev.stage == "searching")
     assert searching.data["missing_backends"] == []
+
+
+def _draft_profile() -> Profile:
+    return Profile(
+        name="draft",
+        category="other",
+        summary="draft summary",
+        highlights=[],
+        lowlights=[],
+        timeline=[],
+        citations=[],
+    )
+
+
+def _final_profile() -> Profile:
+    return Profile(
+        name="final",
+        category="other",
+        summary="final summary",
+        highlights=[],
+        lowlights=[],
+        timeline=[],
+        citations=[],
+    )
+
+
+def _make_deep_pipeline_doubles(
+    gap_queries: list[str],
+) -> tuple[
+    list[str],
+    dict[str, object],
+    type,
+    Callable[[str], Awaitable[list[SearchResult]]],
+]:
+    """Build doubles for the deep pipeline; gap_queries controls identify_gaps' return.
+
+    The synthesize double tells draft from final apart by call order — the
+    first call returns a draft profile, every later call returns the final
+    one — so tests can pin that exactly two synthesis calls happen no matter
+    how many follow-up rounds run.
+    """
+    trace: list[str] = []
+    synth_calls = 0
+
+    async def trace_categorize(*_args: object, **_kw: object) -> str:
+        trace.append("call:categorize")
+        return "other"
+
+    async def trace_generate_queries(*_args: object, **_kw: object) -> list[str]:
+        trace.append("call:generate_queries")
+        return ["initial query"]
+
+    async def trace_select_urls(
+        _client: object, _query: str, results: list[SearchResult]
+    ) -> list[str]:
+        trace.append("call:select_urls")
+        return [r.url for r in results]
+
+    async def trace_synthesize(
+        _client: object,
+        _query: str,
+        _category: str,
+        _content: dict[str, str],
+        _sources: list[SearchResult],
+    ) -> Profile:
+        nonlocal synth_calls
+        synth_calls += 1
+        trace.append("call:synthesize")
+        return _draft_profile() if synth_calls == 1 else _final_profile()
+
+    async def trace_assess(*_args: object, **_kw: object) -> Assessment:
+        trace.append("call:assess")
+        return Assessment(
+            public_sentiment=0.0,
+            subject_political_bias=0.0,
+            source_political_bias=0.0,
+            law_chaos=0.0,
+            good_evil=0.0,
+            caveats=[],
+        )
+
+    async def trace_search(q: str) -> list[SearchResult]:
+        trace.append(f"call:search:{q}")
+        return [SearchResult(url=f"https://e/{q}", title=q, content="", engines=["x"])]
+
+    @dataclass(frozen=True)
+    class _TraceFetcher:
+        async def fetch_pages(self, urls: list[str]) -> dict[str, str]:
+            trace.append("call:fetch_pages")
+            return dict.fromkeys(urls, "body")
+
+    doubles: dict[str, object] = {
+        "categorize": trace_categorize,
+        "generate_queries": trace_generate_queries,
+        "select_urls": trace_select_urls,
+        "synthesize": trace_synthesize,
+        "identify_gaps": AsyncMock(return_value=gap_queries),
+        "assess": trace_assess,
+    }
+    return trace, doubles, _TraceFetcher, trace_search
+
+
+async def test_deep_profile_runs_followup_rounds_and_synthesizes_exactly_twice() -> None:
+    """build_deep_profile drafts, identifies gaps, runs bounded rounds, then synthesizes once more.
+
+    Exactly two synthesis calls happen — draft, then final — no matter how
+    many follow-up rounds the gap analysis drives. That two-call shape is what
+    keeps deep mode's extra Sonnet cost predictable and bounded.
+    """
+    trace, doubles, fetcher_cls, search_fn = _make_deep_pipeline_doubles(["gap one", "gap two"])
+    with (
+        patch.object(pipeline.claude, "categorize", side_effect=doubles["categorize"]),
+        patch.object(pipeline.claude, "generate_queries", side_effect=doubles["generate_queries"]),
+        patch.object(pipeline.claude, "select_urls", side_effect=doubles["select_urls"]),
+        patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
+        patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
+        patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
+    ):
+        events = [
+            ev
+            async for ev in pipeline.build_deep_profile(
+                "foo",
+                SearchAggregator(backends=(_FakeBackend(search_fn),)),
+                MagicMock(),
+                fetcher_cls(),
+            )
+        ]
+
+    stages = [ev.stage for ev in events]
+    assert stages == [
+        "categorized",
+        "queries",
+        "searching",
+        "fetching",
+        "draft_synthesizing",
+        "deep_gap_analysis",
+        "deep_searching",
+        "deep_fetching",
+        "deep_searching",
+        "deep_fetching",
+        "synthesizing",
+        "profile",
+        "assessing",
+        "assessment",
+    ]
+    assert trace.count("call:synthesize") == 2
+    gap_event = next(ev for ev in events if ev.stage == "deep_gap_analysis")
+    assert gap_event.data["queries"] == ["gap one", "gap two"]
+    deep_searching = [ev for ev in events if ev.stage == "deep_searching"]
+    assert [ev.data["round"] for ev in deep_searching] == [1, 2]
+    assert [ev.data["query"] for ev in deep_searching] == ["gap one", "gap two"]
+
+
+async def test_deep_profile_skips_followup_rounds_when_no_gaps_identified() -> None:
+    """An empty gap list goes straight from gap analysis to final synthesis.
+
+    identify_gaps returning [] is the loop's "draft already looks
+    comprehensive" signal — no extra search, fetch, or round events follow it.
+    """
+    trace, doubles, fetcher_cls, search_fn = _make_deep_pipeline_doubles([])
+    with (
+        patch.object(pipeline.claude, "categorize", side_effect=doubles["categorize"]),
+        patch.object(pipeline.claude, "generate_queries", side_effect=doubles["generate_queries"]),
+        patch.object(pipeline.claude, "select_urls", side_effect=doubles["select_urls"]),
+        patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
+        patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
+        patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
+    ):
+        events = [
+            ev
+            async for ev in pipeline.build_deep_profile(
+                "foo",
+                SearchAggregator(backends=(_FakeBackend(search_fn),)),
+                MagicMock(),
+                fetcher_cls(),
+            )
+        ]
+
+    stages = [ev.stage for ev in events]
+    assert "deep_searching" not in stages
+    assert "deep_fetching" not in stages
+    assert stages.index("deep_gap_analysis") < stages.index("synthesizing")
+    assert trace.count("call:synthesize") == 2
+    assert sum(1 for entry in trace if entry.startswith("call:search:")) == 1
+
+
+async def test_deep_profile_caps_followup_rounds_at_the_hard_limit() -> None:
+    """The loop never runs more rounds than DEEP_MODE_MAX_ROUNDS, even if asked to.
+
+    The identify_gaps tool schema already caps queries at DEEP_MODE_MAX_ROUNDS,
+    but the loop must not simply trust that — it slices to the cap so a schema
+    violation can't blow the cost bound this slice exists to guarantee.
+    """
+    too_many = [f"gap {i}" for i in range(pipeline.DEEP_MODE_MAX_ROUNDS + 2)]
+    trace, doubles, fetcher_cls, search_fn = _make_deep_pipeline_doubles(too_many)
+    with (
+        patch.object(pipeline.claude, "categorize", side_effect=doubles["categorize"]),
+        patch.object(pipeline.claude, "generate_queries", side_effect=doubles["generate_queries"]),
+        patch.object(pipeline.claude, "select_urls", side_effect=doubles["select_urls"]),
+        patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
+        patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
+        patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
+    ):
+        events = [
+            ev
+            async for ev in pipeline.build_deep_profile(
+                "foo",
+                SearchAggregator(backends=(_FakeBackend(search_fn),)),
+                MagicMock(),
+                fetcher_cls(),
+            )
+        ]
+
+    deep_searching = [ev for ev in events if ev.stage == "deep_searching"]
+    assert len(deep_searching) == pipeline.DEEP_MODE_MAX_ROUNDS
+    assert [ev.data["round"] for ev in deep_searching] == list(
+        range(1, pipeline.DEEP_MODE_MAX_ROUNDS + 1)
+    )
+    assert trace.count("call:synthesize") == 2
+
+
+async def test_deep_profile_skips_a_round_whose_results_all_dedupe_against_existing_content() -> (
+    None
+):
+    """A follow-up round that turns up nothing new past dedup is skipped, not run anyway.
+
+    "stale gap" resurfaces the exact URL the initial pass already fetched, so
+    nothing survives the dedupe check — its round produces no events and no
+    extra select/fetch calls, and the loop continues to "fresh gap".
+    """
+    trace, doubles, fetcher_cls, _unused_search = _make_deep_pipeline_doubles(
+        ["stale gap", "fresh gap"]
+    )
+
+    async def search_fn(q: str) -> list[SearchResult]:
+        trace.append(f"call:search:{q}")
+        url = "https://e/initial query" if q == "stale gap" else f"https://e/{q}"
+        return [SearchResult(url=url, title=q, content="", engines=["x"])]
+
+    with (
+        patch.object(pipeline.claude, "categorize", side_effect=doubles["categorize"]),
+        patch.object(pipeline.claude, "generate_queries", side_effect=doubles["generate_queries"]),
+        patch.object(pipeline.claude, "select_urls", side_effect=doubles["select_urls"]),
+        patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
+        patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
+        patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
+    ):
+        events = [
+            ev
+            async for ev in pipeline.build_deep_profile(
+                "foo",
+                SearchAggregator(backends=(_FakeBackend(search_fn),)),
+                MagicMock(),
+                fetcher_cls(),
+            )
+        ]
+
+    deep_searching = [ev for ev in events if ev.stage == "deep_searching"]
+    assert [ev.data["query"] for ev in deep_searching] == ["fresh gap"]
+    assert sum(1 for ev in events if ev.stage == "deep_fetching") == 1
+    assert trace.count("call:synthesize") == 2
+
+
+async def test_deep_profile_final_synthesis_sees_merged_sources_and_content() -> None:
+    """The final synthesize call receives the union of initial and follow-up content.
+
+    Running the extra rounds is only worth it if the final pass actually sees
+    what they found — pin that the merge actually reaches the last synthesize
+    call, not just an internal accumulator nothing reads.
+    """
+    synthesize_calls: list[tuple[dict[str, str], list[SearchResult]]] = []
+
+    async def capturing_synthesize(
+        _client: object,
+        _query: str,
+        _category: str,
+        content: dict[str, str],
+        sources: list[SearchResult],
+    ) -> Profile:
+        synthesize_calls.append((dict(content), list(sources)))
+        return _draft_profile() if len(synthesize_calls) == 1 else _final_profile()
+
+    _trace, doubles, fetcher_cls, search_fn = _make_deep_pipeline_doubles(["gap query"])
+    with (
+        patch.object(pipeline.claude, "categorize", side_effect=doubles["categorize"]),
+        patch.object(pipeline.claude, "generate_queries", side_effect=doubles["generate_queries"]),
+        patch.object(pipeline.claude, "select_urls", side_effect=doubles["select_urls"]),
+        patch.object(pipeline.claude, "synthesize", side_effect=capturing_synthesize),
+        patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
+        patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
+    ):
+        async for _ in pipeline.build_deep_profile(
+            "foo",
+            SearchAggregator(backends=(_FakeBackend(search_fn),)),
+            MagicMock(),
+            fetcher_cls(),
+        ):
+            pass
+
+    assert len(synthesize_calls) == 2
+    draft_content, draft_sources = synthesize_calls[0]
+    final_content, final_sources = synthesize_calls[1]
+    assert set(draft_content) == {"https://e/initial query"}
+    assert set(final_content) == {"https://e/initial query", "https://e/gap query"}
+    assert {s.url for s in final_sources} == {"https://e/initial query", "https://e/gap query"}
+    assert {s.url for s in draft_sources} <= {s.url for s in final_sources}

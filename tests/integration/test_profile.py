@@ -49,6 +49,32 @@ def _pipeline_responses(queries: list[str]) -> list[MagicMock]:
     ]
 
 
+def _deep_pipeline_responses(queries: list[str]) -> list[MagicMock]:
+    """Anthropic side_effect sequence for a deep-mode run whose gap analysis stops immediately.
+
+    Adds a draft synthesis and an identify_gaps call (returning an empty
+    list — the "draft already looks comprehensive" signal) ahead of the
+    final synthesis, so the run completes with no follow-up rounds.
+    """
+    select_urls_response = api_response(
+        [
+            tool_block(
+                "select_urls_result",
+                {"urls": ["https://en.wikipedia.org/wiki/Python_(programming_language)"]},
+            )
+        ]
+    )
+    profile_response = api_response([tool_block("create_profile", _MOCK_PROFILE_DATA)])
+    return [
+        api_response([tool_block("categorize_result", {"category": "other"})]),
+        api_response([tool_block("generate_queries_result", {"queries": queries})]),
+        select_urls_response,
+        profile_response,  # draft synthesis
+        api_response([tool_block("identify_gaps_result", {"queries": []})]),
+        profile_response,  # final synthesis
+    ]
+
+
 @pytest.fixture
 def mock_anthropic() -> Iterator[MagicMock]:
     """Override the Anthropic client with an async mock."""
@@ -104,6 +130,40 @@ def test_profile_stream_searching_stage_has_results(
     ]
     searching = next(e for e in events if e["type"] == "searching")
     assert searching["result_count"] > 0
+
+
+@pytest.mark.integration
+def test_deep_profile_stream_completes_and_emits_gap_analysis(
+    client: TestClient, mock_anthropic: MagicMock
+) -> None:
+    """Deep mode runs to completion through the real route and search edge.
+
+    identify_gaps returns an empty list — the "draft already looks
+    comprehensive" signal — so the run terminates without follow-up rounds.
+    Pins that `deep=true` reaches the route, selects the deep pipeline, and
+    the stream still completes end to end.
+    """
+    mock_anthropic.messages.create.side_effect = _deep_pipeline_responses(["python language"])
+
+    response = client.get("/profile/stream?q=python&deep=true")
+
+    assert response.status_code == 200
+    events = [
+        json.loads(line[5:]) for line in response.text.splitlines() if line.startswith("data:")
+    ]
+    stage_types = [e["type"] for e in events]
+    assert {
+        "categorized",
+        "queries",
+        "searching",
+        "draft_synthesizing",
+        "deep_gap_analysis",
+        "profile",
+        "done",
+    } <= set(stage_types)
+    assert "deep_searching" not in stage_types
+    gap_event = next(e for e in events if e["type"] == "deep_gap_analysis")
+    assert gap_event["queries"] == []
 
 
 @pytest.mark.integration

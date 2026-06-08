@@ -11,7 +11,7 @@ from loguru import logger
 from helpers import api_response, tool_block
 from odin import claude
 from odin.config import settings
-from odin.models import Profile
+from odin.models import Profile, ProfileHighlight
 from odin.search import SearchResult
 
 _PROFILE_DATA = {
@@ -220,6 +220,74 @@ async def test_select_urls_includes_engine_tags(mock_client: MagicMock) -> None:
     assert user_message.count("Found by") == 1
 
 
+def _draft_profile() -> Profile:
+    return Profile(
+        name="Marie Curie",
+        category="person",
+        summary="A pioneering physicist.",
+        highlights=[
+            ProfileHighlight(
+                title="Nobel Prize", description="Won twice.", detail="Physics, then Chemistry."
+            )
+        ],
+        lowlights=[],
+        timeline=[],
+        citations=[],
+    )
+
+
+@pytest.mark.asyncio
+async def test_identify_gaps_parses_queries_from_tool_response(mock_client: MagicMock) -> None:
+    """identify_gaps returns the follow-up queries Claude proposes via the tool."""
+    mock_client.messages.create.return_value = api_response(
+        [
+            tool_block(
+                "identify_gaps_result",
+                {"queries": ["Marie Curie early life", "Marie Curie legacy"]},
+            )
+        ]
+    )
+
+    queries = await claude.identify_gaps(mock_client, "Marie Curie", "person", _draft_profile())
+
+    assert queries == ["Marie Curie early life", "Marie Curie legacy"]
+
+
+@pytest.mark.asyncio
+async def test_identify_gaps_feeds_claude_the_formatted_draft_profile(
+    mock_client: MagicMock,
+) -> None:
+    """identify_gaps reuses _format_profile_for_assess to format its input.
+
+    Reusing that formatter — rather than sending raw page content — is what
+    keeps this Haiku call cheap and focused on the structured draft, the
+    signal that actually helps Claude spot real gaps.
+    """
+    mock_client.messages.create.return_value = api_response(
+        [tool_block("identify_gaps_result", {"queries": []})]
+    )
+    profile = _draft_profile()
+
+    await claude.identify_gaps(mock_client, "Marie Curie", "person", profile)
+
+    user_message = mock_client.messages.create.call_args.kwargs["messages"][0]["content"]
+    assert claude._format_profile_for_assess(profile) in user_message  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_identify_gaps_returns_empty_list_when_draft_looks_complete(
+    mock_client: MagicMock,
+) -> None:
+    """An empty queries list passes through untouched — it's the loop's stop signal."""
+    mock_client.messages.create.return_value = api_response(
+        [tool_block("identify_gaps_result", {"queries": []})]
+    )
+
+    queries = await claude.identify_gaps(mock_client, "Marie Curie", "person", _draft_profile())
+
+    assert queries == []
+
+
 def _rate_limit_error() -> Exception:
     """Build a real RateLimitError (retryable) backed by an httpx 429 response."""
     response = httpx.Response(429, request=httpx.Request("POST", "https://api.anthropic.com"))
@@ -352,6 +420,20 @@ async def test_select_urls_retries_transient_error_then_succeeds(
     urls = await claude.select_urls(mock_client, "test", results)
 
     assert urls == ["https://example.com"]
+    assert mock_client.messages.create.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_identify_gaps_retries_transient_error_then_succeeds(
+    mock_client: MagicMock,
+) -> None:
+    """identify_gaps is wired through the retry wrapper like categorize."""
+    response = api_response([tool_block("identify_gaps_result", {"queries": ["follow-up query"]})])
+    mock_client.messages.create = AsyncMock(side_effect=[_rate_limit_error(), response])
+
+    queries = await claude.identify_gaps(mock_client, "Marie Curie", "person", _draft_profile())
+
+    assert queries == ["follow-up query"]
     assert mock_client.messages.create.call_count == 2
 
 

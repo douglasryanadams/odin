@@ -26,22 +26,28 @@
           method="get"
           action="/profile"
           role="search">
-      <label class="search-form__field">
-        <span class="search-form__icon" aria-hidden="true">
-          <i class="fa-solid fa-magnifying-glass"></i>
-        </span>
-        <input class="search-form__input"
-               type="search"
-               name="q"
-               autocomplete="off"
-               aria-label="Search subjects"
-               autofocus
-               required />
+      <div class="search-form__row">
+        <label class="search-form__field">
+          <span class="search-form__icon" aria-hidden="true">
+            <i class="fa-solid fa-magnifying-glass"></i>
+          </span>
+          <input class="search-form__input"
+                 type="search"
+                 name="q"
+                 autocomplete="off"
+                 aria-label="Search subjects"
+                 autofocus
+                 required />
+        </label>
+        <button class="btn btn--primary search-form__submit" type="submit">
+          <span class="search-form__submit-label">Return</span>
+          <i class="fa-solid fa-arrow-turn-down-left" aria-hidden="true"></i>
+        </button>
+      </div>
+      <label class="search-form__deep-toggle">
+        <input type="checkbox" name="deep" value="true" />
+        <span>Deep research</span>
       </label>
-      <button class="btn btn--primary search-form__submit" type="submit">
-        <span class="search-form__submit-label">Return</span>
-        <i class="fa-solid fa-arrow-turn-down-left" aria-hidden="true"></i>
-      </button>
     </form>
     {% if user %}
       <p class="hero__quota">

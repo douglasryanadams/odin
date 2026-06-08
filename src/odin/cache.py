@@ -7,7 +7,7 @@ from typing import Any, cast
 
 from valkey.asyncio import Valkey
 
-_PREFIX = "cache:profile:v2"
+_PREFIX = "cache:profile:v3"
 _TTL_SECONDS = 24 * 60 * 60
 
 _WHITESPACE = re.compile(r"\s+")
@@ -18,13 +18,18 @@ def normalize(query: str) -> str:
     return _WHITESPACE.sub(" ", query.strip().lower())
 
 
-def _key(query: str) -> str:
-    return f"{_PREFIX}:{hashlib.sha256(normalize(query).encode()).hexdigest()}"
+def _key(query: str, mode: str) -> str:
+    return f"{_PREFIX}:{mode}:{hashlib.sha256(normalize(query).encode()).hexdigest()}"
 
 
-async def get(client: Valkey, query: str) -> list[dict[str, Any]] | None:
-    """Return cached events for a query, or None if not cached."""
-    raw = await client.get(_key(query))
+async def get(client: Valkey, query: str, mode: str) -> list[dict[str, Any]] | None:
+    """Return cached events for a query in the given mode, or None if not cached.
+
+    `mode` ("fast" or "deep") is folded into the key so a deep result is
+    never served to a fast request or vice versa — the two pipelines produce
+    different event sequences for the same query.
+    """
+    raw = await client.get(_key(query, mode))
     if not raw:
         return None
     try:
@@ -38,6 +43,6 @@ async def get(client: Valkey, query: str) -> list[dict[str, Any]] | None:
     ]
 
 
-async def put(client: Valkey, query: str, events: list[dict[str, Any]]) -> None:
-    """Store the event sequence for a query with the cache TTL."""
-    await client.set(_key(query), json.dumps(events), ex=_TTL_SECONDS)
+async def put(client: Valkey, query: str, mode: str, events: list[dict[str, Any]]) -> None:
+    """Store the event sequence for a query and mode with the cache TTL."""
+    await client.set(_key(query, mode), json.dumps(events), ex=_TTL_SECONDS)

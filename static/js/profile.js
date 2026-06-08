@@ -536,6 +536,13 @@ const EVENT_HANDLERS = {
   assessing:    { active: "assessing" },
   assessment:   { complete: true, render: renderAssessment },
   done:         { complete: true },
+  // Deep-research-only stages: full narration is slice 3's job — for now
+  // these just keep the progress bar moving so a multi-round run doesn't
+  // look stalled during the extra rounds.
+  draft_synthesizing: { active: "synthesizing" },
+  deep_gap_analysis:  { active: "synthesizing" },
+  deep_searching:     { active: "searching" },
+  deep_fetching:      { active: "fetching" },
 };
 
 function handleEvent(data) {
@@ -547,8 +554,10 @@ function handleEvent(data) {
   return true;
 }
 
-function startStream(query) {
-  const es = new EventSource("/profile/stream?q=" + encodeURIComponent(query));
+function startStream(query, deep) {
+  const params = new URLSearchParams({ q: query });
+  if (deep) params.set("deep", "true");
+  const es = new EventSource("/profile/stream?" + params.toString());
 
   es.onmessage = (e) => {
     const data = JSON.parse(e.data);
@@ -583,5 +592,7 @@ function startStream(query) {
 document.addEventListener("DOMContentLoaded", () => {
   setSynthTime();
   const meta = document.querySelector('meta[name="odin-query"]');
-  if (meta && meta.content) startStream(meta.content);
+  const deepMeta = document.querySelector('meta[name="odin-deep"]');
+  const deep = !!deepMeta && deepMeta.content === "true";
+  if (meta && meta.content) startStream(meta.content, deep);
 });

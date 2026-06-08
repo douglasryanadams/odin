@@ -10,6 +10,9 @@
 /* ----- Header search (also lives on profile page chrome) ------------- */
 
 .header-search {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
   flex: 1 1 auto;
   max-width: 360px;
 }
@@ -18,6 +21,8 @@
   position: relative;
   display: flex;
   align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .header-search__icon {
@@ -60,6 +65,54 @@
   border-color: var(--primary);
   outline: none;
   box-shadow: none;
+}
+
+/* Opt-in toggle for the deep-research pipeline, mirroring the home page's
+   search-form__deep-toggle at the header search's smaller scale. */
+.header-search__deep-toggle {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Visually hidden but still focusable and announced by assistive tech —
+   the [ ] / [x] glyph below is what sighted users see for the state. */
+.header-search__deep-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Render the checkbox as a terminal-flag glyph rather than a native
+   widget — keeps the phosphor-green palette intact (no white chrome). */
+.header-search__deep-toggle span::before {
+  content: "[ ] ";
+  color: var(--primary);
+  letter-spacing: 0.04em;
+}
+
+.header-search__deep-toggle input:checked + span::before {
+  content: "[x] ";
+}
+
+.header-search__deep-toggle:focus-within span {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.header-search__deep-toggle:hover {
+  color: var(--text);
 }
 
 .header-quota {

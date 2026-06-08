@@ -1,4 +1,4 @@
-.PHONY: dev prod prod-logs down lint lint-frontend lint-markdown lint-links format metrics readability test test-smoke test-unit test-integration test-js
+.PHONY: dev prod prod-logs down lint lint-checks lint-frontend lint-markdown lint-links format metrics readability test test-smoke test-unit test-integration test-js
 
 dev:
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml up --build
@@ -16,7 +16,13 @@ format:
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run ruff format .
 	-docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run djlint src/odin/templates --reformat
 
-lint: format lint-frontend lint-markdown lint-links
+lint: ## Run all lint checks, then tear down the containers it started
+	$(MAKE) lint-checks; \
+	LINT_EXIT=$$?; \
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml down --remove-orphans; \
+	exit $$LINT_EXIT
+
+lint-checks: format lint-frontend lint-markdown lint-links
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run ruff check .
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run ruff format --check .
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run pyright
@@ -43,7 +49,11 @@ metrics:
 readability:
 	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml run --rm web uv run python scripts/readability.py
 
-test: test-unit test-smoke test-integration
+test: ## Run unit, smoke, and integration tests, then tear down the containers they started
+	$(MAKE) test-unit test-smoke test-integration; \
+	TEST_EXIT=$$?; \
+	docker compose --project-directory . -f compose/docker-compose.yml -f compose/docker-compose.override.yml down --remove-orphans; \
+	exit $$TEST_EXIT
 
 test-smoke:
 	./scripts/test-smoke.sh

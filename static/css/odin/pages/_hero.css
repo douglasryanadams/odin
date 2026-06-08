@@ -73,10 +73,16 @@
    the wordmark, the typed-in tagline, then a wide gap, then the prompt. */
 .search-form {
   display: flex;
-  align-items: stretch;
-  gap: var(--sp-2);
+  flex-direction: column;
+  gap: var(--sp-3);
   width: 100%;
   margin-top: var(--sp-8);
+}
+
+.search-form__row {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-2);
 }
 
 .search-form__field {
@@ -141,6 +147,54 @@
 }
 
 /* Submit button reads as a keyboard "Return" key: [ Return ⏎ ] */
+
+/* Opt-in toggle for the deep-research pipeline — sits between the input
+   and submit, reading as a terminal flag rather than a form widget. */
+.search-form__deep-toggle {
+  display: flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Visually hidden but still focusable and announced by assistive tech —
+   the [ ] / [x] glyph below is what sighted users see for the state. */
+.search-form__deep-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Render the checkbox as a terminal-flag glyph rather than a native
+   widget — keeps the phosphor-green palette intact (no white chrome). */
+.search-form__deep-toggle span::before {
+  content: "[ ] ";
+  color: var(--primary);
+  letter-spacing: 0.04em;
+}
+
+.search-form__deep-toggle input:checked + span::before {
+  content: "[x] ";
+}
+
+.search-form__deep-toggle:focus-within span {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.search-form__deep-toggle:hover {
+  color: var(--text);
+}
+
 .search-form__submit {
   min-height: 52px;
   padding-left: var(--sp-4);
