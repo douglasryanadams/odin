@@ -121,7 +121,7 @@ class _AssessOutput:
 
 @dataclass(frozen=True)
 class _IdentifyGapsOutput:
-    queries: list[str]
+    queries: list[dict[str, str]]
 
 
 @dataclass(frozen=True)
@@ -235,6 +235,10 @@ _IDENTIFY_GAPS_SYSTEM = (
     "research on a search subject. Identify up to 2 real gaps — aspects of the subject that\n"
     "remain unexplored or thinly covered in the draft — and propose one targeted follow-up\n"
     "search query for each gap that would help close it.\n"
+    "For each gap, also provide a brief reason phrase (one sentence or less) naming what\n"
+    "aspect is missing or thin — for example 'early career not covered' or\n"
+    "'post-2010 activity absent from draft'. The reason will be shown to the user to explain\n"
+    "why the follow-up search is being run.\n"
     "If the draft already covers the subject comprehensively, return an empty list: do not\n"
     "invent a gap just to have something to report.\n"
     "Respond using the identify_gaps_result tool."
@@ -435,10 +439,25 @@ _IDENTIFY_GAPS_TOOL: dict[str, Any] = {
         "properties": {
             "queries": {
                 "type": "array",
-                "items": {"type": "string"},
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "reason": {
+                            "type": "string",
+                            "description": (
+                                "Brief phrase naming the gap — what aspect is missing or thin. "
+                                "One sentence or less."
+                            ),
+                        },
+                    },
+                    "required": ["query", "reason"],
+                },
                 "maxItems": 2,  # mirrors pipeline.DEEP_MODE_MAX_ROUNDS — the loop's hard cap
                 "description": (
                     "0-2 targeted follow-up search queries, one per identified gap. "
+                    "Each item pairs a search query with a brief reason explaining what "
+                    "aspect of the subject is missing or thinly covered. "
                     "Empty if the draft already covers the subject comprehensively."
                 ),
             }
@@ -537,7 +556,7 @@ _ASSESS_CALL = _ToolCallSpec(
 )
 _IDENTIFY_GAPS_CALL = _ToolCallSpec(
     model=_HAIKU,
-    max_tokens=200,
+    max_tokens=400,
     system=_IDENTIFY_GAPS_SYSTEM,
     tool=_IDENTIFY_GAPS_TOOL,
     error_context="identify_gaps",
@@ -758,7 +777,7 @@ async def identify_gaps(
     query: str,
     category: Category,
     profile: Profile,
-) -> list[str]:
+) -> list[tuple[str, str]]:
     """Propose up to 2 follow-up queries that would close gaps in a draft profile.
 
     Feeds Claude the same formatted draft `assess` reads — a structured,
@@ -777,7 +796,8 @@ async def identify_gaps(
             messages=[{"role": "user", "content": user_message}],
         ),
     )
-    return _IdentifyGapsOutput(**response).queries  # type:ignore[reportCallIssue]
+    parsed = _IdentifyGapsOutput(**response)  # type:ignore[reportCallIssue]
+    return [(item["query"], item["reason"]) for item in parsed.queries]
 
 
 def _resolve_connection_citations(

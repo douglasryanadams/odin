@@ -230,7 +230,7 @@ class _ResearchState:
 
 async def _run_followup_rounds(  # noqa: PLR0913 — bundling searcher/anthropic_client/fetcher would obscure the round shape
     query: str,
-    gap_queries: list[str],
+    gap_queries: list[tuple[str, str]],
     state: _ResearchState,
     searcher: SearchAggregator,
     anthropic_client: AsyncAnthropic,
@@ -246,7 +246,9 @@ async def _run_followup_rounds(  # noqa: PLR0913 — bundling searcher/anthropic
     nothing new survives either check, so a round that can't add anything
     doesn't cost anything either.
     """
-    for round_number, gap_query in enumerate(gap_queries[:DEEP_MODE_MAX_ROUNDS], start=1):
+    for round_number, (gap_query, gap_reason) in enumerate(
+        gap_queries[:DEEP_MODE_MAX_ROUNDS], start=1
+    ):
         results = await searcher.search(gap_query)
         allowed_results = url_filter.filter_search_results(
             results, blocked_domains=settings.url_domain_blocklist
@@ -259,7 +261,12 @@ async def _run_followup_rounds(  # noqa: PLR0913 — bundling searcher/anthropic
             continue
         yield StageEvent(
             stage="deep_searching",
-            data={"round": round_number, "query": gap_query, "result_count": len(new_results)},
+            data={
+                "round": round_number,
+                "query": gap_query,
+                "reason": gap_reason,
+                "result_count": len(new_results),
+            },
         )
 
         selected_urls = await claude.select_urls(anthropic_client, query, new_results)
@@ -273,7 +280,12 @@ async def _run_followup_rounds(  # noqa: PLR0913 — bundling searcher/anthropic
             continue
         yield StageEvent(
             stage="deep_fetching",
-            data={"round": round_number, "query": gap_query, "url_count": len(new_urls)},
+            data={
+                "round": round_number,
+                "query": gap_query,
+                "reason": gap_reason,
+                "url_count": len(new_urls),
+            },
         )
 
         new_content = await fetcher.fetch_pages(new_urls)
@@ -374,14 +386,20 @@ async def _run_deep_pipeline(
     draft = await claude.synthesize(anthropic_client, query, category, content, allowed_results)
     logger.debug("draft profile synthesized name={!r}", draft.name)
 
-    gap_queries = await claude.identify_gaps(anthropic_client, query, category, draft)
-    logger.debug("gap analysis queries={}", gap_queries)
-    yield StageEvent(stage="deep_gap_analysis", data={"queries": gap_queries})
+    gap_pairs = await claude.identify_gaps(anthropic_client, query, category, draft)
+    logger.debug("gap analysis pairs={}", gap_pairs)
+    yield StageEvent(
+        stage="deep_gap_analysis",
+        data={
+            "queries": [q for q, _ in gap_pairs],
+            "reasons": [r for _, r in gap_pairs],
+        },
+    )
 
     state = _ResearchState(sources=list(allowed_results), content=dict(content))
-    if gap_queries:
+    if gap_pairs:
         async for event in _run_followup_rounds(
-            query, gap_queries, state, searcher, anthropic_client, fetcher
+            query, gap_pairs, state, searcher, anthropic_client, fetcher
         ):
             yield event
 

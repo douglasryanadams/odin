@@ -65,6 +65,14 @@
         <span class="progress-bar__line">[          ·          ·          ·          ·          ·          ]</span>
         <span class="progress-bar__label">0%  categorize</span>
       </div>
+      {% if deep %}
+        <ol id="research-log"
+            class="research-log"
+            aria-label="Research activity"
+            aria-live="polite"
+            hidden>
+        </ol>
+      {% endif %}
       <div id="exposition" class="profile__exposition"></div>
       <section id="section-events">
         <h2>
