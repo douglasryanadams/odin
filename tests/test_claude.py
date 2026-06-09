@@ -316,19 +316,37 @@ def _draft_profile() -> Profile:
 
 @pytest.mark.asyncio
 async def test_identify_gaps_parses_queries_from_tool_response(mock_client: MagicMock) -> None:
-    """identify_gaps returns the follow-up queries Claude proposes via the tool."""
+    """identify_gaps returns (query, reason) pairs from the tool response."""
     mock_client.messages.create.return_value = api_response(
         [
             tool_block(
                 "identify_gaps_result",
-                {"queries": ["Marie Curie early life", "Marie Curie legacy"]},
+                {
+                    "queries": [
+                        {"query": "Marie Curie early life", "reason": "childhood not covered"},
+                        {"query": "Marie Curie legacy", "reason": "post-death impact absent"},
+                    ]
+                },
             )
         ]
     )
 
-    queries = await claude.identify_gaps(mock_client, "Marie Curie", "person", _draft_profile())
+    pairs = await claude.identify_gaps(mock_client, "Marie Curie", "person", _draft_profile())
 
-    assert queries == ["Marie Curie early life", "Marie Curie legacy"]
+    assert pairs == [
+        ("Marie Curie early life", "childhood not covered"),
+        ("Marie Curie legacy", "post-death impact absent"),
+    ]
+
+
+def test_identify_gaps_tool_schema_includes_reason_field() -> None:
+    """The identify_gaps tool schema requires both query and reason per gap item."""
+    items = claude._IDENTIFY_GAPS_TOOL["input_schema"]["properties"]["queries"]["items"]  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    assert items["type"] == "object"
+    assert "query" in items["required"]
+    assert "reason" in items["required"]
+    assert items["properties"]["query"]["type"] == "string"
+    assert items["properties"]["reason"]["type"] == "string"
 
 
 @pytest.mark.asyncio
@@ -506,12 +524,19 @@ async def test_identify_gaps_retries_transient_error_then_succeeds(
     mock_client: MagicMock,
 ) -> None:
     """identify_gaps is wired through the retry wrapper like categorize."""
-    response = api_response([tool_block("identify_gaps_result", {"queries": ["follow-up query"]})])
+    response = api_response(
+        [
+            tool_block(
+                "identify_gaps_result",
+                {"queries": [{"query": "follow-up query", "reason": "coverage gap"}]},
+            )
+        ]
+    )
     mock_client.messages.create = AsyncMock(side_effect=[_rate_limit_error(), response])
 
-    queries = await claude.identify_gaps(mock_client, "Marie Curie", "person", _draft_profile())
+    pairs = await claude.identify_gaps(mock_client, "Marie Curie", "person", _draft_profile())
 
-    assert queries == ["follow-up query"]
+    assert pairs == [("follow-up query", "coverage gap")]
     assert mock_client.messages.create.call_count == 2
 
 

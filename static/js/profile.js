@@ -462,6 +462,9 @@ function renderProfile(data) {
   if (lowlightsHint && data.lowlights && data.lowlights.length) {
     lowlightsHint.textContent = `${data.lowlights.length} items // click any for detail`;
   }
+
+  const log = $("research-log");
+  if (log) log.classList.add("research-log--collapsed");
 }
 
 function renderAssessment(data) {
@@ -591,29 +594,86 @@ function buildSentimentGauge({ label, leftLabel, rightLabel, value, neutral = fa
   return wrap;
 }
 
+// Append a narrative sentence to the research log (deep mode only).
+// Silent no-op in fast mode because the element won't be in the DOM.
+function appendResearchLog(text) {
+  const log = $("research-log");
+  if (!log) return;
+  log.hidden = false;
+  const item = el("li", "research-log__entry");
+  item.appendChild(el("span", "research-log__text", text));
+  log.appendChild(item);
+}
+
+function plural(n, singular, pluralForm) {
+  return n === 1 ? singular : (pluralForm || `${singular}s`);
+}
+
 // Each pipeline event names the step the user should now see as in-progress
 // (`active`), or marks the run complete (`complete: true`). Render hooks attach
 // content rendering to specific events. Keeping wire-event semantics in this
 // table keeps the dispatcher trivially testable.
 const EVENT_HANDLERS = {
-  categorized:  { active: "queries",     render: (d) => setCategory(d.category) },
-  queries:      { active: "searching" },
-  searching:    { active: "fetching", render: renderSourceNote },
-  fetching:     { active: "fetching" },
-  synthesizing: { active: "synthesizing" },
+  categorized:  { active: "queries",     render: (d) => {
+    setCategory(d.category);
+    appendResearchLog(`Identified as ${d.category}.`);
+  }},
+  queries:      { active: "searching", render: (d) => {
+    const n = (d.queries || []).length;
+    appendResearchLog(`Planned ${n} initial search ${plural(n, "query", "queries")}.`);
+  }},
+  searching:    { active: "fetching", render: (d) => {
+    renderSourceNote(d);
+    appendResearchLog(`Initial search returned ${d.result_count} ${plural(d.result_count, "result")}.`);
+  }},
+  fetching:     { active: "fetching", render: (d) => {
+    appendResearchLog(`Loading ${d.url_count} source ${plural(d.url_count, "page")}.`);
+  }},
+  synthesizing: { active: "synthesizing", render: (d) => {
+    appendResearchLog(`Building final profile from ${d.page_count} ${plural(d.page_count, "source")}.`);
+  }},
   profile:      { active: "assessing", render: renderProfile },
-  assessing:    { active: "assessing" },
-  assessment:   { complete: true, render: renderAssessment },
+  assessing:    { active: "assessing", render: () => {
+    appendResearchLog("Running bias and sentiment audit.");
+  }},
+  assessment:   { complete: true, render: (d) => {
+    renderAssessment(d);
+    appendResearchLog("Audit complete.");
+  }},
   done:         { complete: true },
-  // Deep-research-only stages: full narration is slice 3's job — for now
-  // these just keep the progress bar moving so a multi-round run doesn't
-  // look stalled during the extra rounds.
-  draft_synthesizing: { active: "synthesizing" },
-  deep_gap_analysis:  { active: "synthesizing" },
-  deep_searching:     { active: "searching" },
-  deep_fetching:      { active: "fetching" },
-  deep_connecting:    { active: "synthesizing" },
-  connections:        { active: "synthesizing", render: renderConnectionsEvent },
+  draft_synthesizing: { active: "synthesizing", render: (d) => {
+    appendResearchLog(`Building draft profile from ${d.page_count} ${plural(d.page_count, "source")}.`);
+  }},
+  deep_gap_analysis: { active: "synthesizing", render: (d) => {
+    const queries = d.queries || [];
+    const reasons = d.reasons || [];
+    if (!queries.length) {
+      appendResearchLog("Draft looks comprehensive — no follow-up rounds needed.");
+      return;
+    }
+    appendResearchLog(`Found ${queries.length} coverage ${plural(queries.length, "gap")}. Planning follow-up research.`);
+    queries.forEach((q, i) => {
+      const reason = reasons[i] || "";
+      const msg = reason
+        ? `Coverage gap: ${reason} — searching for "${q}".`
+        : `Searching for "${q}".`;
+      appendResearchLog(msg);
+    });
+  }},
+  deep_searching: { active: "searching", render: (d) => {
+    appendResearchLog(`Round ${d.round}: searching for "${d.query}".`);
+  }},
+  deep_fetching: { active: "fetching", render: (d) => {
+    appendResearchLog(`Round ${d.round}: loading ${d.url_count} new ${plural(d.url_count, "page")}.`);
+  }},
+  deep_connecting: { active: "synthesizing", render: (d) => {
+    appendResearchLog(`Cross-referencing ${d.source_count} ${plural(d.source_count, "source")} for patterns and contradictions.`);
+  }},
+  connections: { active: "synthesizing", render: (d) => {
+    renderConnectionsEvent(d);
+    const n = (d.connections || []).length;
+    appendResearchLog(`Found ${n} cross-source ${plural(n, "connection")}.`);
+  }},
 };
 
 function handleEvent(data) {

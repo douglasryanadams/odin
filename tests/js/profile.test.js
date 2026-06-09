@@ -27,6 +27,7 @@ function buildProfileDom() {
     <section id="section-highlights"><span id="highlights-hint"></span><ul class="findings" data-empty="none"></ul></section>
     <section id="section-lowlights"><span id="lowlights-hint"></span><ul class="findings" data-empty="none"></ul></section>
     <section id="section-sources"><span id="sources-count"></span><ol class="citations" data-empty="none"></ol></section>
+    <ol id="research-log" hidden></ol>
     <div id="subject-compass"><div class="assessment-gauges"></div></div>
     <div id="source-audit">
       <div class="assessment-gauges"></div>
@@ -352,5 +353,47 @@ describe("renderAssessment", () => {
     const items = document.querySelectorAll("#source-audit .profile__caveats li");
     expect(items.length).toBe(1);
     expect(items[0].textContent).toBe("No caveats.");
+  });
+});
+
+describe("research log", () => {
+  beforeEach(() => {
+    profile.resetProgress();
+    buildProfileDom();
+  });
+
+  test("deep_gap_analysis with reasons appends one entry per gap naming the reason and query", () => {
+    profile.handleEvent({
+      type: "deep_gap_analysis",
+      queries: ["early career"],
+      reasons: ["pre-2010 history not covered"],
+    });
+    const log = document.getElementById("research-log");
+    const items = log.querySelectorAll(".research-log__entry");
+    const texts = [...items].map((li) => li.textContent);
+    expect(texts.some((t) => t.includes("pre-2010 history not covered"))).toBe(true);
+    expect(texts.some((t) => t.includes("early career"))).toBe(true);
+  });
+
+  test("deep_gap_analysis with no gaps appends comprehensive message", () => {
+    profile.handleEvent({ type: "deep_gap_analysis", queries: [], reasons: [] });
+    const log = document.getElementById("research-log");
+    const texts = [...log.querySelectorAll(".research-log__entry")].map((li) => li.textContent);
+    expect(texts.some((t) => t.includes("comprehensive"))).toBe(true);
+  });
+
+  test("research log is collapsed after profile event arrives", () => {
+    profile.handleEvent({
+      type: "profile",
+      name: "Subject",
+      summary: "Summary.",
+      category: "person",
+      highlights: [],
+      lowlights: [],
+      timeline: [],
+      citations: [],
+    });
+    const log = document.getElementById("research-log");
+    expect(log.classList.contains("research-log--collapsed")).toBe(true);
   });
 });

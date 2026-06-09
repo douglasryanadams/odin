@@ -349,6 +349,39 @@
   font-weight: 900;
 }
 
+/* Research activity log — deep mode only, rendered between progress bar and exposition. */
+
+.research-log {
+  list-style: none;
+  padding: 0;
+  margin: var(--sp-4) 0 var(--sp-5) 0;
+  padding-left: var(--sp-3);
+  border-left: 2px solid color-mix(in oklch, var(--primary) 40%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  max-height: 600px;
+  overflow-y: auto;
+  transition: max-height 0.4s ease, opacity 0.4s ease, margin 0.4s ease;
+}
+
+.research-log__entry {
+  padding: var(--sp-1) 0;
+  border-bottom: 1px solid color-mix(in oklch, var(--text-muted) 12%, transparent);
+  line-height: 1.4;
+}
+
+.research-log__entry:last-child {
+  border-bottom: none;
+}
+
+.research-log--collapsed {
+  max-height: 0;
+  overflow: hidden;
+  margin: 0;
+  opacity: 0;
+}
+
 /* Section headings get a "> " prompt prefix — each section reads as a
    terminal command issuing the heading. */
 .profile__main section h2 {
