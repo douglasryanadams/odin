@@ -8,7 +8,7 @@ Jinja2 templates, a per-concern CSS module tree under `@layer`, and two JavaScri
 | --- | --- |
 | `templates/_base.html` | Layout shell: head, fonts, header (`ODIN` wordmark + actions slot), sticky-bottom status bar (signed-in only), `<main>`, footer, scripts slot. |
 | `templates/index.html` | Landing page with the search form. Hero markup carries `data-typewriter-text` on the tagline for the type-on reveal. |
-| `templates/profile.html` | Result page: title, category badge, summary, single-line ASCII progress bar, 6-section main column (exposition + events + highlights + lowlights + sources) plus an anchored sidebar (Subject Compass + Source Audit). Sets `meta[name=odin-query]` for the SSE bootstrap. |
+| `templates/profile.html` | Result page: title, category badge, summary, single-line ASCII progress bar, main column (exposition + locations map + events + highlights + lowlights + sources) plus an anchored sidebar (Subject Compass + Source Audit). Sets `meta[name=odin-query]` for the SSE bootstrap. |
 | `static/css/odin.css` | Thin entry stylesheet — declares the `@layer` order and imports the per-concern modules from `static/css/odin/`. |
 | `static/css/odin/_tokens.css` | OKLCH design tokens (palette, fonts, spacing, radii). One file change re-tints the entire site. |
 | `static/css/odin/_reset.css` | Box-sizing, body, button/input/anchor resets, universal phosphor halation (`text-shadow: 0 0 4px`), focus-visible bloom. |
@@ -26,6 +26,7 @@ Jinja2 templates, a per-concern CSS module tree under `@layer`, and two JavaScri
 | `static/css/odin/pages/_error.css` | Static 404 styling — Orbitron-bloom error code, fake C stacktrace. |
 | `static/js/odin.js` | Site-wide: type-on for `[data-typewriter-text]`, first-input quota fade, Konami sequence → code-rain. |
 | `static/js/profile.js` | SSE consumer for `/profile/stream`. Renders the ASCII progress bar (animated via `requestAnimationFrame`) and the ASCII gauges; no third-party deps. |
+| `static/js/locationsmap.js` | Renders the locations map: equirectangular projection, viewBox fitting (padded, clamped to a state-scale minimum span), nearby-pin clustering, and an inline SVG over the vendored basemap plus an accessible `<ol>` of place names. Each pin is labeled with its bracketed 1-based index (or comma-joined indices for a cluster, e.g. `[4,5]`), matching the `[N]`-numbered list below the map -- full names rarely fit on screen for geographically spread-out profiles, so the map points to the list. Pins glow and blink in a west-to-east "radar sweep" loop, paired with an animated arc that sweeps left to right across the map (both disabled/hidden under `prefers-reduced-motion`). Zoom in/out/reset buttons and click-and-drag (or touch-drag) panning let visitors explore beyond the auto-fit view; pins and labels keep a constant on-screen size at any zoom level. Labels that would collide on screen are hidden west to east, re-evaluated on every zoom/pan so numbers progressively appear as the user zooms in. Loaded as its own `<script defer>` before `profile.js`, which calls `renderLocationsMap` as a shared global. |
 | `static/404.html` | Standalone 404 page served by CloudFront/nginx (not FastAPI). Mirrors `_base.html` chrome without Jinja so it works when the upstream is down. |
 
 ## FastAPI wiring
@@ -57,6 +58,8 @@ On `DOMContentLoaded`: set the synthesis time (rendered as `[YYYY-MM-DDThh:mmZ]`
 Each pipeline event advances the progress bar. `advanceProgress(stage)` snaps the bar to the named stage and starts an animation loop (`requestAnimationFrame`) that fills the active segment char-by-char and blinks a `▒/░` cursor at the leading edge. When the next stage event arrives, the bar snaps forward; if the current segment fills before the next event arrives, the bar holds. `completeProgress()` renders all segments filled and hides the bar; `failProgress(msg)` paints the active segment with `XXXXXXXXXX` and shows the failure message.
 
 The `profile` event renders the title, deck, exposition, events, findings, citations; the `assessment` event (after `profile`) fills the Subject Compass (four divergent ASCII gauges) and Source Audit (one divergent gauge plus caveats). `{"type": "done"}` closes the connection. `es.onerror` flips the bar to failed and replaces the summary with a "Return to search" link.
+
+If the `profile` event's `locations` array is non-empty, `renderProfile` reveals `#section-locations` and lazy-fetches the vendored basemap (`/static/maps/basemap.geojson`, same-origin, fetched once and cached for the page) before calling `locationsmap.js`'s `renderLocationsMap`. An empty `locations` array leaves the section hidden — every profile carries the field, but only some have coordinates.
 
 If the backend `assess()` call fails, the stream skips the `assessment` event and ends with `done`. The Compass and Audit panels stay in their default empty state — no error UI for this secondary data.
 
@@ -99,9 +102,24 @@ All four front-end gates run via `make lint` / `make test` inside Docker:
 | `djlint` | `src/odin/templates/` | `[tool.djlint]` in `pyproject.toml` (jinja profile, 2-space indent, 100-char lines). |
 | `stylelint` | `static/css/**/*.css` (includes the `static/css/odin/` module tree) | `config/.stylelintrc.json` — `stylelint-config-standard` plus a BEM `selector-class-pattern`. |
 | `eslint` | `static/js/**/*.js` | `config/eslint.config.js` — flat config, browser globals, `no-undef` error. |
-| `vitest` | `tests/js/**/*.test.js` (happy-dom env) | `config/vitest.config.js`. Helpers reach the test scope via `tests/js/loadProfile.js`, which runs `profile.js` in a `node:vm` context with `document`, `window`, `performance`, `requestAnimationFrame` injected. |
+| `vitest` | `tests/js/**/*.test.js` (happy-dom env) | `config/vitest.config.js`. Helpers reach the test scope via `tests/js/loadProfile.js`, which runs `locationsmap.js` then `profile.js` in a `node:vm` context (mirroring the two `<script defer>` tags sharing one global scope) with `document`, `window`, `performance`, `requestAnimationFrame`, and a stub `fetch` injected. `tests/js/loadLocationsMap.js` loads `locationsmap.js` alone for its own unit tests. |
 
 `stylelint`, `eslint`, and `vitest` run in the `node:20-slim` sidecar (compose `tools` profile). `djlint` runs in the existing `web` container alongside ruff. The `node_modules` Make target is a sentinel that re-runs `npm ci` only when `package.json` / `package-lock.json` change.
+
+## Locations map basemap
+
+`static/maps/basemap.geojson` is a vendored, simplified basemap that `locationsmap.js` draws behind the location pins: coastlines (plain features) and country land borders (`properties.kind == "border"`).
+
+The source data is [Natural Earth](https://www.naturalearthdata.com/) 1:110m **Coastline** and 1:110m **Land boundaries** (admin-0 boundary lines, land only) — both public domain. The 1:110m tier is Natural Earth's most generalized, drawn for "zoomed out, big picture" maps rather than fine coastline detail. `scripts/build_basemap.py` parses the downloaded `.shp` files with a small stdlib-only reader, simplifies each line with Douglas-Peucker, drops fragments too small to matter at state-scale zoom, and writes the combined GeoJSON (about 70 KB).
+
+To regenerate after a Natural Earth update, download the two 1:110m shapefiles above, unzip them, and run:
+
+```sh
+uv run python scripts/build_basemap.py \
+    path/to/ne_110m_coastline.shp \
+    path/to/ne_110m_admin_0_boundary_lines_land.shp \
+    static/maps/basemap.geojson
+```
 
 ## Regenerating favicon raster variants
 

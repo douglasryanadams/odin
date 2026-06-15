@@ -410,6 +410,191 @@
   text-transform: none;
 }
 
+/* ----- Locations map -------------------------------------------------- */
+
+.locations-map {
+  margin: var(--sp-5) 0 var(--sp-7) 0;
+}
+
+.locations-map__map {
+  position: relative;
+}
+
+.locations-map__svg {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  cursor: grab;
+  touch-action: none;
+}
+
+.locations-map__svg.is-dragging {
+  cursor: grabbing;
+}
+
+.locations-map__controls {
+  position: absolute;
+  right: var(--sp-2);
+  bottom: var(--sp-2);
+  display: flex;
+  gap: var(--sp-1);
+}
+
+.locations-map__zoom {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  padding: var(--sp-1) var(--sp-2);
+  color: var(--text-muted);
+  background: color-mix(in oklch, var(--surface) 85%, transparent);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition:
+    color var(--t-fast),
+    border-color var(--t-fast);
+}
+
+.locations-map__zoom:hover {
+  color: var(--primary);
+  border-color: var(--glow);
+}
+
+.locations-map__zoom::before {
+  content: "[ ";
+}
+
+.locations-map__zoom::after {
+  content: " ]";
+}
+
+.locations-map__land {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1;
+  opacity: 0.6;
+}
+
+.locations-map__border {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+  opacity: 0.35;
+}
+
+/* The sweep's glow is layered like the pin glow (--pin-r-scaled, so it
+   stays proportional at any zoom level), but much wider -- a soft wash
+   that brightens the topography it passes over, then fades as it moves
+   on. mix-blend-mode: screen lightens the dim land/border strokes
+   underneath rather than just overlaying a translucent tint. */
+.locations-map__sweep {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  filter:
+    drop-shadow(0 0 2px var(--glow))
+    drop-shadow(0 0 calc(var(--pin-r) * 8px) color-mix(in oklch, var(--glow) 55%, transparent))
+    drop-shadow(0 0 calc(var(--pin-r) * 18px) color-mix(in oklch, var(--primary) 30%, transparent));
+  mix-blend-mode: screen;
+  transform-box: view-box;
+  animation: locations-map-sweep-line 3s linear infinite;
+}
+
+@keyframes locations-map-sweep-line {
+  0% {
+    transform: translateX(0%);
+    opacity: 0;
+  }
+
+  10%,
+  90% {
+    opacity: 0.5;
+  }
+
+  100% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .locations-map__sweep {
+    display: none;
+  }
+}
+
+.locations-map__pin {
+  fill: var(--primary);
+  filter:
+    drop-shadow(0 0 calc(var(--pin-r) * 1px) var(--primary))
+    drop-shadow(0 0 calc(var(--pin-r) * 3px) color-mix(in oklch, var(--primary) 60%, transparent))
+    drop-shadow(0 0 calc(var(--pin-r) * 6px) color-mix(in oklch, var(--primary) 35%, transparent));
+  animation: locations-map-sweep 3s ease-in-out infinite;
+}
+
+@keyframes locations-map-sweep {
+  0% { opacity: 1; }
+  15%, 100% { opacity: 0.6; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .locations-map__pin {
+    animation: none;
+  }
+}
+
+.locations-map__pin-label {
+  fill: var(--text);
+  font-family: var(--font-mono);
+  dominant-baseline: middle;
+}
+
+.locations-map__pin-label.is-hidden {
+  display: none;
+}
+
+.locations-map__list {
+  list-style: none;
+  counter-reset: location-pin;
+  padding: 0;
+  margin: var(--sp-3) 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: 0.8125rem;
+}
+
+.locations-map__list-item {
+  counter-increment: location-pin;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: var(--sp-1) 0;
+  border-bottom: 1px solid color-mix(in oklch, var(--text-muted) 12%, transparent);
+}
+
+.locations-map__list-item::before {
+  content: "[" counter(location-pin) "]";
+  font-family: var(--font-mono);
+  color: var(--primary);
+}
+
+.locations-map__list-item:last-child {
+  border-bottom: none;
+}
+
+.locations-map__list-name {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.locations-map__list-caption {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
 /* ----- Significant events ------------------------------------------- */
 
 .events {

@@ -21,6 +21,7 @@ function buildProfileDom() {
     <h1 id="sidebar-name"></h1>
     <p id="summary"></p>
     <div id="exposition"></div>
+    <section id="section-locations" hidden><div id="locations-map"></div></section>
     <span id="byline-sources"></span>
     <div id="progress-strip" class="progress-bar"></div>
     <section id="section-events"><span id="events-count"></span><ol class="events" data-empty="none"></ol></section>
@@ -300,6 +301,44 @@ describe("renderProfile findings + events", () => {
     expect(paragraphs.length).toBe(2);
     expect(paragraphs[0].textContent).toBe("second paragraph.");
     expect(paragraphs[1].textContent).toBe("third paragraph.");
+  });
+});
+
+describe("renderProfile locations", () => {
+  beforeEach(() => {
+    profile.resetProgress();
+    buildProfileDom();
+  });
+
+  const base = {
+    name: "x",
+    category: "person",
+    summary: "",
+    highlights: [],
+    lowlights: [],
+    timeline: [],
+    citations: [],
+  };
+
+  test("section stays hidden and unrendered when there are no locations", async () => {
+    profile.renderProfile({ ...base, locations: [] });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.getElementById("section-locations").hidden).toBe(true);
+    expect(document.getElementById("locations-map").children.length).toBe(0);
+  });
+
+  test("section reveals and renders the map and list when locations are present", async () => {
+    profile.renderProfile({
+      ...base,
+      locations: [
+        { name: "Warsaw, Poland", latitude: 52.23, longitude: 21.01, caption: "Birthplace" },
+      ],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.getElementById("section-locations").hidden).toBe(false);
+    const container = document.getElementById("locations-map");
+    expect(container.querySelector("svg.locations-map__svg")).not.toBeNull();
+    expect(container.querySelectorAll(".locations-map__list-item")).toHaveLength(1);
   });
 });
 
