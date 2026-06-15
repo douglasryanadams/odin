@@ -197,6 +197,93 @@ async def test_synthesize_citation_dropped_when_url_has_no_matching_source(
     assert result.citations == []
 
 
+def test_create_profile_tool_schema_locations_are_optional_and_bounded() -> None:
+    """The locations field is optional (not in required) and capped at 15 places."""
+    schema = claude._CREATE_PROFILE_TOOL["input_schema"]  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    assert "locations" not in schema["required"]
+    locations = schema["properties"]["locations"]
+    assert locations["maxItems"] == 15
+    item = locations["items"]
+    assert set(item["required"]) == {"name", "latitude", "longitude", "caption"}
+    assert item["properties"]["latitude"]["minimum"] == -90
+    assert item["properties"]["latitude"]["maximum"] == 90
+    assert item["properties"]["longitude"]["minimum"] == -180
+    assert item["properties"]["longitude"]["maximum"] == 180
+
+
+@pytest.mark.asyncio
+async def test_synthesize_parses_locations_into_profile(mock_client: MagicMock) -> None:
+    """synthesize() parses Claude's locations array into Profile.locations."""
+    profile_data = {
+        **_PROFILE_DATA,
+        "locations": [
+            {
+                "name": "Warsaw, Poland",
+                "latitude": 52.23,
+                "longitude": 21.01,
+                "caption": "Birthplace",
+            },
+        ],
+    }
+    mock_client.messages.create.return_value = api_response(
+        [tool_block("create_profile", profile_data)]
+    )
+    content = {"https://example.com": "text"}
+    sources = [SearchResult(url="https://example.com", title="Example", content="snippet")]
+
+    result = await claude.synthesize(mock_client, "Marie Curie", "person", content, sources)
+
+    assert len(result.locations) == 1
+    location = result.locations[0]
+    assert location.name == "Warsaw, Poland"
+    assert location.latitude == 52.23
+    assert location.longitude == 21.01
+    assert location.caption == "Birthplace"
+
+
+@pytest.mark.asyncio
+async def test_synthesize_defaults_locations_to_empty_when_absent(mock_client: MagicMock) -> None:
+    """A response with no locations key (the field is optional) yields an empty list."""
+    mock_client.messages.create.return_value = api_response(
+        [tool_block("create_profile", _PROFILE_DATA)]
+    )
+    content = {"https://example.com": "text"}
+    sources = [SearchResult(url="https://example.com", title="Example", content="snippet")]
+
+    result = await claude.synthesize(mock_client, "Marie Curie", "person", content, sources)
+
+    assert result.locations == []
+
+
+@pytest.mark.asyncio
+async def test_synthesize_drops_locations_with_out_of_range_coordinates(
+    mock_client: MagicMock,
+) -> None:
+    """A location with an out-of-range coordinate is dropped, not fatal to the whole profile."""
+    profile_data = {
+        **_PROFILE_DATA,
+        "locations": [
+            {
+                "name": "Warsaw, Poland",
+                "latitude": 52.23,
+                "longitude": 21.01,
+                "caption": "Birthplace",
+            },
+            {"name": "Nowhere", "latitude": 200.0, "longitude": 0.0, "caption": "Bad coordinate"},
+        ],
+    }
+    mock_client.messages.create.return_value = api_response(
+        [tool_block("create_profile", profile_data)]
+    )
+    content = {"https://example.com": "text"}
+    sources = [SearchResult(url="https://example.com", title="Example", content="snippet")]
+
+    result = await claude.synthesize(mock_client, "Marie Curie", "person", content, sources)
+
+    assert len(result.locations) == 1
+    assert result.locations[0].name == "Warsaw, Poland"
+
+
 @pytest.mark.asyncio
 async def test_find_connections_drops_connections_that_resolve_to_fewer_than_two_sources(
     mock_client: MagicMock,

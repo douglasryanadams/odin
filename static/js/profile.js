@@ -51,6 +51,10 @@ const STAGE_FILL_MS = 2400; // time to visually fill one segment while waiting
 // Layout for the ASCII gauges
 const RULE_WIDTH = 24;
 
+// Vendored basemap for the locations map (see locationsmap.js).
+const BASEMAP_URL = "/static/maps/basemap.geojson";
+let _basemapPromise = null;
+
 function $(id) {
   return document.getElementById(id);
 }
@@ -412,6 +416,15 @@ function renderConnectionsEvent(data) {
   if (listEl) renderConnections(listEl, data.connections || []);
 }
 
+// Fetch the vendored basemap once per page load and cache the promise, since
+// renderProfile can run more than once (e.g. cached + live profile events).
+function loadBasemap() {
+  if (!_basemapPromise) {
+    _basemapPromise = fetch(BASEMAP_URL).then((response) => response.json());
+  }
+  return _basemapPromise;
+}
+
 function renderProfile(data) {
   const name = data.name || "";
   const sidebarName = $("sidebar-name");
@@ -440,6 +453,16 @@ function renderProfile(data) {
   }
 
   setCategory(data.category);
+
+  const locationsSection = $("section-locations");
+  const locationsMap = $("locations-map");
+  if (locationsSection) {
+    const locations = data.locations || [];
+    locationsSection.hidden = locations.length === 0;
+    if (locations.length && locationsMap) {
+      loadBasemap().then((geojson) => renderLocationsMap(locationsMap, locations, geojson));
+    }
+  }
 
   const events = document.querySelector("#section-events .events");
   if (events) renderEvents(events, data.timeline || []);

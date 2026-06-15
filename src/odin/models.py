@@ -35,6 +35,20 @@ class Citation(BaseModel):
     snippet: str
 
 
+class Location(BaseModel):
+    """A key place tied to the subject, plotted on the profile's locations map.
+
+    Coordinates are approximate and at city/landmark granularity — never a
+    street address. `caption` is short context for the pin, e.g.
+    "Birthplace" or "Site of the 1986 disaster".
+    """
+
+    name: str
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    caption: str
+
+
 class Profile(BaseModel):
     """A structured profile for a search subject."""
 
@@ -45,6 +59,7 @@ class Profile(BaseModel):
     lowlights: list[ProfileHighlight]
     timeline: list[TimelineEntry]
     citations: list[Citation] = []
+    locations: list[Location] = []
 
 
 ConnectionKind = Literal["corroboration", "contradiction", "link"]

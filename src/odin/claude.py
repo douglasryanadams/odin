@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, get_args
 
 from anthropic import (
@@ -13,6 +13,7 @@ from anthropic import (
 )
 from anthropic.types import Message
 from loguru import logger
+from pydantic import ValidationError
 
 from odin.config import settings
 from odin.models import (
@@ -21,6 +22,7 @@ from odin.models import (
     Caveat,
     Citation,
     Connection,
+    Location,
     Profile,
     ProfileHighlight,
     TimelineEntry,
@@ -107,6 +109,7 @@ class _SynthesizeOutput:
     lowlights: list[ProfileHighlight]
     timeline: list[TimelineEntry]
     citations: list[str]
+    locations: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
 
 
 @dataclass(frozen=True)
@@ -207,6 +210,20 @@ _SYNTHESIZE_SYSTEM = (
     "  entries over an exhaustive chronology.\n"
     "- citations: the URLs of source pages whose content materially informed the profile.\n"
     "  Only list URLs you actually drew from; skip sources you ignored.\n"
+    "- locations: 3-15 key places tied to the subject, for a map. Favor more locations\n"
+    "  when the subject's life or story touches many places — aim for at least 3-6,\n"
+    "  up to 15. Each has:\n"
+    "    name      — the place name, e.g. 'Warsaw, Poland'.\n"
+    "    latitude, longitude — decimal degrees, at city or landmark granularity. Never a\n"
+    "                  street address.\n"
+    "    caption   — short context for the pin, e.g. 'Birthplace' or 'Site of the 1986\n"
+    "                  disaster'.\n"
+    "  For a person: birthplace, places of major accomplishment, where they lived or died.\n"
+    "  For a place or event: the geography of what happened, including locations tied to\n"
+    "  every major party or side involved (e.g. both combatant nations in a war, not\n"
+    "  just one). If the subject is a private individual rather than a public figure,\n"
+    "  omit any location that would reveal a private residence — return an empty list if\n"
+    "  no location is appropriate to share.\n"
     "Be factual and cite specific details from the provided content.\n"
     "Respond using the create_profile tool."
 )
@@ -365,6 +382,24 @@ _CREATE_PROFILE_TOOL: dict[str, Any] = {
                 "items": {"type": "string"},
                 "description": (
                     "URLs of source pages whose content materially informed this profile."
+                ),
+            },
+            "locations": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "latitude": {"type": "number", "minimum": -90, "maximum": 90},
+                        "longitude": {"type": "number", "minimum": -180, "maximum": 180},
+                        "caption": {"type": "string"},
+                    },
+                    "required": ["name", "latitude", "longitude", "caption"],
+                },
+                "maxItems": 15,
+                "description": (
+                    "3-15 key places tied to the subject, for a map. Empty if none are "
+                    "appropriate to share."
                 ),
             },
         },
@@ -721,7 +756,25 @@ async def synthesize(
         lowlights=parsed.lowlights,
         timeline=parsed.timeline,
         citations=citations,
+        locations=_parse_locations(parsed.locations),
     )
+
+
+def _parse_locations(raw_locations: list[dict[str, Any]]) -> list[Location]:
+    """Validate each candidate location, dropping any with out-of-range or missing fields.
+
+    A single malformed location (e.g. Claude emitting a latitude outside
+    -90..90) shouldn't sink the whole profile — drop it the same way a
+    citation that doesn't resolve gets dropped, rather than letting a
+    pydantic ValidationError propagate out of synthesize.
+    """
+    locations: list[Location] = []
+    for raw in raw_locations:
+        try:
+            locations.append(Location(**raw))
+        except ValidationError as exc:
+            logger.debug("dropping invalid location {!r}: {}", raw, exc)
+    return locations
 
 
 def _format_profile_for_assess(profile: Profile) -> str:

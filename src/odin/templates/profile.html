@@ -74,6 +74,10 @@
         </ol>
       {% endif %}
       <div id="exposition" class="profile__exposition"></div>
+      <section id="section-locations" hidden>
+        <h2>Key locations</h2>
+        <div class="locations-map" id="locations-map"></div>
+      </section>
       <section id="section-events">
         <h2>
           Significant events <span class="profile__hint" id="events-count"></span>
@@ -138,4 +142,7 @@
     </aside>
   </div>
 {% endblock %}
-{% block scripts %}<script src="/static/js/profile.js" defer></script>{% endblock %}
+{% block scripts %}
+  <script src="/static/js/locationsmap.js" defer></script>
+  <script src="/static/js/profile.js" defer></script>
+{% endblock %}
