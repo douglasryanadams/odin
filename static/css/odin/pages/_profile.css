@@ -974,7 +974,7 @@
 
 .citations__item {
   counter-increment: cite;
-  padding: var(--sp-3) 0 var(--sp-3) var(--sp-5);
+  padding: var(--sp-3) 0 var(--sp-3) var(--sp-6);
   position: relative;
   border-bottom: 1px solid color-mix(in oklch, var(--text-muted) 18%, transparent);
 }
