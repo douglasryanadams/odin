@@ -279,7 +279,10 @@ def _assert_common_seo_tags(body: str) -> None:
     assert '<meta property="og:type"' in body
     assert '<meta property="og:site_name"' in body
     assert '<meta property="og:locale"' in body
-    assert '<meta name="twitter:card" content="summary"' in body
+    assert '<meta property="og:image"' in body
+    assert "/static/og-image.png" in body
+    assert '<meta name="twitter:card" content="summary_large_image"' in body
+    assert '<meta name="twitter:image"' in body
 
 
 def test_home_has_meta_description_and_og_tags(client: TestClient) -> None:

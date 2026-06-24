@@ -19,10 +19,15 @@
       <meta property="og:description"
             content="{{ self.meta_description() |trim }}" />
       <meta property="og:url" content="{{ app_url }}{{ request.url.path }}" />
-      <meta name="twitter:card" content="summary" />
+      <meta property="og:image" content="{{ app_url }}/static/og-image.png" />
+      <meta property="og:image:width" content="1200" />
+      <meta property="og:image:height" content="630" />
+      <meta property="og:image:alt" content="Odin — Decode the digital domain" />
+      <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="{{ self.title() |trim }}" />
       <meta name="twitter:description"
             content="{{ self.meta_description() |trim }}" />
+      <meta name="twitter:image" content="{{ app_url }}/static/og-image.png" />
     {% endblock %}
     {% block json_ld %}
       <script type="application/ld+json">
@@ -112,7 +117,7 @@
     <footer class="site-footer">
       <span class="site-footer__brand">odin</span>
       <span class="site-footer__sep" aria-hidden="true">//</span>
-      <span class="site-footer__muted">profiles synthesized from the web</span>
+      <span class="site-footer__muted">Decode the digital domain</span>
       <span class="site-footer__sep" aria-hidden="true">//</span>
       <a class="site-footer__link" href="/about">About</a>
       <span class="site-footer__sep" aria-hidden="true">//</span>
