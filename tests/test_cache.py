@@ -25,11 +25,26 @@ def valkey() -> AsyncMock:
         ("MARIE\tCURIE", "marie curie"),
         ("marie   curie", "marie curie"),
         ("marie\ncurie", "marie curie"),
+        # Diacritic folding: accented characters collapse to ASCII equivalents.
+        ("Brían Wärner", "brian warner"),
+        ("MARÍE  CURIE", "marie curie"),
+        # Punctuation/hyphen folding: separators become spaces.
+        ("brian-warner", "brian warner"),
+        ("brian_warner", "brian warner"),
+        # Possessive folding: trailing straight and curly apostrophe possessives are stripped.
+        ("Brian Warner's", "brian warner"),
+        ("Brian Warner\u2019s", "brian warner"),
     ],
 )
 def test_normalize_collapses_case_whitespace_and_internal_runs(raw: str, normalized: str) -> None:
     """normalize() folds case, trims, and collapses internal whitespace runs to one space."""
     assert cache.normalize(raw) == normalized
+
+
+def test_normalize_does_not_merge_distinct_entities() -> None:
+    """Distinct entities must not collide after normalization."""
+    assert cache.normalize("brian warner") != cache.normalize("marilyn manson")
+    assert cache.normalize("marie curie") != cache.normalize("pierre curie")
 
 
 def test_queries_that_normalize_alike_share_a_cache_key() -> None:

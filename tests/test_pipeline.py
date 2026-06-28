@@ -54,8 +54,9 @@ async def test_pipeline_bounds_search_concurrency() -> None:
         patch.object(pipeline.claude, "categorize", AsyncMock(return_value="other")),
         patch.object(pipeline.claude, "generate_queries", AsyncMock(return_value=queries)),
         patch.object(pipeline.claude, "select_urls", AsyncMock(return_value=[])),
-        patch.object(pipeline.claude, "synthesize", AsyncMock(return_value=profile)),
-        patch.object(pipeline.claude, "assess", AsyncMock(side_effect=Exception("skip"))),
+        patch.object(
+            pipeline.claude, "synthesize_and_assess", AsyncMock(return_value=(profile, None))
+        ),
     ):
         async for _ in pipeline.build_profile(
             "foo",
@@ -145,9 +146,11 @@ def _make_tracing_pipeline_doubles() -> tuple[
         trace.append("call:select_urls")
         return ["https://e/1"]
 
-    async def trace_synthesize(*_args: object, **_kw: object) -> Profile:
-        trace.append("call:synthesize")
-        return Profile(
+    async def trace_synthesize_and_assess(
+        *_args: object, **_kw: object
+    ) -> tuple[Profile, Assessment]:
+        trace.append("call:synthesize_and_assess")
+        profile = Profile(
             name="n",
             category="other",
             summary="s",
@@ -156,10 +159,7 @@ def _make_tracing_pipeline_doubles() -> tuple[
             timeline=[],
             citations=[],
         )
-
-    async def trace_assess(*_args: object, **_kw: object) -> Assessment:
-        trace.append("call:assess")
-        return Assessment(
+        assessment = Assessment(
             public_sentiment=0.0,
             subject_political_bias=0.0,
             source_political_bias=0.0,
@@ -167,6 +167,7 @@ def _make_tracing_pipeline_doubles() -> tuple[
             good_evil=0.0,
             caveats=[],
         )
+        return profile, assessment
 
     async def trace_search(q: str) -> list[SearchResult]:
         trace.append("call:search")
@@ -182,25 +183,29 @@ def _make_tracing_pipeline_doubles() -> tuple[
         "categorize": trace_categorize,
         "generate_queries": trace_generate_queries,
         "select_urls": trace_select_urls,
-        "synthesize": trace_synthesize,
-        "assess": trace_assess,
+        "synthesize_and_assess": trace_synthesize_and_assess,
     }
     return trace, doubles, _TraceFetcher, trace_search
 
 
-async def test_pipeline_emits_synthesizing_and_assessing_events_at_phase_boundaries() -> None:
-    """Yield synthesizing and assessing at phase boundaries.
+async def test_pipeline_emits_synthesizing_event_then_profile_and_assessment() -> None:
+    """Yield synthesizing at the fetch/synthesize boundary, then profile and assessment.
 
-    `synthesizing` fires between fetch and synthesize; `assessing` fires between
-    synthesize and assess, so the UI can show progress during the long Sonnet calls.
+    `synthesizing` fires between fetch and the single synthesize_and_assess call,
+    so the UI can show progress during the long Sonnet call. The profile and its
+    audit both come back from that one call, so they stream out together with no
+    separate `assessing` step in between.
     """
     trace, doubles, fetcher_cls, search_fn = _make_tracing_pipeline_doubles()
     with (
         patch.object(pipeline.claude, "categorize", side_effect=doubles["categorize"]),
         patch.object(pipeline.claude, "generate_queries", side_effect=doubles["generate_queries"]),
         patch.object(pipeline.claude, "select_urls", side_effect=doubles["select_urls"]),
-        patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
-        patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
+        patch.object(
+            pipeline.claude,
+            "synthesize_and_assess",
+            side_effect=doubles["synthesize_and_assess"],
+        ),
     ):
         events: list[str] = []
         async for ev in pipeline.build_profile(
@@ -216,13 +221,12 @@ async def test_pipeline_emits_synthesizing_and_assessing_events_at_phase_boundar
         "fetching",
         "synthesizing",
         "profile",
-        "assessing",
         "assessment",
     ]
     assert trace.index("yield:synthesizing") > trace.index("call:fetch_pages")
-    assert trace.index("yield:synthesizing") < trace.index("call:synthesize")
-    assert trace.index("yield:assessing") > trace.index("call:synthesize")
-    assert trace.index("yield:assessing") < trace.index("call:assess")
+    assert trace.index("yield:synthesizing") < trace.index("call:synthesize_and_assess")
+    assert trace.index("yield:profile") > trace.index("call:synthesize_and_assess")
+    assert trace.index("yield:assessment") > trace.index("call:synthesize_and_assess")
 
 
 @dataclass(frozen=True)
@@ -249,7 +253,7 @@ async def test_pipeline_yields_service_unavailable_when_all_fetched_content_is_e
         patch.object(
             pipeline.claude, "select_urls", AsyncMock(return_value=["https://example.com"])
         ),
-        patch.object(pipeline.claude, "synthesize") as mock_synth,
+        patch.object(pipeline.claude, "synthesize_and_assess") as mock_synth_assess,
     ):
         stages = [
             ev.stage
@@ -262,7 +266,7 @@ async def test_pipeline_yields_service_unavailable_when_all_fetched_content_is_e
         ]
 
     assert "service_unavailable" in stages
-    mock_synth.assert_not_called()
+    mock_synth_assess.assert_not_called()
 
 
 async def test_pipeline_filters_disallowed_urls_before_select(
@@ -301,8 +305,9 @@ async def test_pipeline_filters_disallowed_urls_before_select(
         patch.object(pipeline.claude, "categorize", AsyncMock(return_value="other")),
         patch.object(pipeline.claude, "generate_queries", AsyncMock(return_value=["q1"])),
         patch.object(pipeline.claude, "select_urls", side_effect=capture_select_urls),
-        patch.object(pipeline.claude, "synthesize", AsyncMock(return_value=profile)),
-        patch.object(pipeline.claude, "assess", AsyncMock(side_effect=Exception("skip"))),
+        patch.object(
+            pipeline.claude, "synthesize_and_assess", AsyncMock(return_value=(profile, None))
+        ),
     ):
         async for _ in pipeline.build_profile(
             "foo",
@@ -356,8 +361,11 @@ async def test_pipeline_names_backends_that_contributed_no_results() -> None:
         patch.object(pipeline.claude, "categorize", AsyncMock(return_value="other")),
         patch.object(pipeline.claude, "generate_queries", AsyncMock(return_value=["q1", "q2"])),
         patch.object(pipeline.claude, "select_urls", AsyncMock(return_value=[])),
-        patch.object(pipeline.claude, "synthesize", AsyncMock(return_value=_profile_double())),
-        patch.object(pipeline.claude, "assess", AsyncMock(side_effect=Exception("skip"))),
+        patch.object(
+            pipeline.claude,
+            "synthesize_and_assess",
+            AsyncMock(return_value=(_profile_double(), None)),
+        ),
     ):
         events = [
             ev
@@ -388,8 +396,11 @@ async def test_pipeline_reports_no_missing_backends_when_all_contribute() -> Non
         patch.object(pipeline.claude, "categorize", AsyncMock(return_value="other")),
         patch.object(pipeline.claude, "generate_queries", AsyncMock(return_value=["q1"])),
         patch.object(pipeline.claude, "select_urls", AsyncMock(return_value=[])),
-        patch.object(pipeline.claude, "synthesize", AsyncMock(return_value=_profile_double())),
-        patch.object(pipeline.claude, "assess", AsyncMock(side_effect=Exception("skip"))),
+        patch.object(
+            pipeline.claude,
+            "synthesize_and_assess",
+            AsyncMock(return_value=(_profile_double(), None)),
+        ),
     ):
         events = [
             ev
@@ -455,7 +466,6 @@ def _make_deep_pipeline_doubles(
     how many follow-up rounds run.
     """
     trace: list[str] = []
-    synth_calls = 0
 
     async def trace_select_urls(
         _client: object, _query: str, results: list[SearchResult]
@@ -470,10 +480,18 @@ def _make_deep_pipeline_doubles(
         _content: dict[str, str],
         _sources: list[SearchResult],
     ) -> Profile:
-        nonlocal synth_calls
-        synth_calls += 1
         trace.append("call:synthesize")
-        return _draft_profile() if synth_calls == 1 else _final_profile()
+        return _draft_profile()
+
+    async def trace_synthesize_and_assess(
+        _client: object,
+        _query: str,
+        _category: str,
+        _content: dict[str, str],
+        _sources: list[SearchResult],
+    ) -> tuple[Profile, Assessment | None]:
+        trace.append("call:synthesize_and_assess")
+        return _final_profile(), assessment
 
     async def trace_search(q: str) -> list[SearchResult]:
         trace.append(f"call:search:{q}")
@@ -499,9 +517,9 @@ def _make_deep_pipeline_doubles(
         "generate_queries": _constant_double(trace, "generate_queries", ["initial query"]),
         "select_urls": trace_select_urls,
         "synthesize": trace_synthesize,
+        "synthesize_and_assess": trace_synthesize_and_assess,
         "identify_gaps": AsyncMock(return_value=gap_queries),
         "find_connections": _constant_double(trace, "find_connections", empty_connections),
-        "assess": _constant_double(trace, "assess", assessment),
     }
     return trace, doubles, _TraceFetcher, trace_search
 
@@ -523,7 +541,11 @@ async def test_deep_profile_runs_followup_rounds_and_synthesizes_exactly_twice()
         patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
         patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
         patch.object(pipeline.claude, "find_connections", side_effect=doubles["find_connections"]),
-        patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
+        patch.object(
+            pipeline.claude,
+            "synthesize_and_assess",
+            side_effect=doubles["synthesize_and_assess"],
+        ),
     ):
         events = [
             ev
@@ -551,10 +573,10 @@ async def test_deep_profile_runs_followup_rounds_and_synthesizes_exactly_twice()
         "connections",
         "synthesizing",
         "profile",
-        "assessing",
         "assessment",
     ]
-    assert trace.count("call:synthesize") == 2
+    assert trace.count("call:synthesize") == 1
+    assert trace.count("call:synthesize_and_assess") == 1
     gap_event = next(ev for ev in events if ev.stage == "deep_gap_analysis")
     assert gap_event.data["queries"] == ["gap one", "gap two"]
     assert gap_event.data["reasons"] == ["reason one", "reason two"]
@@ -580,7 +602,11 @@ async def test_deep_profile_skips_followup_rounds_when_no_gaps_identified() -> N
         patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
         patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
         patch.object(pipeline.claude, "find_connections", side_effect=doubles["find_connections"]),
-        patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
+        patch.object(
+            pipeline.claude,
+            "synthesize_and_assess",
+            side_effect=doubles["synthesize_and_assess"],
+        ),
     ):
         events = [
             ev
@@ -596,7 +622,8 @@ async def test_deep_profile_skips_followup_rounds_when_no_gaps_identified() -> N
     assert "deep_searching" not in stages
     assert "deep_fetching" not in stages
     assert stages.index("deep_gap_analysis") < stages.index("synthesizing")
-    assert trace.count("call:synthesize") == 2
+    assert trace.count("call:synthesize") == 1
+    assert trace.count("call:synthesize_and_assess") == 1
     assert sum(1 for entry in trace if entry.startswith("call:search:")) == 1
 
 
@@ -616,7 +643,11 @@ async def test_deep_profile_caps_followup_rounds_at_the_hard_limit() -> None:
         patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
         patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
         patch.object(pipeline.claude, "find_connections", side_effect=doubles["find_connections"]),
-        patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
+        patch.object(
+            pipeline.claude,
+            "synthesize_and_assess",
+            side_effect=doubles["synthesize_and_assess"],
+        ),
     ):
         events = [
             ev
@@ -633,7 +664,8 @@ async def test_deep_profile_caps_followup_rounds_at_the_hard_limit() -> None:
     assert [ev.data["round"] for ev in deep_searching] == list(
         range(1, pipeline.DEEP_MODE_MAX_ROUNDS + 1)
     )
-    assert trace.count("call:synthesize") == 2
+    assert trace.count("call:synthesize") == 1
+    assert trace.count("call:synthesize_and_assess") == 1
 
 
 async def test_deep_profile_skips_a_round_whose_results_all_dedupe_against_existing_content() -> (
@@ -661,7 +693,11 @@ async def test_deep_profile_skips_a_round_whose_results_all_dedupe_against_exist
         patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
         patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
         patch.object(pipeline.claude, "find_connections", side_effect=doubles["find_connections"]),
-        patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
+        patch.object(
+            pipeline.claude,
+            "synthesize_and_assess",
+            side_effect=doubles["synthesize_and_assess"],
+        ),
     ):
         events = [
             ev
@@ -676,7 +712,8 @@ async def test_deep_profile_skips_a_round_whose_results_all_dedupe_against_exist
     deep_searching = [ev for ev in events if ev.stage == "deep_searching"]
     assert [ev.data["query"] for ev in deep_searching] == ["fresh gap"]
     assert sum(1 for ev in events if ev.stage == "deep_fetching") == 1
-    assert trace.count("call:synthesize") == 2
+    assert trace.count("call:synthesize") == 1
+    assert trace.count("call:synthesize_and_assess") == 1
 
 
 async def test_deep_profile_final_synthesis_sees_merged_sources_and_content() -> None:
@@ -696,7 +733,17 @@ async def test_deep_profile_final_synthesis_sees_merged_sources_and_content() ->
         sources: list[SearchResult],
     ) -> Profile:
         synthesize_calls.append((dict(content), list(sources)))
-        return _draft_profile() if len(synthesize_calls) == 1 else _final_profile()
+        return _draft_profile()
+
+    async def capturing_synthesize_and_assess(
+        _client: object,
+        _query: str,
+        _category: str,
+        content: dict[str, str],
+        sources: list[SearchResult],
+    ) -> tuple[Profile, Assessment | None]:
+        synthesize_calls.append((dict(content), list(sources)))
+        return _final_profile(), None
 
     _trace, doubles, fetcher_cls, search_fn = _make_deep_pipeline_doubles(
         [("gap query", "gap reason")]
@@ -708,7 +755,11 @@ async def test_deep_profile_final_synthesis_sees_merged_sources_and_content() ->
         patch.object(pipeline.claude, "synthesize", side_effect=capturing_synthesize),
         patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
         patch.object(pipeline.claude, "find_connections", side_effect=doubles["find_connections"]),
-        patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
+        patch.object(
+            pipeline.claude,
+            "synthesize_and_assess",
+            side_effect=capturing_synthesize_and_assess,
+        ),
     ):
         async for _ in pipeline.build_deep_profile(
             "foo",
@@ -759,7 +810,11 @@ async def test_deep_profile_runs_connection_pass_with_merged_sources_before_fina
         patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
         patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
         patch.object(pipeline.claude, "find_connections", side_effect=capturing_find_connections),
-        patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
+        patch.object(
+            pipeline.claude,
+            "synthesize_and_assess",
+            side_effect=doubles["synthesize_and_assess"],
+        ),
     ):
         events = [
             ev
@@ -803,7 +858,11 @@ async def test_deep_profile_skips_connection_pass_when_fewer_than_two_sources_ga
         patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
         patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
         patch.object(pipeline.claude, "find_connections", side_effect=doubles["find_connections"]),
-        patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
+        patch.object(
+            pipeline.claude,
+            "synthesize_and_assess",
+            side_effect=doubles["synthesize_and_assess"],
+        ),
     ):
         events = [
             ev
@@ -833,7 +892,11 @@ async def test_deep_profile_gap_analysis_event_includes_reasons() -> None:
         patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
         patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
         patch.object(pipeline.claude, "find_connections", side_effect=doubles["find_connections"]),
-        patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
+        patch.object(
+            pipeline.claude,
+            "synthesize_and_assess",
+            side_effect=doubles["synthesize_and_assess"],
+        ),
     ):
         events = [
             ev
@@ -862,7 +925,11 @@ async def test_deep_searching_event_includes_reason() -> None:
         patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
         patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
         patch.object(pipeline.claude, "find_connections", side_effect=doubles["find_connections"]),
-        patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
+        patch.object(
+            pipeline.claude,
+            "synthesize_and_assess",
+            side_effect=doubles["synthesize_and_assess"],
+        ),
     ):
         events = [
             ev
@@ -890,7 +957,11 @@ async def test_deep_fetching_event_includes_reason() -> None:
         patch.object(pipeline.claude, "synthesize", side_effect=doubles["synthesize"]),
         patch.object(pipeline.claude, "identify_gaps", side_effect=doubles["identify_gaps"]),
         patch.object(pipeline.claude, "find_connections", side_effect=doubles["find_connections"]),
-        patch.object(pipeline.claude, "assess", side_effect=doubles["assess"]),
+        patch.object(
+            pipeline.claude,
+            "synthesize_and_assess",
+            side_effect=doubles["synthesize_and_assess"],
+        ),
     ):
         events = [
             ev

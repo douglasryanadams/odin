@@ -11,7 +11,7 @@ from loguru import logger
 from helpers import api_response, tool_block
 from odin import claude
 from odin.config import settings
-from odin.models import Profile, ProfileHighlight
+from odin.models import Assessment, Profile, ProfileHighlight
 from odin.search import SearchResult
 
 _PROFILE_DATA = {
@@ -30,6 +30,15 @@ _PROFILE_DATA = {
     "lowlights": [],
     "timeline": [{"date": "1903", "event": "First Nobel Prize in Physics"}],
     "citations": ["https://example.com"],
+}
+
+_ASSESS_DATA: Mapping[str, object] = {
+    "public_sentiment": 0.2,
+    "subject_political_bias": -0.1,
+    "source_political_bias": 0.0,
+    "law_chaos": 0.3,
+    "good_evil": 0.5,
+    "caveats": [{"brief": "Sources skew Anglophone.", "detail": "Most cited pages are English."}],
 }
 
 
@@ -195,6 +204,113 @@ async def test_synthesize_citation_dropped_when_url_has_no_matching_source(
     result = await claude.synthesize(mock_client, "Marie Curie", "person", content, sources)
 
     assert result.citations == []
+
+
+@pytest.mark.asyncio
+async def test_synthesize_and_assess_single_call_returns_profile_and_assessment(
+    mock_client: MagicMock,
+) -> None:
+    """One Sonnet call emits both create_profile and assess_profile; both are parsed.
+
+    Folding the old synthesize + assess pair into one call is the whole point:
+    the fetched pages are sent once and Claude returns the profile and its audit
+    together as two tool_use blocks in a single response.
+    """
+    mock_client.messages.create.return_value = api_response(
+        [
+            tool_block("create_profile", _PROFILE_DATA),
+            tool_block("assess_profile", _ASSESS_DATA),
+        ]
+    )
+    content = {"https://example.com": "Marie Curie was a physicist."}
+    sources = [SearchResult(url="https://example.com", title="Example", content="snippet")]
+
+    profile, assessment = await claude.synthesize_and_assess(
+        mock_client, "Marie Curie", "person", content, sources
+    )
+
+    assert mock_client.messages.create.call_count == 1
+    assert isinstance(profile, Profile)
+    assert profile.name == "Marie Curie"
+    assert isinstance(assessment, Assessment)
+    assert assessment.public_sentiment == 0.2
+    assert assessment.caveats[0].brief == "Sources skew Anglophone."
+
+
+@pytest.mark.asyncio
+async def test_synthesize_and_assess_sends_page_content_once_without_profile_block(
+    mock_client: MagicMock,
+) -> None:
+    """The single call carries the source sections once and re-sends no formatted profile.
+
+    The old assess call re-sent the full pages plus a rendered "Profile:" block
+    synthesize had already paid for — the duplicate this fold removes.
+    """
+    mock_client.messages.create.return_value = api_response(
+        [
+            tool_block("create_profile", _PROFILE_DATA),
+            tool_block("assess_profile", _ASSESS_DATA),
+        ]
+    )
+    content = {
+        "https://example.com": "Marie Curie was a physicist.",
+        "https://other.com": "She won two Nobel Prizes.",
+    }
+    sources = [
+        SearchResult(url="https://example.com", title="Example", content="snippet"),
+        SearchResult(url="https://other.com", title="Other", content="snippet"),
+    ]
+
+    await claude.synthesize_and_assess(mock_client, "Marie Curie", "person", content, sources)
+
+    user_message = mock_client.messages.create.call_args.kwargs["messages"][0]["content"]
+    assert user_message.count("Marie Curie was a physicist.") == 1
+    assert user_message.count("She won two Nobel Prizes.") == 1
+    assert "Profile:" not in user_message
+
+
+@pytest.mark.asyncio
+async def test_synthesize_and_assess_degrades_when_assess_block_missing(
+    mock_client: MagicMock,
+) -> None:
+    """If Claude returns only create_profile, the profile still ships with assessment=None.
+
+    Assessment stays non-essential after the fold: a response without the
+    assess_profile block degrades to (profile, None) instead of failing, so the
+    profile still reaches the user.
+    """
+    mock_client.messages.create.return_value = api_response(
+        [tool_block("create_profile", _PROFILE_DATA)]
+    )
+    content = {"https://example.com": "Marie Curie was a physicist."}
+    sources = [SearchResult(url="https://example.com", title="Example", content="snippet")]
+
+    profile, assessment = await claude.synthesize_and_assess(
+        mock_client, "Marie Curie", "person", content, sources
+    )
+
+    assert isinstance(profile, Profile)
+    assert assessment is None
+
+
+@pytest.mark.asyncio
+async def test_synthesize_and_assess_raises_when_profile_block_missing(
+    mock_client: MagicMock,
+) -> None:
+    """A response missing create_profile is a hard failure naming the required tool.
+
+    create_profile is essential — same contract synthesize has today — so a
+    response carrying only assess_profile raises rather than silently returning
+    no profile.
+    """
+    mock_client.messages.create.return_value = api_response(
+        [tool_block("assess_profile", _ASSESS_DATA)]
+    )
+    content = {"https://example.com": "Marie Curie was a physicist."}
+    sources = [SearchResult(url="https://example.com", title="Example", content="snippet")]
+
+    with pytest.raises(RuntimeError, match=r"create_profile"):
+        await claude.synthesize_and_assess(mock_client, "Marie Curie", "person", content, sources)
 
 
 def test_create_profile_tool_schema_locations_are_optional_and_bounded() -> None:
@@ -644,31 +760,24 @@ async def test_synthesize_retries_transient_error_then_succeeds(
 
 
 @pytest.mark.asyncio
-async def test_assess_retries_transient_error_then_succeeds(
+async def test_synthesize_and_assess_retries_transient_error_then_succeeds(
     mock_client: MagicMock,
 ) -> None:
-    """assess() is wired through the retry wrapper like categorize()."""
-    assess_data: Mapping[str, object] = {
-        "public_sentiment": 0.0,
-        "subject_political_bias": 0.0,
-        "source_political_bias": 0.0,
-        "law_chaos": 0.0,
-        "good_evil": 0.0,
-        "caveats": [],
-    }
-    response = api_response([tool_block("assess_profile", assess_data)])
-    mock_client.messages.create = AsyncMock(side_effect=[_rate_limit_error(), response])
-    profile = Profile(
-        name="Marie Curie",
-        category="person",
-        summary="A physicist.",
-        highlights=[],
-        lowlights=[],
-        timeline=[],
+    """synthesize_and_assess() is wired through the retry wrapper like synthesize()."""
+    response = api_response(
+        [
+            tool_block("create_profile", _PROFILE_DATA),
+            tool_block("assess_profile", _ASSESS_DATA),
+        ]
     )
+    mock_client.messages.create = AsyncMock(side_effect=[_rate_limit_error(), response])
     content = {"https://example.com": "Marie Curie was a physicist."}
+    sources = [SearchResult(url="https://example.com", title="Example", content="snippet")]
 
-    assessment = await claude.assess(mock_client, "Marie Curie", profile, content)
+    profile, assessment = await claude.synthesize_and_assess(
+        mock_client, "Marie Curie", "person", content, sources
+    )
 
-    assert assessment.public_sentiment == 0.0
+    assert isinstance(profile, Profile)
+    assert assessment is not None
     assert mock_client.messages.create.call_count == 2

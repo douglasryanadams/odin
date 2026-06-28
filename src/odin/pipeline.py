@@ -185,12 +185,13 @@ async def _finish_pipeline(
     sources: list[SearchResult],
     anthropic_client: AsyncAnthropic,
 ) -> AsyncGenerator[StageEvent, None]:
-    """Run the shared tail both pipelines end with: synthesize, then assess.
+    """Run the shared tail both pipelines end with: synthesize and assess together.
 
-    Guards against empty content, then synthesizes the final profile and
-    assesses it, degrading gracefully if assessment itself fails. Identical
-    for fast and deep modes — the deep pipeline's extra rounds only change
-    what `content`/`sources` contain by the time this runs.
+    Guards against empty content, then builds the final profile and audits it in
+    one Sonnet call. The assessment is non-essential: when Claude returns no
+    audit the profile still ships, just without an `assessment` event. Identical
+    for fast and deep modes — the deep pipeline's extra rounds only change what
+    `content`/`sources` contain by the time this runs.
     """
     if _all_pages_empty(content):
         logger.warning("all fetched pages empty, refusing to synthesize query={!r}", query)
@@ -198,17 +199,14 @@ async def _finish_pipeline(
         return
     yield StageEvent(stage="synthesizing", data={"page_count": len(content)})
 
-    profile = await claude.synthesize(anthropic_client, query, category, content, sources)
+    profile, assessment = await claude.synthesize_and_assess(
+        anthropic_client, query, category, content, sources
+    )
     logger.debug("profile synthesized name={!r} citations={}", profile.name, len(profile.citations))
     yield StageEvent(stage="profile", data=profile.model_dump())
 
-    yield StageEvent(stage="assessing", data={})
-    try:
-        assessment = await claude.assess(anthropic_client, query, profile, content)
-    except (RateLimitError, BadRequestError):
-        raise
-    except Exception as exc:  # noqa: BLE001 — assess is non-essential; degrade gracefully
-        logger.warning("assess failed; skipping assessment event: {}", exc)
+    if assessment is None:
+        logger.warning("assessment absent; skipping assessment event query={!r}", query)
         return
     logger.debug("assessment ready caveats={}", len(assessment.caveats))
     yield StageEvent(stage="assessment", data=assessment.model_dump())
