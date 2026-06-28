@@ -4,10 +4,6 @@ Tracking outstanding work that we want to address but haven't scheduled yet. Ite
 
 The current product direction is an opt-in deep research mode, layered on top of the existing fast profile. The fast 30 second profile stays the default front door. Deep research is a bounded, agentic mode. It runs more rounds of search, looks for links across sources, and narrates its reasoning as it works. The initiative is sequenced below as slices 1 through 4. Slice 1 (bounded iterative search), the grounding prerequisite (citation URL lookup and empty-content guardrail), slice 2 (cross-source connection pass, with every connection grounded in at least two cited sources), slice 3 (gap-reason narration streamed as a live research log), and slice 4's locations map (every profile renders a map of the subject's key places from structured `synthesize()` data, with a vendored basemap) have all shipped. The subject-photo half of slice 4 is paused. Two constraints continue to govern the work: every surfaced connection must rest on cited sources, and per-query cost must stay bounded so the project stays sustainable as usage grows. On the cost front: assessment is now folded into the synthesis call (one Sonnet call instead of two, page content sent once), and query normalization folds diacritics, punctuation, and possessives so more spelling variants share one cached result.
 
-## High priority
-
-1. **Dismissing the privacy policy banner mid-search restarts the search.** Clicking "Got it" on the privacy policy notice while a search is in progress causes the in-flight search to restart. The banner dismissal should be independent of the search lifecycle (no full page reload / form resubmit).
-
 ## Medium priority
 
 Browser SERP backends (Google/Bing via Playwright, or a paid SERP API) remain deferred in the backlog; revisit only if Brave plus Wikipedia coverage falls short.

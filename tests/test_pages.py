@@ -240,10 +240,10 @@ def test_disclosure_banner_hidden_when_cookie_set(client: TestClient) -> None:
     assert 'id="disclosure-banner"' not in response.text
 
 
-def test_dismiss_notice_sets_cookie_and_redirects(client: TestClient) -> None:
-    """POST /notice/dismiss sets the odin_seen_notice cookie and redirects to referer or home."""
-    response = client.post("/notice/dismiss", follow_redirects=False)
-    assert response.status_code == 303
+def test_dismiss_notice_sets_cookie(client: TestClient) -> None:
+    """POST /notice/dismiss sets the odin_seen_notice cookie without redirecting."""
+    response = client.post("/notice/dismiss")
+    assert response.status_code == 204
     set_cookie = response.headers.get("set-cookie", "")
     assert "odin_seen_notice=1" in set_cookie
     assert "Max-Age=" in set_cookie

@@ -141,6 +141,20 @@
     }, 6000);
   }
 
+  // ----- Banner dismiss -------------------------------------------------
+
+  function wireBannerDismiss() {
+    const form = document.querySelector(".disclosure-banner__form");
+    if (!form) return;
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      fetch("/notice/dismiss", { method: "POST" }).finally(() => {
+        const banner = document.getElementById("disclosure-banner");
+        if (banner) banner.remove();
+      });
+    });
+  }
+
   const KONAMI_SEQ = [
     "ArrowUp", "ArrowUp",
     "ArrowDown", "ArrowDown",
@@ -180,6 +194,7 @@
     applyTypeon();
     wireQuotaFade();
     wireKonami();
+    wireBannerDismiss();
   }
 
   if (document.readyState === "loading") {

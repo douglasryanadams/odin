@@ -3,7 +3,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from valkey.asyncio import Valkey
 
 from odin import auth, store
@@ -100,10 +100,9 @@ async def terms(request: Request) -> HTMLResponse:
 
 
 @router.post("/notice/dismiss")
-async def dismiss_notice(request: Request) -> RedirectResponse:
-    """Set the disclosure-notice cookie and bounce back."""
-    target = request.headers.get("referer") or "/"
-    resp = RedirectResponse(url=target, status_code=303)
+async def dismiss_notice() -> Response:
+    """Set the disclosure-notice cookie."""
+    resp = Response(status_code=204)
     resp.set_cookie(
         NOTICE_COOKIE,
         "1",
