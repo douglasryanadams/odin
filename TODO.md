@@ -6,8 +6,7 @@ The current product direction is an opt-in deep research mode, layered on top of
 
 ## High priority
 
-1. **Per-query cost-to-serve control.** Each query already costs five Claude calls (two on Sonnet) plus 3-5 Brave search calls, and `assess` re-sends the full fetched page content that `synthesize` already paid for. Trim what `assess` receives, or fold assessment into the synthesis call, and cache where inputs repeat. Low cognitive load, and it lowers the floor cost before deep mode multiplies per-query spend. As usage grows this is the lever that keeps the project sustainable and pushes back the point at which a paid tier or values-aligned advertising becomes necessary.
-2. **Dismissing the privacy policy banner mid-search restarts the search.** Clicking "Got it" on the privacy policy notice while a search is in progress causes the in-flight search to restart. The banner dismissal should be independent of the search lifecycle (no full page reload / form resubmit).
+1. **Dismissing the privacy policy banner mid-search restarts the search.** Clicking "Got it" on the privacy policy notice while a search is in progress causes the in-flight search to restart. The banner dismissal should be independent of the search lifecycle (no full page reload / form resubmit).
 
 ## Medium priority
 
