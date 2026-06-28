@@ -3,7 +3,7 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, get_args
+from typing import Any, cast, get_args
 
 from anthropic import (
     APIConnectionError,
@@ -160,6 +160,26 @@ class _ToolCallSpec:
     error_context: str
 
 
+@dataclass(frozen=True)
+class _MultiToolCallSpec:
+    """The fixed shape of one Claude call that offers several tools at once.
+
+    Like `_ToolCallSpec`, but `_call_tools` lets Claude use any of `tools` (one
+    or more) in a single response rather than forcing one named tool. This is
+    the seam that lets a single call both build a profile and audit it.
+    `required_tool` names the one block the caller cannot do without — its
+    absence is an error — while every other tool is optional and simply missing
+    from the returned mapping when Claude does not call it.
+    """
+
+    model: str
+    max_tokens: int
+    system: str | list[dict[str, Any]]
+    tools: list[dict[str, Any]]
+    required_tool: str
+    error_context: str
+
+
 _HAIKU = "claude-haiku-4-5-20251001"
 _SONNET = "claude-sonnet-4-6"
 
@@ -191,8 +211,10 @@ _SELECT_URLS_SYSTEM = (
     "Respond using the select_urls_result tool."
 )
 
-_SYNTHESIZE_SYSTEM = (
-    "You are a research analyst building structured profiles from web content.\n"
+# Shared by the profile-only `synthesize` prompt and the combined
+# `synthesize_and_assess` prompt, so the structured-profile spec lives in one
+# place rather than drifting between two copies.
+_PROFILE_GUIDANCE = (
     "Given a subject and pre-fetched content from multiple sources, create a structured profile.\n"
     "The profile must include:\n"
     "- summary: a 3-5 paragraph article-style overview. Open with who/what/when in the lede;\n"
@@ -225,11 +247,18 @@ _SYNTHESIZE_SYSTEM = (
     "  omit any location that would reveal a private residence — return an empty list if\n"
     "  no location is appropriate to share.\n"
     "Be factual and cite specific details from the provided content.\n"
-    "Respond using the create_profile tool."
 )
 
-_ASSESS_SYSTEM = (
-    "You are an analyst auditing a freshly synthesized profile and the source pages it drew from.\n"
+_SYNTHESIZE_SYSTEM = (
+    "You are a research analyst building structured profiles from web content.\n"
+    + _PROFILE_GUIDANCE
+    + "Respond using the create_profile tool."
+)
+
+# The audit half of the combined prompt; mirrors the old standalone assess
+# prompt's scales and caveat shape, minus the persona/closer the combined
+# prompt supplies.
+_AUDIT_GUIDANCE = (
     "Score the following on the listed scales, then list short caveats:\n"
     "- public_sentiment (-1..+1): aggregate public sentiment toward the subject (-1 negative,\n"
     "  +1 positive, 0 neutral or mixed).\n"
@@ -244,7 +273,16 @@ _ASSESS_SYSTEM = (
     "    detail — 1-2 sentences of supporting explanation, revealed on click.\n"
     "  Avoid generic disclaimers. If you cannot find anything noteworthy, return one item\n"
     "  with a brief like 'No significant audit findings.' and a short detail explaining why.\n"
-    "Respond using the assess_profile tool."
+)
+
+_SYNTHESIZE_ASSESS_SYSTEM = (
+    "You are a research analyst working from a subject and pre-fetched source pages.\n"
+    "In a single pass, build a structured profile and then audit it.\n\n"
+    + _PROFILE_GUIDANCE
+    + "\nThen audit the profile you just built and the source pages it drew from.\n"
+    + _AUDIT_GUIDANCE
+    + "Respond by calling BOTH tools in one turn: create_profile for the profile "
+    "and assess_profile for the audit."
 )
 
 _IDENTIFY_GAPS_SYSTEM = (
@@ -582,12 +620,15 @@ _SYNTHESIZE_CALL = _ToolCallSpec(
     tool=_CREATE_PROFILE_TOOL,
     error_context="synthesize",
 )
-_ASSESS_CALL = _ToolCallSpec(
+_SYNTHESIZE_ASSESS_CALL = _MultiToolCallSpec(
     model=_SONNET,
-    max_tokens=1024,
-    system=_cached_system(_ASSESS_SYSTEM),
-    tool=_ASSESS_TOOL,
-    error_context="assess",
+    # Budgets the old synthesize (4096) and assess (1024) calls in one response,
+    # with headroom; max_tokens is a cap, billed only for what Claude generates.
+    max_tokens=6144,
+    system=_cached_system(_SYNTHESIZE_ASSESS_SYSTEM),
+    tools=[_CREATE_PROFILE_TOOL, _ASSESS_TOOL],
+    required_tool="create_profile",
+    error_context="synthesize_and_assess",
 )
 _IDENTIFY_GAPS_CALL = _ToolCallSpec(
     model=_HAIKU,
@@ -665,6 +706,38 @@ async def _call_tool(
     return block.input
 
 
+async def _call_tools(
+    client: AsyncAnthropic, spec: _MultiToolCallSpec, *, messages: list[dict[str, Any]]
+) -> Any:  # noqa: ANN401
+    """Run one multi-tool Claude call and return each tool block's input by name.
+
+    Offers every tool in `spec.tools` with `tool_choice={"type": "any"}`, so
+    Claude can emit more than one `tool_use` block in a single response — the
+    seam that lets one call both build a profile and audit it. Returns a
+    `{tool_name: input}` mapping over the blocks that came back.
+
+    Raises RuntimeError naming the caller and `spec.required_tool` if that block
+    is absent; any other offered tool is optional and simply does not appear in
+    the mapping when Claude declines to call it.
+    """
+    response = await client.messages.create(
+        model=spec.model,
+        max_tokens=spec.max_tokens,
+        system=spec.system,  # type: ignore[arg-type]
+        tools=spec.tools,  # type: ignore[arg-type]
+        tool_choice={"type": "any"},  # type: ignore[arg-type]
+        messages=messages,  # type: ignore[arg-type]
+    )
+    content: list[Any] = list(response.content)
+    blocks: dict[str, Any] = {
+        block.name: block.input for block in content if getattr(block, "type", None) == "tool_use"
+    }
+    if spec.required_tool not in blocks:
+        msg = f"{spec.error_context}: no {spec.required_tool} tool block in response"
+        raise RuntimeError(msg)
+    return blocks
+
+
 async def categorize(client: AsyncAnthropic, query: str) -> Category:
     """Classify the query as person, place, event, or other."""
     logger.debug("categorize query={!r}", query)
@@ -729,7 +802,12 @@ async def synthesize(
     content: dict[str, str],
     sources: list[SearchResult],
 ) -> Profile:
-    """Synthesize a structured profile from pre-fetched page content."""
+    """Synthesize a structured profile from pre-fetched page content.
+
+    The fast pipeline folds this into `synthesize_and_assess`; deep mode still
+    calls it on its own for the throwaway draft that feeds gap analysis, where
+    paying for an assessment would be wasted.
+    """
     logger.debug("synthesize query={!r} category={} sources={}", query, category, len(content))
     sections = "\n\n".join(f"--- {url} ---\n{text}" for url, text in content.items())
     user_message = f"Build a {category} profile for: {query}\n\nSource content:\n{sections}"
@@ -741,7 +819,19 @@ async def synthesize(
             messages=[{"role": "user", "content": user_message}],
         ),
     )
-    parsed = _SynthesizeOutput(**response)  # type:ignore[reportCallIssue]
+    return _build_profile(_SynthesizeOutput(**response), sources, content)  # type:ignore[reportCallIssue]
+
+
+def _build_profile(
+    parsed: _SynthesizeOutput, sources: list[SearchResult], content: dict[str, str]
+) -> Profile:
+    """Assemble a Profile from a parsed create_profile result.
+
+    Resolves cited URLs back to their SearchResults (covering trailing-slash
+    variants) and drops out-of-range locations — shared by `synthesize` and
+    `synthesize_and_assess` so the citation and location handling can't drift
+    between the two.
+    """
     lookup = _make_citation_lookup(sources, content)
     citations = [
         Citation(url=lookup[u].url, title=lookup[u].title, snippet=lookup[u].content)
@@ -795,26 +885,8 @@ def _format_profile_for_assess(profile: Profile) -> str:
     return "\n".join(lines)
 
 
-async def assess(
-    client: AsyncAnthropic,
-    query: str,
-    profile: Profile,
-    content: dict[str, str],
-) -> Assessment:
-    """Score the profile and source set on sentiment, bias, and alignment."""
-    logger.debug("assess query={!r} sources={}", query, len(content))
-    profile_block = _format_profile_for_assess(profile)
-    sections = "\n\n".join(f"--- {url} ---\n{text}" for url, text in content.items())
-    user_message = f"Subject: {query}\n\nProfile:\n{profile_block}\n\nSource content:\n{sections}"
-    response = await _create_with_retries(
-        "assess",
-        lambda: _call_tool(
-            client,
-            _ASSESS_CALL,
-            messages=[{"role": "user", "content": user_message}],
-        ),
-    )
-    parsed = _AssessOutput(**response)  # type:ignore[reportCallIssue]
+def _build_assessment(parsed: _AssessOutput) -> Assessment:
+    """Assemble an Assessment from a parsed assess_profile result."""
     return Assessment(
         public_sentiment=parsed.public_sentiment,
         subject_political_bias=parsed.subject_political_bias,
@@ -823,6 +895,46 @@ async def assess(
         good_evil=parsed.good_evil,
         caveats=parsed.caveats,
     )
+
+
+async def synthesize_and_assess(
+    client: AsyncAnthropic,
+    query: str,
+    category: Category,
+    content: dict[str, str],
+    sources: list[SearchResult],
+) -> tuple[Profile, Assessment | None]:
+    """Build a profile and audit it in one Sonnet call.
+
+    Sends the fetched page content once and lets Claude return the create_profile
+    and assess_profile blocks together, replacing the old back-to-back synthesize
+    + assess pair that paid for the same pages twice. The profile is essential;
+    the assessment is not — a response without the assess_profile block degrades
+    to (profile, None) so the profile still reaches the user, just as a failed
+    standalone assess used to.
+    """
+    logger.debug(
+        "synthesize_and_assess query={!r} category={} sources={}", query, category, len(content)
+    )
+    sections = "\n\n".join(f"--- {url} ---\n{text}" for url, text in content.items())
+    user_message = f"Build a {category} profile for: {query}\n\nSource content:\n{sections}"
+    blocks = cast(
+        "dict[str, Any]",
+        await _create_with_retries(
+            "synthesize_and_assess",
+            lambda: _call_tools(
+                client,
+                _SYNTHESIZE_ASSESS_CALL,
+                messages=[{"role": "user", "content": user_message}],
+            ),
+        ),
+    )
+    profile = _build_profile(_SynthesizeOutput(**blocks["create_profile"]), sources, content)
+    assess_input = blocks.get("assess_profile")
+    assessment = (
+        _build_assessment(_AssessOutput(**assess_input)) if assess_input is not None else None
+    )
+    return profile, assessment
 
 
 async def identify_gaps(

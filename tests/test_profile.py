@@ -48,13 +48,22 @@ def _setup_page_fetcher() -> None:
 
 
 def _pipeline_side_effects() -> list[MagicMock]:
-    """Return messages.create responses for a minimal end-to-end pipeline run."""
+    """Return messages.create responses for a minimal end-to-end pipeline run.
+
+    The final synthesize_and_assess call returns one response carrying both the
+    create_profile and assess_profile blocks, so the pipeline tail is a single
+    messages.create rather than two.
+    """
     return [
         api_response([tool_block("categorize_result", {"category": "other"})]),
         api_response([tool_block("generate_queries_result", {"queries": ["q1"]})]),
         api_response([tool_block("select_urls_result", {"urls": ["https://example.com"]})]),
-        api_response([tool_block("create_profile", _MOCK_PROFILE_INPUT)]),
-        api_response([tool_block("assess_profile", _MOCK_ASSESSMENT_INPUT)]),
+        api_response(
+            [
+                tool_block("create_profile", _MOCK_PROFILE_INPUT),
+                tool_block("assess_profile", _MOCK_ASSESSMENT_INPUT),
+            ]
+        ),
     ]
 
 
@@ -446,8 +455,12 @@ def test_profile_stream_citations_only_include_urls_synthesizer_cited(
                 )
             ]
         ),
-        api_response([tool_block("create_profile", profile_input)]),
-        api_response([tool_block("assess_profile", _MOCK_ASSESSMENT_INPUT)]),
+        api_response(
+            [
+                tool_block("create_profile", profile_input),
+                tool_block("assess_profile", _MOCK_ASSESSMENT_INPUT),
+            ]
+        ),
     ]
 
     response = client.get("/profile/stream?q=foo")
@@ -472,8 +485,12 @@ def test_profile_stream_omits_citations_for_urls_not_in_search_results(
         api_response([tool_block("categorize_result", {"category": "other"})]),
         api_response([tool_block("generate_queries_result", {"queries": ["q1"]})]),
         api_response([tool_block("select_urls_result", {"urls": ["https://example.com"]})]),
-        api_response([tool_block("create_profile", profile_input)]),
-        api_response([tool_block("assess_profile", _MOCK_ASSESSMENT_INPUT)]),
+        api_response(
+            [
+                tool_block("create_profile", profile_input),
+                tool_block("assess_profile", _MOCK_ASSESSMENT_INPUT),
+            ]
+        ),
     ]
 
     response = client.get("/profile/stream?q=foo")
@@ -522,7 +539,12 @@ def test_profile_stream_assessment_preserves_boundary_values(
         "caveats": [],
     }
     side_effects = _pipeline_side_effects()
-    side_effects[-1] = api_response([tool_block("assess_profile", boundary)])
+    side_effects[-1] = api_response(
+        [
+            tool_block("create_profile", _MOCK_PROFILE_INPUT),
+            tool_block("assess_profile", boundary),
+        ]
+    )
     mock_anthropic.messages.create.side_effect = side_effects
 
     response = client.get("/profile/stream?q=foo")
@@ -533,10 +555,11 @@ def test_profile_stream_assessment_preserves_boundary_values(
 def test_profile_stream_emits_profile_when_assess_fails(
     client: TestClient, mock_anthropic: MagicMock
 ) -> None:
-    """If assess() raises, the profile event still arrives but no assessment event follows."""
+    """If the audit half is absent, the profile event still arrives but no assessment follows."""
     _setup_page_fetcher()
     side_effects = _pipeline_side_effects()
-    side_effects[-1] = api_response([])  # no assess_profile tool block — triggers RuntimeError
+    # create_profile present, assess_profile absent — assessment degrades to None.
+    side_effects[-1] = api_response([tool_block("create_profile", _MOCK_PROFILE_INPUT)])
     mock_anthropic.messages.create.side_effect = side_effects
 
     response = client.get("/profile/stream?q=foo")
