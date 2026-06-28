@@ -3,19 +3,43 @@
 import hashlib
 import json
 import re
+import unicodedata
 from typing import Any, cast
 
 from valkey.asyncio import Valkey
 
-_PREFIX = "cache:profile:v3"
+_PREFIX = "cache:profile:v4"
 _TTL_SECONDS = 24 * 60 * 60
 
 _WHITESPACE = re.compile(r"\s+")
+_PUNCTUATION_AS_SPACE = re.compile(r"[-_.]")
+# Matches ASCII apostrophe, curly single quotes, and modifier-letter apostrophe.
+_APOSTROPHE_VARIANTS = re.compile("[\x27\u2018\u2019\u02bc]")
+# Matches a trailing possessive: apostrophe (any variant) followed by 's'.
+_POSSESSIVE = re.compile("[\x27\u2018\u2019\u02bc]s$", re.IGNORECASE)
 
 
 def normalize(query: str) -> str:
-    """Lowercase, strip, and collapse internal whitespace."""
-    return _WHITESPACE.sub(" ", query.strip().lower())
+    """Normalize a query for cache-key derivation.
+
+    Folds Unicode compatibility forms (NFKC), strips diacritics, collapses
+    punctuation separators (hyphens, underscores, periods) to spaces, strips
+    possessives, lowercases, and collapses whitespace. Does not attempt
+    typo correction or alias resolution — those carry wrong-entity risk.
+    """
+    # NFKC first to unify compatibility forms (e.g. fullwidth characters).
+    text = unicodedata.normalize("NFKC", query)
+    # Strip trailing possessive before any other transforms.
+    text = _POSSESSIVE.sub("", text.strip())
+    # NFKD then drop combining marks (category Mn) for diacritic folding.
+    text = "".join(
+        c for c in unicodedata.normalize("NFKD", text) if unicodedata.category(c) != "Mn"
+    )
+    # Replace punctuation separators with spaces so "brian-warner" == "brian warner".
+    text = _PUNCTUATION_AS_SPACE.sub(" ", text)
+    # Remove remaining apostrophe variants (e.g. in contractions that survive).
+    text = _APOSTROPHE_VARIANTS.sub("", text)
+    return _WHITESPACE.sub(" ", text.strip().lower())
 
 
 def _key(query: str, mode: str) -> str:
