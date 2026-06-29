@@ -10,18 +10,19 @@ from loguru import logger
 
 from odin import claude, fetch, url_filter
 from odin.config import settings
-from odin.models import Category
+from odin.models import CategorizeResult, Category
 from odin.search import SearchAggregator, SearchBackend, SearchResult, merge_results
 
 SEARCH_QUERY_CONCURRENCY = 2
 DEEP_MODE_MAX_ROUNDS = 2
 _CONNECTION_MIN_SOURCES = 2
 
-_SERVICE_UNAVAILABLE_MESSAGE = "Odin is temporarily paused. Please try again in a little while."
+SERVICE_UNAVAILABLE_MESSAGE = "Odin is temporarily paused. Please try again in a little while."
 _NO_SOURCES_MESSAGE = "No usable sources were found for this query. Please try rephrasing."
 
 
-def _is_billing_error(exc: BadRequestError) -> bool:
+def is_billing_error(exc: BadRequestError) -> bool:
+    """Return True when the error body indicates an Anthropic billing cap."""
     body = getattr(exc, "body", None)
     if not isinstance(body, dict):
         return False
@@ -68,16 +69,12 @@ async def _run_with_degraded_errors(
             yield event
     except RateLimitError as exc:
         logger.warning("anthropic rate-limited: {}", exc)
-        yield StageEvent(
-            stage="service_unavailable", data={"message": _SERVICE_UNAVAILABLE_MESSAGE}
-        )
+        yield StageEvent(stage="service_unavailable", data={"message": SERVICE_UNAVAILABLE_MESSAGE})
     except BadRequestError as exc:
-        if not _is_billing_error(exc):
+        if not is_billing_error(exc):
             raise
         logger.warning("anthropic billing limit reached: {}", exc)
-        yield StageEvent(
-            stage="service_unavailable", data={"message": _SERVICE_UNAVAILABLE_MESSAGE}
-        )
+        yield StageEvent(stage="service_unavailable", data={"message": SERVICE_UNAVAILABLE_MESSAGE})
 
 
 async def build_profile(
@@ -85,11 +82,13 @@ async def build_profile(
     searcher: SearchAggregator,
     anthropic_client: AsyncAnthropic,
     fetcher: fetch.PageFetcher,
+    *,
+    pre_categorized: CategorizeResult | None = None,
 ) -> AsyncGenerator[StageEvent, None]:
     """Run the profile pipeline, yielding a StageEvent at each step."""
     logger.debug("pipeline start query={!r}", query)
     async for event in _run_with_degraded_errors(
-        _run_pipeline(query, searcher, anthropic_client, fetcher)
+        _run_pipeline(query, searcher, anthropic_client, fetcher, pre_categorized=pre_categorized)
     ):
         yield event
 
@@ -99,6 +98,8 @@ async def build_deep_profile(
     searcher: SearchAggregator,
     anthropic_client: AsyncAnthropic,
     fetcher: fetch.PageFetcher,
+    *,
+    pre_categorized: CategorizeResult | None = None,
 ) -> AsyncGenerator[StageEvent, None]:
     """Run the deep-research pipeline: an initial pass plus bounded follow-up rounds.
 
@@ -107,7 +108,9 @@ async def build_deep_profile(
     """
     logger.debug("deep pipeline start query={!r}", query)
     async for event in _run_with_degraded_errors(
-        _run_deep_pipeline(query, searcher, anthropic_client, fetcher)
+        _run_deep_pipeline(
+            query, searcher, anthropic_client, fetcher, pre_categorized=pre_categorized
+        )
     ):
         yield event
 
@@ -134,8 +137,12 @@ async def _run_pipeline(
     searcher: SearchAggregator,
     anthropic_client: AsyncAnthropic,
     fetcher: fetch.PageFetcher,
+    *,
+    pre_categorized: CategorizeResult | None = None,
 ) -> AsyncGenerator[StageEvent, None]:
-    category = await claude.categorize(anthropic_client, query)
+    if pre_categorized is None:
+        pre_categorized = await claude.categorize(anthropic_client, query)
+    category = pre_categorized.category
     logger.debug("categorized category={}", category)
     yield StageEvent(stage="categorized", data={"category": category})
 
@@ -327,11 +334,13 @@ async def _run_connection_pass(
     )
 
 
-async def _run_deep_pipeline(
+async def _run_deep_pipeline(  # noqa: C901
     query: str,
     searcher: SearchAggregator,
     anthropic_client: AsyncAnthropic,
     fetcher: fetch.PageFetcher,
+    *,
+    pre_categorized: CategorizeResult | None = None,
 ) -> AsyncGenerator[StageEvent, None]:
     """Run an initial pass, draft and analyze it for gaps, then run bounded follow-up rounds.
 
@@ -344,7 +353,9 @@ async def _run_deep_pipeline(
     renderer treats that as *the* answer, and surfacing an interim one would
     need new frontend machinery to "upgrade" it later, which is slice 3's job.
     """
-    category = await claude.categorize(anthropic_client, query)
+    if pre_categorized is None:
+        pre_categorized = await claude.categorize(anthropic_client, query)
+    category = pre_categorized.category
     logger.debug("categorized category={}", category)
     yield StageEvent(stage="categorized", data={"category": category})
 
