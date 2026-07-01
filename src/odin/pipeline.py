@@ -132,6 +132,27 @@ async def _gather_search_results(queries: list[str], searcher: SearchBackend) ->
     return merge_results(results_per_query)
 
 
+async def _run_search_and_filter(
+    queries: list[str], searcher: SearchAggregator
+) -> tuple[list[SearchResult], list[str]]:
+    """Search for queries, filter blocked URLs, and log what was dropped or missing.
+
+    Returns (allowed_results, missing_backend_names).
+    """
+    unique_results = await _gather_search_results(queries, searcher)
+    allowed_results = url_filter.filter_search_results(
+        unique_results, blocked_domains=settings.url_domain_blocklist
+    )
+    dropped = len(unique_results) - len(allowed_results)
+    if dropped:
+        logger.debug("url_filter dropped count={} kept={}", dropped, len(allowed_results))
+    logger.debug("search complete unique_results={}", len(allowed_results))
+    missing_backends = _missing_backend_names(unique_results, searcher.backends)
+    if missing_backends:
+        logger.debug("backends contributed nothing names={}", missing_backends)
+    return allowed_results, missing_backends
+
+
 async def _run_pipeline(
     query: str,
     searcher: SearchAggregator,
@@ -150,18 +171,7 @@ async def _run_pipeline(
     logger.debug("queries generated count={}", len(queries))
     yield StageEvent(stage="queries", data={"queries": queries})
 
-    unique_results = await _gather_search_results(queries, searcher)
-    allowed_results = url_filter.filter_search_results(
-        unique_results, blocked_domains=settings.url_domain_blocklist
-    )
-    dropped = len(unique_results) - len(allowed_results)
-    if dropped:
-        logger.debug("url_filter dropped count={} kept={}", dropped, len(allowed_results))
-    logger.debug("search complete unique_results={}", len(allowed_results))
-
-    missing_backends = _missing_backend_names(unique_results, searcher.backends)
-    if missing_backends:
-        logger.debug("backends contributed nothing names={}", missing_backends)
+    allowed_results, missing_backends = await _run_search_and_filter(queries, searcher)
     yield StageEvent(
         stage="searching",
         data={"result_count": len(allowed_results), "missing_backends": missing_backends},
@@ -334,7 +344,7 @@ async def _run_connection_pass(
     )
 
 
-async def _run_deep_pipeline(  # noqa: C901
+async def _run_deep_pipeline(
     query: str,
     searcher: SearchAggregator,
     anthropic_client: AsyncAnthropic,
@@ -363,18 +373,7 @@ async def _run_deep_pipeline(  # noqa: C901
     logger.debug("queries generated count={}", len(queries))
     yield StageEvent(stage="queries", data={"queries": queries})
 
-    unique_results = await _gather_search_results(queries, searcher)
-    allowed_results = url_filter.filter_search_results(
-        unique_results, blocked_domains=settings.url_domain_blocklist
-    )
-    dropped = len(unique_results) - len(allowed_results)
-    if dropped:
-        logger.debug("url_filter dropped count={} kept={}", dropped, len(allowed_results))
-    logger.debug("search complete unique_results={}", len(allowed_results))
-
-    missing_backends = _missing_backend_names(unique_results, searcher.backends)
-    if missing_backends:
-        logger.debug("backends contributed nothing names={}", missing_backends)
+    allowed_results, missing_backends = await _run_search_and_filter(queries, searcher)
     yield StageEvent(
         stage="searching",
         data={"result_count": len(allowed_results), "missing_backends": missing_backends},
