@@ -11,7 +11,7 @@ from loguru import logger
 from helpers import api_response, tool_block
 from odin import claude
 from odin.config import settings
-from odin.models import Assessment, Profile, ProfileHighlight
+from odin.models import Assessment, CategorizeResult, Profile, ProfileHighlight
 from odin.search import SearchResult
 
 _PROFILE_DATA = {
@@ -620,9 +620,9 @@ async def test_categorize_retries_transient_error_then_succeeds(
     """categorize() retries once on a transient RateLimitError and returns on success."""
     mock_client.messages.create = AsyncMock(side_effect=[_rate_limit_error(), _CATEGORIZE_RESPONSE])
 
-    category = await claude.categorize(mock_client, "Marie Curie")
+    result = await claude.categorize(mock_client, "Marie Curie")
 
-    assert category == "person"
+    assert result.category == "person"
     assert mock_client.messages.create.call_count == 2
     mock_sleep.assert_awaited_once_with(1.0)
 
@@ -691,6 +691,42 @@ async def test_categorize_logs_stage_name_when_retries_exhausted(
     errors = [r for r in records if r["level"] == "ERROR"]
     assert len(errors) == 1, f"expected exactly one ERROR, got {records}"
     assert "categorize" in str(errors[0]["message"])
+
+
+@pytest.mark.asyncio
+async def test_categorize_returns_canonical_name_and_aliases(mock_client: MagicMock) -> None:
+    """categorize() surfaces canonical_name and aliases from Claude's tool response."""
+    response = api_response(
+        [
+            tool_block(
+                "categorize_result",
+                {
+                    "category": "person",
+                    "canonical_name": "Brian Warner",
+                    "aliases": ["Marilyn Manson"],
+                },
+            )
+        ]
+    )
+    mock_client.messages.create = AsyncMock(return_value=response)
+
+    result = await claude.categorize(mock_client, "Marilyn Manson")
+
+    assert isinstance(result, CategorizeResult)
+    assert result.category == "person"
+    assert result.canonical_name == "Brian Warner"
+    assert result.aliases == ["Marilyn Manson"]
+
+
+@pytest.mark.asyncio
+async def test_categorize_defaults_canonical_to_query_when_absent(mock_client: MagicMock) -> None:
+    """When Claude omits canonical_name, categorize() falls back to the original query."""
+    mock_client.messages.create = AsyncMock(return_value=_CATEGORIZE_RESPONSE)
+
+    result = await claude.categorize(mock_client, "Marie Curie")
+
+    assert result.canonical_name == "Marie Curie"
+    assert result.aliases == []
 
 
 @pytest.mark.asyncio

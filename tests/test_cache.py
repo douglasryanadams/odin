@@ -120,3 +120,52 @@ async def test_put_stores_events_under_the_key_get_will_look_up(valkey: AsyncMoc
     assert key == cache._key("marie curie", "fast")  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
     assert json.loads(payload) == _EVENTS
     assert kwargs == {"ex": cache._TTL_SECONDS}  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+
+
+# ---------------------------------------------------------------------------
+# Alias pointer (canonical name store)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_canonical_returns_none_on_miss(valkey: AsyncMock) -> None:
+    """get_canonical() returns None when no alias pointer exists for the query."""
+    valkey.get.return_value = None
+    assert await cache.get_canonical(valkey, "Marilyn Manson", "fast") is None
+
+
+@pytest.mark.asyncio
+async def test_get_canonical_returns_stored_value_on_hit(valkey: AsyncMock) -> None:
+    """get_canonical() returns the canonical name stored by put_canonical."""
+    valkey.get.return_value = b"Brian Warner"
+    result = await cache.get_canonical(valkey, "Marilyn Manson", "fast")
+    assert result == "Brian Warner"
+
+
+@pytest.mark.asyncio
+async def test_put_canonical_writes_pointer_for_query(valkey: AsyncMock) -> None:
+    """put_canonical() writes an alias pointer from the query to the canonical name."""
+    await cache.put_canonical(valkey, "Marilyn Manson", "Brian Warner", [], "fast")
+
+    alias_key = cache._alias_key("Marilyn Manson", "fast")  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    valkey.set.assert_any_await(alias_key, "Brian Warner", ex=cache._ALIAS_TTL_SECONDS)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_put_canonical_writes_pointers_for_all_aliases(valkey: AsyncMock) -> None:
+    """put_canonical() writes an alias pointer for every entry in the aliases list."""
+    aliases = ["Brian Hugh Warner", "B. Warner"]
+    await cache.put_canonical(valkey, "Marilyn Manson", "Brian Warner", aliases, "fast")
+
+    written_keys = {call.args[0] for call in valkey.set.await_args_list}
+    for alias in ["Marilyn Manson", *aliases]:
+        assert cache._alias_key(alias, "fast") in written_keys  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_put_canonical_key_uses_normalize(valkey: AsyncMock) -> None:
+    """Alias pointer keys are derived from normalized forms so case/spacing variants collide."""
+    await cache.put_canonical(valkey, "MARILYN MANSON", "Brian Warner", [], "fast")
+
+    written_keys = {call.args[0] for call in valkey.set.await_args_list}
+    assert cache._alias_key("marilyn manson", "fast") in written_keys  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]

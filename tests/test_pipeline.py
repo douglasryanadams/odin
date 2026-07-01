@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from odin import pipeline
-from odin.models import Assessment, Connection, Profile
+from odin.models import Assessment, CategorizeResult, Connection, Profile
 from odin.search import SearchAggregator, SearchResult
 
 
@@ -51,7 +51,11 @@ async def test_pipeline_bounds_search_concurrency() -> None:
     profile.name = "n"
 
     with (
-        patch.object(pipeline.claude, "categorize", AsyncMock(return_value="other")),
+        patch.object(
+            pipeline.claude,
+            "categorize",
+            AsyncMock(return_value=CategorizeResult(category="other", canonical_name="foo")),
+        ),
         patch.object(pipeline.claude, "generate_queries", AsyncMock(return_value=queries)),
         patch.object(pipeline.claude, "select_urls", AsyncMock(return_value=[])),
         patch.object(
@@ -134,9 +138,9 @@ def _make_tracing_pipeline_doubles() -> tuple[
     """Build doubles that record every claude/search/fetcher call into a shared trace."""
     trace: list[str] = []
 
-    async def trace_categorize(*_args: object, **_kw: object) -> str:
+    async def trace_categorize(*_args: object, **_kw: object) -> CategorizeResult:
         trace.append("call:categorize")
-        return "other"
+        return CategorizeResult(category="other", canonical_name="foo")
 
     async def trace_generate_queries(*_args: object, **_kw: object) -> list[str]:
         trace.append("call:generate_queries")
@@ -248,7 +252,11 @@ async def test_pipeline_yields_service_unavailable_when_all_fetched_content_is_e
         return [SearchResult(url="https://example.com", title="t", content="snippet")]
 
     with (
-        patch.object(pipeline.claude, "categorize", AsyncMock(return_value="other")),
+        patch.object(
+            pipeline.claude,
+            "categorize",
+            AsyncMock(return_value=CategorizeResult(category="other", canonical_name="foo")),
+        ),
         patch.object(pipeline.claude, "generate_queries", AsyncMock(return_value=["q1"])),
         patch.object(
             pipeline.claude, "select_urls", AsyncMock(return_value=["https://example.com"])
@@ -302,7 +310,11 @@ async def test_pipeline_filters_disallowed_urls_before_select(
     )
 
     with (
-        patch.object(pipeline.claude, "categorize", AsyncMock(return_value="other")),
+        patch.object(
+            pipeline.claude,
+            "categorize",
+            AsyncMock(return_value=CategorizeResult(category="other", canonical_name="foo")),
+        ),
         patch.object(pipeline.claude, "generate_queries", AsyncMock(return_value=["q1"])),
         patch.object(pipeline.claude, "select_urls", side_effect=capture_select_urls),
         patch.object(
@@ -358,7 +370,11 @@ async def test_pipeline_names_backends_that_contributed_no_results() -> None:
     )
 
     with (
-        patch.object(pipeline.claude, "categorize", AsyncMock(return_value="other")),
+        patch.object(
+            pipeline.claude,
+            "categorize",
+            AsyncMock(return_value=CategorizeResult(category="other", canonical_name="foo")),
+        ),
         patch.object(pipeline.claude, "generate_queries", AsyncMock(return_value=["q1", "q2"])),
         patch.object(pipeline.claude, "select_urls", AsyncMock(return_value=[])),
         patch.object(
@@ -393,7 +409,11 @@ async def test_pipeline_reports_no_missing_backends_when_all_contribute() -> Non
     )
 
     with (
-        patch.object(pipeline.claude, "categorize", AsyncMock(return_value="other")),
+        patch.object(
+            pipeline.claude,
+            "categorize",
+            AsyncMock(return_value=CategorizeResult(category="other", canonical_name="foo")),
+        ),
         patch.object(pipeline.claude, "generate_queries", AsyncMock(return_value=["q1"])),
         patch.object(pipeline.claude, "select_urls", AsyncMock(return_value=[])),
         patch.object(
@@ -513,7 +533,9 @@ def _make_deep_pipeline_doubles(
         caveats=[],
     )
     doubles: dict[str, object] = {
-        "categorize": _constant_double(trace, "categorize", "other"),
+        "categorize": _constant_double(
+            trace, "categorize", CategorizeResult(category="other", canonical_name="foo")
+        ),
         "generate_queries": _constant_double(trace, "generate_queries", ["initial query"]),
         "select_urls": trace_select_urls,
         "synthesize": trace_synthesize,

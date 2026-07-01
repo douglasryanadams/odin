@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from helpers import api_response, tool_block
 from odin import auth as _auth
+from odin import cache as _cache
 from odin.app import app, get_anthropic_client, get_page_fetcher
 from odin.search import SearchResult
 
@@ -567,3 +568,82 @@ def test_profile_stream_emits_profile_when_assess_fails(
 
     assert "profile" in types
     assert "assessment" not in types
+
+
+# ---------------------------------------------------------------------------
+# Entity canonicalization / alias cache
+# ---------------------------------------------------------------------------
+
+
+def test_stream_serves_alias_pointer_hit_without_lm_calls(
+    client: TestClient, mock_anthropic: MagicMock, mock_valkey: MagicMock
+) -> None:
+    """An alias pointer + live profile cache hit serves the result without any LLM call.
+
+    Simulates a previous run that stored the profile under "Brian Warner" and wrote
+    an alias pointer for "Marilyn Manson". A fresh request for the alias should
+    replay from cache with zero calls to Anthropic.
+    """
+    _setup_page_fetcher()
+    storage = _stateful_kv(mock_valkey)
+
+    canonical = "Brian Warner"
+    mode = "fast"
+    canned_events = [{"type": "categorized", "category": "person"}, {"type": "profile"}]
+
+    # Pre-populate alias pointer: "Marilyn Manson" → "Brian Warner"
+    storage[_cache._alias_key("Marilyn Manson", mode)] = canonical.encode()  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    # Pre-populate profile under canonical
+    storage[_cache._key(canonical, mode)] = json.dumps(canned_events).encode()  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+
+    client.get("/profile/stream?q=Marilyn+Manson")
+
+    mock_anthropic.messages.create.assert_not_called()
+
+
+def test_stream_checks_canonical_cache_after_categorize(
+    client: TestClient, mock_anthropic: MagicMock, mock_valkey: MagicMock
+) -> None:
+    """After categorize resolves an alias to a known canonical, the cached profile is served.
+
+    "Brian Warner" runs the full pipeline on first search. A subsequent search
+    for "Marilyn Manson" calls categorize (one LLM call), learns the canonical is
+    "Brian Warner", and hits the profile cache — the rest of the pipeline is skipped.
+    """
+    _setup_page_fetcher()
+    _stateful_kv(mock_valkey)
+
+    mock_anthropic.messages.create.side_effect = _pipeline_side_effects()
+    client.get("/profile/stream?q=Brian+Warner")
+    calls_after_canonical = mock_anthropic.messages.create.call_count
+
+    # Alias lookup: categorize returns canonical_name="Brian Warner"
+    alias_categorize = api_response(
+        [tool_block("categorize_result", {"category": "person", "canonical_name": "Brian Warner"})]
+    )
+    mock_anthropic.messages.create.side_effect = [alias_categorize]
+    client.get("/profile/stream?q=Marilyn+Manson")
+
+    assert mock_anthropic.messages.create.call_count == calls_after_canonical + 1
+
+
+def test_stream_distinct_entities_do_not_share_profiles(
+    client: TestClient, mock_anthropic: MagicMock, mock_valkey: MagicMock
+) -> None:
+    """Distinct canonical names key separate cache entries — profiles are never merged.
+
+    Both queries normalize to different strings, so even if they share a category
+    the second search must run the pipeline independently rather than serving the
+    first entity's profile.
+    """
+    _setup_page_fetcher()
+    _stateful_kv(mock_valkey)
+
+    mock_anthropic.messages.create.side_effect = _pipeline_side_effects()
+    client.get("/profile/stream?q=Marie+Curie")
+    calls_after_marie = mock_anthropic.messages.create.call_count
+
+    mock_anthropic.messages.create.side_effect = _pipeline_side_effects()
+    client.get("/profile/stream?q=Pierre+Curie")
+
+    assert mock_anthropic.messages.create.call_count > calls_after_marie

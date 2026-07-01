@@ -5,12 +5,13 @@ from collections.abc import AsyncGenerator
 from typing import Annotated, Any
 
 import asyncpg
-from anthropic import AsyncAnthropic
+from anthropic import AsyncAnthropic, BadRequestError, RateLimitError
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
+from loguru import logger
 from valkey.asyncio import Valkey
 
-from odin import auth, cache, db, fetch, history, pipeline, store
+from odin import auth, cache, claude, db, fetch, history, pipeline, store
 from odin.app import (
     get_anthropic_client,
     get_page_fetcher,
@@ -76,7 +77,7 @@ async def profile_page(
 
 
 @router.get("/profile/stream")
-async def profile_stream(  # noqa: PLR0913
+async def profile_stream(  # noqa: PLR0913, C901
     request: Request,
     q: Annotated[str, Query(max_length=MAX_QUERY_LEN)],
     searcher: Annotated[SearchAggregator, Depends(get_search_aggregator)],
@@ -107,29 +108,78 @@ async def profile_stream(  # noqa: PLR0913
 
     mode = "deep" if deep else "fast"
 
-    async def event_generator() -> AsyncGenerator[str, None]:
+    async def event_generator() -> AsyncGenerator[str, None]:  # noqa: C901, PLR0912
+        # Fast path 1: direct profile cache hit (exact or normalized query match).
         cached = await cache.get(valkey_client, q, mode)
         if cached is not None:
             async for chunk in _replay_cached(cached):
                 yield chunk
-            category = _category_from(cached)
-            await _record_cached_query(db_pool, requester, q, category)
-        else:
-            pipeline_events = (
-                pipeline.build_deep_profile(q, searcher, anthropic, fetcher)
-                if deep
-                else pipeline.build_profile(q, searcher, anthropic, fetcher)
+            await _record_cached_query(db_pool, requester, q, _category_from(cached))
+            return
+
+        # Fast path 2: alias pointer → profile cache hit (0 LLM calls).
+        canonical = await cache.get_canonical(valkey_client, q, mode)
+        if canonical is not None:
+            cached = await cache.get(valkey_client, canonical, mode)
+            if cached is not None:
+                async for chunk in _replay_cached(cached):
+                    yield chunk
+                await _record_cached_query(db_pool, requester, q, _category_from(cached))
+                return
+            # Alias pointer exists but profile expired — fall through without pre-categorizing.
+
+        # Medium path: no alias pointer yet, so categorize early to check canonical cache.
+        pre_cat = None
+        if canonical is None:
+            try:
+                pre_cat = await claude.categorize(anthropic, q)
+            except RateLimitError as exc:
+                yield _service_unavailable_event(exc)
+                return
+            except BadRequestError as exc:
+                if not pipeline.is_billing_error(exc):
+                    raise
+                yield _service_unavailable_event(exc)
+                return
+            if cache.normalize(pre_cat.canonical_name) != cache.normalize(q):
+                cached = await cache.get(valkey_client, pre_cat.canonical_name, mode)
+                if cached is not None:
+                    async for chunk in _replay_cached(cached):
+                        yield chunk
+                    await _record_cached_query(db_pool, requester, q, _category_from(cached))
+                    await cache.put_canonical(
+                        valkey_client, q, pre_cat.canonical_name, pre_cat.aliases, mode
+                    )
+                    return
+
+        # Slow path: run full pipeline (pre_cat avoids a double categorize call).
+        pipeline_events = (
+            pipeline.build_deep_profile(q, searcher, anthropic, fetcher, pre_categorized=pre_cat)
+            if deep
+            else pipeline.build_profile(q, searcher, anthropic, fetcher, pre_categorized=pre_cat)
+        )
+        collected: list[dict[str, Any]] = []
+        async for chunk in _stream_pipeline(pipeline_events, collected):
+            yield chunk
+        if not _had_failure(collected):
+            canonical_for_cache = (
+                pre_cat.canonical_name if pre_cat is not None else (canonical or q)
             )
-            collected: list[dict[str, Any]] = []
-            category = "other"
-            async for chunk in _stream_pipeline(pipeline_events, collected):
-                yield chunk
-            category = _category_from(collected) or category
-            if not _had_failure(collected):
-                await cache.put(valkey_client, q, mode, collected)
-            await _record_fresh_query(valkey_client, db_pool, requester, q, category)
+            await cache.put(valkey_client, canonical_for_cache, mode, collected)
+            if pre_cat is not None:
+                await cache.put_canonical(
+                    valkey_client, q, pre_cat.canonical_name, pre_cat.aliases, mode
+                )
+        category = _category_from(collected) or "other"
+        await _record_fresh_query(valkey_client, db_pool, requester, q, category)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+def _service_unavailable_event(exc: Exception) -> str:
+    logger.warning("categorize failed before pipeline: {}", exc)
+    payload = {"type": "service_unavailable", "message": pipeline.SERVICE_UNAVAILABLE_MESSAGE}
+    return f"data: {json.dumps(payload)}\n\n"
 
 
 async def _replay_cached(events: list[dict[str, Any]]) -> AsyncGenerator[str, None]:

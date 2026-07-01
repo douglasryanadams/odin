@@ -10,18 +10,19 @@ from loguru import logger
 
 from odin import claude, fetch, url_filter
 from odin.config import settings
-from odin.models import Category
+from odin.models import CategorizeResult, Category
 from odin.search import SearchAggregator, SearchBackend, SearchResult, merge_results
 
 SEARCH_QUERY_CONCURRENCY = 2
 DEEP_MODE_MAX_ROUNDS = 2
 _CONNECTION_MIN_SOURCES = 2
 
-_SERVICE_UNAVAILABLE_MESSAGE = "Odin is temporarily paused. Please try again in a little while."
+SERVICE_UNAVAILABLE_MESSAGE = "Odin is temporarily paused. Please try again in a little while."
 _NO_SOURCES_MESSAGE = "No usable sources were found for this query. Please try rephrasing."
 
 
-def _is_billing_error(exc: BadRequestError) -> bool:
+def is_billing_error(exc: BadRequestError) -> bool:
+    """Return True when the error body indicates an Anthropic billing cap."""
     body = getattr(exc, "body", None)
     if not isinstance(body, dict):
         return False
@@ -68,16 +69,12 @@ async def _run_with_degraded_errors(
             yield event
     except RateLimitError as exc:
         logger.warning("anthropic rate-limited: {}", exc)
-        yield StageEvent(
-            stage="service_unavailable", data={"message": _SERVICE_UNAVAILABLE_MESSAGE}
-        )
+        yield StageEvent(stage="service_unavailable", data={"message": SERVICE_UNAVAILABLE_MESSAGE})
     except BadRequestError as exc:
-        if not _is_billing_error(exc):
+        if not is_billing_error(exc):
             raise
         logger.warning("anthropic billing limit reached: {}", exc)
-        yield StageEvent(
-            stage="service_unavailable", data={"message": _SERVICE_UNAVAILABLE_MESSAGE}
-        )
+        yield StageEvent(stage="service_unavailable", data={"message": SERVICE_UNAVAILABLE_MESSAGE})
 
 
 async def build_profile(
@@ -85,11 +82,13 @@ async def build_profile(
     searcher: SearchAggregator,
     anthropic_client: AsyncAnthropic,
     fetcher: fetch.PageFetcher,
+    *,
+    pre_categorized: CategorizeResult | None = None,
 ) -> AsyncGenerator[StageEvent, None]:
     """Run the profile pipeline, yielding a StageEvent at each step."""
     logger.debug("pipeline start query={!r}", query)
     async for event in _run_with_degraded_errors(
-        _run_pipeline(query, searcher, anthropic_client, fetcher)
+        _run_pipeline(query, searcher, anthropic_client, fetcher, pre_categorized=pre_categorized)
     ):
         yield event
 
@@ -99,6 +98,8 @@ async def build_deep_profile(
     searcher: SearchAggregator,
     anthropic_client: AsyncAnthropic,
     fetcher: fetch.PageFetcher,
+    *,
+    pre_categorized: CategorizeResult | None = None,
 ) -> AsyncGenerator[StageEvent, None]:
     """Run the deep-research pipeline: an initial pass plus bounded follow-up rounds.
 
@@ -107,7 +108,9 @@ async def build_deep_profile(
     """
     logger.debug("deep pipeline start query={!r}", query)
     async for event in _run_with_degraded_errors(
-        _run_deep_pipeline(query, searcher, anthropic_client, fetcher)
+        _run_deep_pipeline(
+            query, searcher, anthropic_client, fetcher, pre_categorized=pre_categorized
+        )
     ):
         yield event
 
@@ -129,20 +132,13 @@ async def _gather_search_results(queries: list[str], searcher: SearchBackend) ->
     return merge_results(results_per_query)
 
 
-async def _run_pipeline(
-    query: str,
-    searcher: SearchAggregator,
-    anthropic_client: AsyncAnthropic,
-    fetcher: fetch.PageFetcher,
-) -> AsyncGenerator[StageEvent, None]:
-    category = await claude.categorize(anthropic_client, query)
-    logger.debug("categorized category={}", category)
-    yield StageEvent(stage="categorized", data={"category": category})
+async def _run_search_and_filter(
+    queries: list[str], searcher: SearchAggregator
+) -> tuple[list[SearchResult], list[str]]:
+    """Search for queries, filter blocked URLs, and log what was dropped or missing.
 
-    queries = await claude.generate_queries(anthropic_client, query, category)
-    logger.debug("queries generated count={}", len(queries))
-    yield StageEvent(stage="queries", data={"queries": queries})
-
+    Returns (allowed_results, missing_backend_names).
+    """
     unique_results = await _gather_search_results(queries, searcher)
     allowed_results = url_filter.filter_search_results(
         unique_results, blocked_domains=settings.url_domain_blocklist
@@ -151,10 +147,31 @@ async def _run_pipeline(
     if dropped:
         logger.debug("url_filter dropped count={} kept={}", dropped, len(allowed_results))
     logger.debug("search complete unique_results={}", len(allowed_results))
-
     missing_backends = _missing_backend_names(unique_results, searcher.backends)
     if missing_backends:
         logger.debug("backends contributed nothing names={}", missing_backends)
+    return allowed_results, missing_backends
+
+
+async def _run_pipeline(
+    query: str,
+    searcher: SearchAggregator,
+    anthropic_client: AsyncAnthropic,
+    fetcher: fetch.PageFetcher,
+    *,
+    pre_categorized: CategorizeResult | None = None,
+) -> AsyncGenerator[StageEvent, None]:
+    if pre_categorized is None:
+        pre_categorized = await claude.categorize(anthropic_client, query)
+    category = pre_categorized.category
+    logger.debug("categorized category={}", category)
+    yield StageEvent(stage="categorized", data={"category": category})
+
+    queries = await claude.generate_queries(anthropic_client, query, category)
+    logger.debug("queries generated count={}", len(queries))
+    yield StageEvent(stage="queries", data={"queries": queries})
+
+    allowed_results, missing_backends = await _run_search_and_filter(queries, searcher)
     yield StageEvent(
         stage="searching",
         data={"result_count": len(allowed_results), "missing_backends": missing_backends},
@@ -332,6 +349,8 @@ async def _run_deep_pipeline(
     searcher: SearchAggregator,
     anthropic_client: AsyncAnthropic,
     fetcher: fetch.PageFetcher,
+    *,
+    pre_categorized: CategorizeResult | None = None,
 ) -> AsyncGenerator[StageEvent, None]:
     """Run an initial pass, draft and analyze it for gaps, then run bounded follow-up rounds.
 
@@ -344,7 +363,9 @@ async def _run_deep_pipeline(
     renderer treats that as *the* answer, and surfacing an interim one would
     need new frontend machinery to "upgrade" it later, which is slice 3's job.
     """
-    category = await claude.categorize(anthropic_client, query)
+    if pre_categorized is None:
+        pre_categorized = await claude.categorize(anthropic_client, query)
+    category = pre_categorized.category
     logger.debug("categorized category={}", category)
     yield StageEvent(stage="categorized", data={"category": category})
 
@@ -352,18 +373,7 @@ async def _run_deep_pipeline(
     logger.debug("queries generated count={}", len(queries))
     yield StageEvent(stage="queries", data={"queries": queries})
 
-    unique_results = await _gather_search_results(queries, searcher)
-    allowed_results = url_filter.filter_search_results(
-        unique_results, blocked_domains=settings.url_domain_blocklist
-    )
-    dropped = len(unique_results) - len(allowed_results)
-    if dropped:
-        logger.debug("url_filter dropped count={} kept={}", dropped, len(allowed_results))
-    logger.debug("search complete unique_results={}", len(allowed_results))
-
-    missing_backends = _missing_backend_names(unique_results, searcher.backends)
-    if missing_backends:
-        logger.debug("backends contributed nothing names={}", missing_backends)
+    allowed_results, missing_backends = await _run_search_and_filter(queries, searcher)
     yield StageEvent(
         stage="searching",
         data={"result_count": len(allowed_results), "missing_backends": missing_backends},

@@ -1,10 +1,29 @@
 """Shared data models for the profile pipeline."""
 
+from dataclasses import dataclass, field
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
 Category = Literal["person", "place", "event", "other"]
+
+
+@dataclass(frozen=True)
+class CategorizeResult:
+    """Output of the categorize step: category plus optional canonical identity.
+
+    `canonical_name` is the most widely recognized form of the subject's name
+    (e.g. "Brian Warner" for a query of "Marilyn Manson"). It defaults to the
+    original query when Claude can't resolve the subject confidently, so callers
+    can always treat it as a valid cache key.
+
+    `aliases` lists other known names for the same entity so the cache can write
+    pointers from each alias to the canonical after the first full pipeline run.
+    """
+
+    category: Category
+    canonical_name: str
+    aliases: list[str] = field(default_factory=list[str])
 
 
 class ProfileHighlight(BaseModel):

@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from odin.config import settings
 from odin.models import (
     Assessment,
+    CategorizeResult,
     Category,
     Caveat,
     Citation,
@@ -189,6 +190,11 @@ _CATEGORIZE_SYSTEM = (
     "- place: a geographic location, city, country, or landmark\n"
     "- event: a historical event, occurrence, or phenomenon\n"
     "- other: anything that doesn't fit the above\n\n"
+    "If the subject is a well-known named entity, also provide:\n"
+    "- canonical_name: the most widely recognized form of the name "
+    "(e.g. 'Brian Warner' for 'Marilyn Manson', 'New York City' for 'NYC'). "
+    "Omit if the subject is ambiguous or the canonical form is the same as the query.\n"
+    "- aliases: other common names or spellings for the same entity. Omit if none apply.\n\n"
     "Respond using the categorize_result tool."
 )
 
@@ -324,14 +330,29 @@ _FIND_CONNECTIONS_SYSTEM = (
 
 _CATEGORIZE_TOOL: dict[str, Any] = {
     "name": "categorize_result",
-    "description": "Report the category of the search subject.",
+    "description": (
+        "Report the category of the search subject and, for well-known named entities,"
+        " its canonical name and aliases."
+    ),
     "input_schema": {
         "type": "object",
         "properties": {
             "category": {
                 "type": "string",
                 "enum": ["person", "place", "event", "other"],
-            }
+            },
+            "canonical_name": {
+                "type": "string",
+                "description": (
+                    "Most widely recognized name for the entity."
+                    " Omit when uncertain or when the query is already canonical."
+                ),
+            },
+            "aliases": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Other known names or spellings for the same entity.",
+            },
         },
         "required": ["category"],
     },
@@ -738,18 +759,26 @@ async def _call_tools(
     return blocks
 
 
-async def categorize(client: AsyncAnthropic, query: str) -> Category:
-    """Classify the query as person, place, event, or other."""
+async def categorize(client: AsyncAnthropic, query: str) -> CategorizeResult:
+    """Classify the query and resolve it to a canonical entity name when possible."""
     logger.debug("categorize query={!r}", query)
-    response = await _create_with_retries(
-        "categorize",
-        lambda: _call_tool(
-            client,
-            _CATEGORIZE_CALL,
-            messages=[{"role": "user", "content": f"Categorize this search term: {query}"}],
+    raw = cast(
+        "dict[str, Any]",
+        await _create_with_retries(
+            "categorize",
+            lambda: _call_tool(
+                client,
+                _CATEGORIZE_CALL,
+                messages=[{"role": "user", "content": f"Categorize this search term: {query}"}],
+            ),
         ),
     )
-    return _CategorizeOutput(**response).category  # type:ignore[reportCallIssue]
+    output = _CategorizeOutput(category=raw["category"])
+    canonical_name = (raw.get("canonical_name") or "").strip() or query
+    aliases: list[str] = raw.get("aliases") or []
+    return CategorizeResult(
+        category=output.category, canonical_name=canonical_name, aliases=aliases
+    )
 
 
 async def generate_queries(client: AsyncAnthropic, query: str, category: Category) -> list[str]:
