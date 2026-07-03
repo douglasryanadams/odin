@@ -12,7 +12,6 @@ With deep research shipped, this pass re-ranks the backlog: several cheap, high-
 
 ## Medium priority
 
-
 Browser SERP backends (Google/Bing via Playwright, or a paid SERP API) remain deferred in the backlog; revisit only if Brave plus Wikipedia coverage falls short.
 
 1. **Per-profile social cards and structured data.** `profile.html` overrides `_base.html`'s Open Graph and Twitter Card block with an empty `{% block social_meta %}{% endblock %}`, so every shared profile link unfurls blank on Slack, iMessage, and social platforms — a direct hit against the product's shareability goal. Populate the block with a title and description built from the query and the existing `/static/og-image.png`, and add `schema.org` `Person`/`Place`/`Event`/`Article` structured data so profiles are eligible for search-engine rich results. Near-zero cost to serve; do this before any dynamic per-profile card image, which depends on the SSE→HTTP hybrid endpoint below.
@@ -21,7 +20,6 @@ Browser SERP backends (Google/Bing via Playwright, or a paid SERP API) remain de
 4. **IndexNow ping on publish.** Add a tiny background task that posts canonical URLs to the IndexNow endpoint whenever a sitemap-listed page changes (or on deploy). Near-zero effort to gain Bing and Yandex near-instant indexing; Google has not adopted IndexNow so this complements, rather than replaces, sitemap submission.
 5. **Print-friendly stylesheet for search results.** Add a print stylesheet to the results page so the profile and sources render cleanly without site chrome. No JavaScript required; this is the baseline shareable format. Keep citations linkable in print.
 6. **Evaluate additional public-data search sources.** Investigate which public platforms expose supported APIs we could query to supplement our backends: Twitter/X, Reddit, Hacker News, Stack Exchange, Mastodon, YouTube, GitHub, and the like. For each, capture API availability and stability, auth requirements, rate limits, pricing, terms-of-service constraints on resale/redistribution, and fit with the `SearchBackend` Protocol (`search/base.py`). Output a short ranked recommendation of which to integrate first. This gains importance now that deep research has shipped: more sources means more material for the cross-source connection pass to work with. Sequence before revisiting browser SERP backends below.
-7. **Delete account: friendly error when email does not match.** Submitting an email that is not the logged-in user's to the delete account form returns a raw JSON body in the browser instead of a formatted, useful error message. Render the error inline on the account page the same way `routes/auth.py` re-renders `login.html` with an inline error, instead of raising `HTTPException(400)` from `account_delete`. Narrow audience (only users who mistype the email during deletion), which is why this sits behind the reach items above.
 
 ## Low priority / backlog
 
