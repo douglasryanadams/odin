@@ -1,0 +1,20 @@
+# ODIN gitleaks config. Extends the built-in "gitleaks" ruleset rather than
+# replacing it, so new secret patterns gitleaks ships stay covered
+# automatically. See docs/configuration.md's "Secret scanning" section for
+# the audit workflow: what to do when a scan flags something, and how to add
+# an allowlist entry here for a confirmed false positive.
+
+title = "odin gitleaks config"
+
+[extend]
+useDefault = true
+
+# No allowlist entries yet. Add one only after gitleaks flags a match that a
+# human has confirmed is not a real secret. Scope each entry to the specific
+# file (and match text, where possible) — never disable a whole rule or
+# exclude an entire path just to clear one finding. Example shape:
+#
+# [[rules.allowlists]]
+# regexTarget = "match"
+# paths = ['''src/odin/templates/_base\.html''']
+# regexes = ['''sha512-SnH5WK\+bZxgPHs44uWIX''']
