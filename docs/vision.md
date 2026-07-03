@@ -23,12 +23,14 @@ The ambition behind deep research: a research-automation tool that digs up refer
 
 ## The deep research initiative
 
-Four slices, built in sequence. Each ships on its own. `TODO.md` places slice 1 in the High tier (after the grounding and reliability prerequisites) and slices 2 through 4 in Medium.
+Shipped in four slices:
 
-1. **Bounded iterative search.** After an initial pass, the agent reads what it found, identifies gaps and threads, and issues one or two more targeted rounds of queries and fetches before final synthesis. A hard cap on extra rounds bounds both the cost to serve and the maintainer's cognitive load.
-2. **Cross-source connection pass.** A synthesis step that looks for corroboration, contradiction, and links across sources rather than summarizing each in isolation. This is the product's distinctive value, and its highest risk: every asserted connection must cite the sources it bridges.
-3. **Narrated reasoning.** The page already streams stage events; this upgrades terse stage labels into a readable account of what the agent is doing and why. It turns the wait into the product and shows the user how the profile was built.
-4. **Visual payoff.** A map of the subject's key locations and a representative photograph chosen from cited sources, both driven by the structured data the deeper pipeline now produces. They drive word-of-mouth and feed a per-profile social card.
+1. **Bounded iterative search.** After an initial pass, the agent reads what it found, identifies gaps and threads, and issues one or two more targeted rounds of queries and fetches before final synthesis. A hard cap on extra rounds (`DEEP_MODE_MAX_ROUNDS`) bounds both the cost to serve and the maintainer's cognitive load.
+2. **Cross-source connection pass.** A synthesis step that looks for corroboration, contradiction, and links across sources rather than summarizing each in isolation. This is the product's distinctive value, and its highest risk: every asserted connection must cite the sources it bridges — enforced by resolving each connection to at least two distinct cited sources before it ships.
+3. **Narrated reasoning.** The page streams a readable account of what the agent is doing and why (gap analysis, follow-up rounds, connection search) rather than terse stage labels, turning the wait into part of the product.
+4. **Locations map.** Every profile renders a map of the subject's key places from structured `synthesize()` data, with a vendored basemap.
+
+A representative subject photograph was scoped alongside the locations map but was dropped: it isn't part of the shipped initiative and there's no plan to build it.
 
 ## Governing constraints
 
