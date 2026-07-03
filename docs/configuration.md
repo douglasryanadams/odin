@@ -82,6 +82,10 @@ The database uses two roles. The owner role (`odin`, the superuser the image boo
 
 Schema changes use Alembic (`alembic.ini`, `alembic/`). Migrations are hand-written under `alembic/versions/` — no autogenerate — and `alembic/env.py` reads the owner DSN from `DATABASE_MIGRATION_URL` (not the app's `DATABASE_URL`), rewriting it to the asyncpg dialect. Apply them with `docker compose ... run --rm -e DATABASE_MIGRATION_URL=... web alembic upgrade head`; `scripts/deploy.sh` runs exactly this on every deploy, injecting the owner DSN into the one-off migration container only so the long-lived web service never holds owner credentials. There is no automatic history retention: rows accumulate, and anonymous history is kept indefinitely for abuse prevention (the privacy page documents this).
 
+## `scripts/indexnow_ping.py`
+
+Posts `static/sitemap.xml`'s URL list to the [IndexNow](https://www.indexnow.org/) API so Bing and Yandex can index a deploy without waiting on their crawl schedule; Google has not adopted IndexNow, so the sitemap remains the only path there. `scripts/deploy.sh` runs it as the last step of every deploy, mounting `scripts/` into a one-off `web` container so it can reuse the image's `httpx` without being baked into the production image. The ping is best-effort: a failure logs a warning but never fails the deploy. `INDEXNOW_KEY` is a checked-in constant, not a secret — its only job is to sit at a predictable public URL (`static/<key>.txt`, aliased at the domain root by `config/nginx.conf`) so IndexNow can confirm domain ownership. Rotating it means regenerating the key file, the `nginx.conf` alias, and the constant together.
+
 ## `config/gunicorn.conf.py`
 
 `bind = "0.0.0.0:8000"`, `workers = WORKERS env || (cpu_count * 2) + 1`, `worker_class = "uvicorn.workers.UvicornWorker"`, access + error logs to stdout. Each worker holds its own Chromium (~200 MB resident) launched in the FastAPI lifespan, so on small boxes set `WORKERS` explicitly — rule of thumb: 1 worker per ~350 MB of headroom.
@@ -90,7 +94,7 @@ The `web` container does not publish port 8000 to the host; Nginx is the only pa
 
 ## `config/nginx.conf`
 
-Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/default.conf`. Listens on `8000`, serves `/static/*`, `/favicon.ico`, and `/robots.txt` directly from the bind-mounted `./static/` tree at the repo root with `Cache-Control: public, max-age=86400`, and proxies everything else to `http://web:8000`. `proxy_buffering off`, `X-Accel-Buffering: no`, and `proxy_read_timeout 130s` (just above CloudFront's 120s SSE origin timeout) keep `/profile/stream` flowing. `gzip on` is enabled for text and image/x-icon at `gzip_min_length 256`.
+Single-server config mounted into the `nginx` sidecar at `/etc/nginx/conf.d/default.conf`. Listens on `8000`, serves `/static/*`, `/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `/site.webmanifest`, and the IndexNow key file directly from the bind-mounted `./static/` tree at the repo root with `Cache-Control: public, max-age=86400`, and proxies everything else to `http://web:8000`. The IndexNow key file needs its own `location` block (rather than falling under `/static/*`) because IndexNow requires it at the domain root — see the `scripts/indexnow_ping.py` section above. `proxy_buffering off`, `X-Accel-Buffering: no`, and `proxy_read_timeout 130s` (just above CloudFront's 120s SSE origin timeout) keep `/profile/stream` flowing. `gzip on` is enabled for text and image/x-icon at `gzip_min_length 256`.
 
 ## Environment variables
 

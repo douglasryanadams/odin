@@ -60,3 +60,12 @@ owner_password=$(sed -n 's/^POSTGRES_PASSWORD=//p' .env | head -n1)
 "${COMPOSE[@]}" up -d --pull always --force-recreate --wait
 
 docker image prune -af
+
+# Best-effort: ping IndexNow (Bing, Yandex) with the sitemap's URL list so they
+# can index the deploy without waiting on their crawl schedule. The sitemap is
+# small and hand-maintained, so this pings the full list every deploy rather
+# than detecting which pages changed. scripts/ isn't baked into the image, so
+# mount it from this checkout; a failed ping never fails the deploy.
+"${COMPOSE[@]}" run --rm -v "$(pwd)/scripts:/app/scripts:ro" web \
+  python scripts/indexnow_ping.py \
+  || echo "WARNING: IndexNow ping failed (non-fatal); crawler discovery still applies." >&2
