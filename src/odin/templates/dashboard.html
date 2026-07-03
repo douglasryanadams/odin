@@ -47,6 +47,7 @@
         Permanently removes your search history, rate-limit counters, and any other data tied to your account.
         Type your email to confirm.
       </p>
+      {% if error %}<p class="delete-account__error">{{ error }}</p>{% endif %}
       <form class="delete-account" method="post" action="/account/delete">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <label class="delete-account__label" for="delete-confirm-email">Email</label>

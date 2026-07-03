@@ -154,17 +154,22 @@ def test_account_delete_removes_durable_rows(
     assert mock_delete_history.await_args.args[1] == email
 
 
-def test_account_delete_rejects_email_mismatch(client: TestClient) -> None:
-    """Submitting a non-matching email returns 400."""
+def test_account_delete_shows_friendly_error_on_email_mismatch(client: TestClient) -> None:
+    """A non-matching email re-renders the dashboard with an inline error, not raw JSON."""
     session = _auth.create_session_value("user@example.com", TEST_SECRET)
     client.cookies.set("odin_session", session)
     csrf = _seed_csrf(client)
+
     response = client.post(
         "/account/delete",
         data={"email": "wrong@example.com", **csrf},
         follow_redirects=False,
     )
-    assert response.status_code == 400
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "match your account" in response.text
+    assert 'action="/account/delete"' in response.text
 
 
 def test_account_delete_rejects_missing_csrf(client: TestClient) -> None:
