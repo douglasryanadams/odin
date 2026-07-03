@@ -1,7 +1,17 @@
 """Shared test helper factories for building mock Anthropic API responses."""
 
+import json
+import re
 from collections.abc import Mapping
+from typing import Any
 from unittest.mock import MagicMock
+
+_JSON_LD_PATTERN = re.compile(r'<script type="application/ld\+json">(.*?)</script>', re.DOTALL)
+
+
+def json_ld_blocks(body: str) -> list[dict[str, Any]]:
+    """Extract every JSON-LD <script> block from a rendered page."""
+    return [json.loads(match) for match in _JSON_LD_PATTERN.findall(body)]
 
 
 def tool_block(name: str, input_data: Mapping[str, object]) -> MagicMock:
