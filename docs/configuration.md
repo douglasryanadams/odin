@@ -172,9 +172,19 @@ GitHub Actions workflows live in `.github/workflows/`:
 
 | File | Trigger | What it does |
 | --- | --- | --- |
-| `ci.yml` | Pull request → `main` | Builds dev image, runs `make lint` + `make test-unit test-smoke` |
+| `ci.yml` | Pull request → `main` | Builds dev image, runs `make lint` + `make test-unit test-smoke`; a separate `gitleaks` job scans the PR for secrets |
 | `deploy.yml` | Push → `main` | Builds prod image, pushes to ECR, deploys to EC2 via SSM |
 
 The deploy workflow uses OIDC — no long-lived AWS credentials stored in GitHub. Required repository secrets: `AWS_ACCOUNT_ID`, `EC2_INSTANCE_ID`. See [`docs/aws-setup.md`](./aws-setup.md) for full provisioning steps.
 
 Integration tests are excluded from CI — they hit real external services (the Brave Search API, the Wikimedia REST endpoint, and the SMTP relay). Run them locally with `make test-integration`.
+
+### Secret scanning
+
+The `gitleaks` job in `ci.yml` scans every pull request for secrets, using [`gitleaks/gitleaks-action`](https://github.com/gitleaks/gitleaks-action). It runs on GitHub's runner against a full checkout, not inside the dev container, so it works the same from a worktree or a plain clone. `config/gitleaks.toml` extends gitleaks's built-in rules and holds only an allowlist for confirmed false positives.
+
+When the job flags a match, treat it as a real secret first:
+
+1. Open the flagged commit and file. Decide whether the value is a live credential or a harmless look-alike, such as a placeholder, test fixture, or hash.
+2. If it is a real secret, rotate it at the provider, remove it from the file, and note the rotation in the PR. Scrubbing it from git history is a follow-up task, not a blocker for the current PR.
+3. If it is a confirmed false positive, add a scoped allowlist entry to `config/gitleaks.toml`. Limit the entry to the specific file (and the match text, where possible) and add a comment that explains why the match is safe. Never disable a whole rule or exclude a whole path just to clear one finding.
