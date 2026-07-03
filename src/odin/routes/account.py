@@ -22,6 +22,32 @@ from odin.routes._shared import (
 router = APIRouter()
 
 
+async def _dashboard_context(
+    request: Request,
+    valkey_client: Valkey,
+    db_pool: asyncpg.Pool,
+    user: auth.SessionUser,
+) -> tuple[dict[str, object], str]:
+    """Gather the quota, history, and CSRF context dashboard.html needs to render.
+
+    Returns the template context alongside the CSRF token used to build it, so
+    callers that also need to persist the cookie don't have to regenerate it
+    (which could hand back a different value than the one in the context).
+    """
+    requester = Requester(user.email, request.cookies.get(ANON_COOKIE, ""), request_ip(request))
+    used = await store.get_daily_count(valkey_client, requester)
+    recent = await history.get_history(db_pool, requester)
+    csrf = csrf_token_value(request)
+    context: dict[str, object] = {
+        "user": user,
+        "used": used,
+        "limit": settings.auth_daily_limit,
+        "history": recent,
+        "csrf_token": csrf,
+    }
+    return context, csrf
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(
     request: Request,
@@ -32,21 +58,8 @@ async def dashboard(
     user = auth.get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
-    requester = Requester(user.email, request.cookies.get(ANON_COOKIE, ""), request_ip(request))
-    used = await store.get_daily_count(valkey_client, requester)
-    recent = await history.get_history(db_pool, requester)
-    csrf = csrf_token_value(request)
-    resp = templates.TemplateResponse(
-        request,
-        "dashboard.html",
-        {
-            "user": user,
-            "used": used,
-            "limit": settings.auth_daily_limit,
-            "history": recent,
-            "csrf_token": csrf,
-        },
-    )
+    context, csrf = await _dashboard_context(request, valkey_client, db_pool, user)
+    resp = templates.TemplateResponse(request, "dashboard.html", context)
     set_csrf_cookie_if_absent(request, resp, csrf)
     return resp
 
@@ -66,7 +79,12 @@ async def account_delete(
     if not auth.csrf_matches(request.cookies.get(CSRF_COOKIE), csrf_token):
         raise HTTPException(status_code=403, detail="CSRF check failed")
     if email.strip().lower() != user.email.lower():
-        raise HTTPException(status_code=400, detail="Email does not match signed-in account")
+        context, _ = await _dashboard_context(request, valkey_client, db_pool, user)
+        return templates.TemplateResponse(
+            request,
+            "dashboard.html",
+            {**context, "error": "That email doesn't match your account. Please try again."},
+        )
     await store.delete_user(valkey_client, user.email)
     await signups.delete_signup(db_pool, user.email)
     await history.delete_user_history(db_pool, user.email)

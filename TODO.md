@@ -6,9 +6,7 @@ The current product direction is an opt-in deep research mode, layered on top of
 
 ## Medium priority
 
-Browser SERP backends (Google/Bing via Playwright, or a paid SERP API) remain deferred in the backlog; revisit only if Brave plus Wikipedia coverage falls short.
-
-1. **Delete account: friendly error when email does not match.** Submitting an email that is not the logged-in user's to the delete account form returns a raw JSON body in the browser instead of a formatted, useful error message. Render the error inline on the account page (or equivalent) the same way other validation errors are shown.
+Browser SERP backends (Google/Bing via Playwright, or a paid SERP API) remain deferred in the backlog; revisit only if Brave plus Wikipedia coverage falls short. No items are currently scheduled in this tier.
 
 ## Low priority / backlog
 

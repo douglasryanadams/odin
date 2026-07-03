@@ -56,6 +56,12 @@
   color: color-mix(in oklch, var(--danger) 80%, var(--text-muted));
 }
 
+.delete-account__error {
+  color: var(--danger);
+  font-size: 0.9375rem;
+  margin: 0;
+}
+
 .delete-account {
   display: flex;
   flex-direction: column;
