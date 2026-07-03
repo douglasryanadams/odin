@@ -13,7 +13,7 @@ backends add a factory here; the dependency wiring in ``app.py`` never changes.
 from collections.abc import Callable
 
 from odin.config import Settings
-from odin.search.aggregator import SearchAggregator, merge_results
+from odin.search.aggregator import MetricsRecorder, SearchAggregator, merge_results
 from odin.search.base import SearchBackend
 from odin.search.brave import BraveBackend
 from odin.search.models import SearchResult
@@ -53,7 +53,7 @@ _REGISTRY: tuple[Callable[[Settings], SearchBackend | None], ...] = (
 )
 
 
-def build_aggregator(settings: Settings) -> SearchAggregator:
+def build_aggregator(settings: Settings, record_outcome: MetricsRecorder) -> SearchAggregator:
     """Instantiate every active backend from config and wrap them in an aggregator."""
     backends = tuple(backend for factory in _REGISTRY if (backend := factory(settings)) is not None)
-    return SearchAggregator(backends=backends)
+    return SearchAggregator(backends=backends, record_outcome=record_outcome)

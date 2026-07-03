@@ -1,12 +1,13 @@
 """Static-ish pages: home, about, privacy, terms, health, notice dismissal."""
 
+from dataclasses import asdict
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from valkey.asyncio import Valkey
 
-from odin import auth, store
+from odin import auth, search, store
 from odin.app import get_valkey_client, templates
 from odin.config import settings
 from odin.identity import Requester
@@ -21,6 +22,7 @@ from odin.routes._shared import (
     set_csrf_cookie_if_absent,
     user_email,
 )
+from odin.search import metrics as search_metrics
 
 router = APIRouter()
 
@@ -67,6 +69,18 @@ async def index(
 def health() -> dict[str, str]:
     """Return service health status."""
     return {"status": "ok"}
+
+
+@router.get("/health/backends")
+async def health_backends(
+    valkey_client: Annotated[Valkey, Depends(get_valkey_client)],
+) -> list[dict[str, float | int | str]]:
+    """Return today's per-backend call count, error rate, latency, and result counts."""
+    aggregator = search.build_aggregator(settings, search_metrics.make_recorder(valkey_client))
+    return [
+        asdict(await search_metrics.get_backend_metrics(valkey_client, backend.name))
+        for backend in aggregator.backends
+    ]
 
 
 @router.get("/about", response_class=HTMLResponse)

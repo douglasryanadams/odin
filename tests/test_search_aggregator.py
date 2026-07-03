@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 
 from odin.search import SearchAggregator, SearchResult
-from odin.search.aggregator import merge_results
+from odin.search.aggregator import BackendOutcome, merge_results
 
 
 @dataclass(frozen=True)
@@ -110,3 +110,55 @@ def test_merge_results_unions_engines_across_batches() -> None:
     merged = merge_results([batch1, batch2])
     assert [r.url for r in merged] == ["https://x/1", "https://x/2"]
     assert merged[0].engines == ["a", "b"]
+
+
+async def test_aggregator_records_success_outcome_per_backend() -> None:
+    """Every backend that returns results reports a success outcome with its result count."""
+    recorded: list[BackendOutcome] = []
+
+    async def _record(outcome: BackendOutcome) -> None:
+        recorded.append(outcome)
+
+    a = _FakeBackend(name="a", results=[_result("https://x/1"), _result("https://x/2")])
+    b = _FakeBackend(name="b", results=[_result("https://x/3")])
+    await SearchAggregator(backends=(a, b), record_outcome=_record).search("q")
+
+    by_name = {outcome.name: outcome for outcome in recorded}
+    assert by_name["a"].outcome == "success"
+    assert by_name["a"].result_count == 2
+    assert by_name["b"].outcome == "success"
+    assert by_name["b"].result_count == 1
+    assert all(outcome.elapsed_seconds >= 0 for outcome in recorded)
+
+
+async def test_aggregator_records_timeout_outcome() -> None:
+    """A backend that exceeds its timeout reports a timeout outcome with zero results."""
+    recorded: list[BackendOutcome] = []
+
+    async def _record(outcome: BackendOutcome) -> None:
+        recorded.append(outcome)
+
+    slow = _FakeBackend(
+        name="slow", results=[_result("https://x/slow")], timeout_seconds=0.05, delay=5.0
+    )
+    await SearchAggregator(backends=(slow,), record_outcome=_record).search("q")
+
+    assert len(recorded) == 1
+    assert recorded[0].outcome == "timeout"
+    assert recorded[0].result_count == 0
+
+
+async def test_aggregator_records_error_outcome() -> None:
+    """A backend that raises reports an error outcome with zero results."""
+    recorded: list[BackendOutcome] = []
+
+    async def _record(outcome: BackendOutcome) -> None:
+        recorded.append(outcome)
+
+    await SearchAggregator(backends=(_RaisingBackend(name="boom"),), record_outcome=_record).search(
+        "q"
+    )
+
+    assert len(recorded) == 1
+    assert recorded[0].outcome == "error"
+    assert recorded[0].result_count == 0

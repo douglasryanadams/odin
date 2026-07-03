@@ -8,8 +8,7 @@ The current product direction is an opt-in deep research mode, layered on top of
 
 Browser SERP backends (Google/Bing via Playwright, or a paid SERP API) remain deferred in the backlog; revisit only if Brave plus Wikipedia coverage falls short.
 
-1. **Per-backend metrics and observability for the search aggregator.** Latency, error rate, and result counts per backend, so degradation is measurable rather than only logged; build it into `src/odin/search/aggregator.py`. The user-facing half of this degradation work (naming backends that contributed nothing in the profile's searching event) has shipped; this is the operations-side counterpart. Genuine operations value, but lower near-term user payoff at current traffic and real cognitive load to build and own, so it sits below other Medium items.
-2. **Delete account: friendly error when email does not match.** Submitting an email that is not the logged-in user's to the delete account form returns a raw JSON body in the browser instead of a formatted, useful error message. Render the error inline on the account page (or equivalent) the same way other validation errors are shown.
+1. **Delete account: friendly error when email does not match.** Submitting an email that is not the logged-in user's to the delete account form returns a raw JSON body in the browser instead of a formatted, useful error message. Render the error inline on the account page (or equivalent) the same way other validation errors are shown.
 
 ## Low priority / backlog
 

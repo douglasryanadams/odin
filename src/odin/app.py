@@ -7,9 +7,10 @@ individual route modules with it.
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Annotated
 
 from anthropic import AsyncAnthropic
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 from playwright.async_api import async_playwright
@@ -18,6 +19,7 @@ from valkey.asyncio import Valkey
 
 from odin import curl_fetch, db, fetch, log, search
 from odin.config import settings
+from odin.search import metrics as search_metrics
 
 log.setup()
 
@@ -96,11 +98,6 @@ async def _add_security_headers(  # pyright: ignore[reportUnusedFunction]
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 
-def get_search_aggregator() -> search.SearchAggregator:
-    """Return the search aggregator built from the backends enabled in config."""
-    return search.build_aggregator(settings)
-
-
 def get_anthropic_client() -> AsyncAnthropic:
     """Return an Anthropic client using ANTHROPIC_API_KEY from the environment.
 
@@ -126,3 +123,10 @@ def get_page_fetcher(request: Request) -> fetch.PageFetcher:
 def get_valkey_client(request: Request) -> Valkey:
     """Return the shared Valkey client from app state."""
     return request.app.state.valkey  # type: ignore[no-any-return]
+
+
+def get_search_aggregator(
+    valkey_client: Annotated[Valkey, Depends(get_valkey_client)],
+) -> search.SearchAggregator:
+    """Return the search aggregator, recording per-backend metrics to Valkey."""
+    return search.build_aggregator(settings, search_metrics.make_recorder(valkey_client))
