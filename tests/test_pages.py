@@ -14,15 +14,8 @@ import pytest
 from conftest import STATIC_DIR, TEST_SECRET
 from fastapi.testclient import TestClient
 
+from helpers import json_ld_blocks as _json_ld_blocks
 from odin import auth as _auth
-
-_JSON_LD_PATTERN = re.compile(r'<script type="application/ld\+json">(.*?)</script>', re.DOTALL)
-
-
-def _json_ld_blocks(body: str) -> list[dict[str, Any]]:
-    """Extract every JSON-LD <script> block from a rendered page."""
-    return [json.loads(match) for match in _JSON_LD_PATTERN.findall(body)]
-
 
 # ---------------------------------------------------------------------------
 # Health

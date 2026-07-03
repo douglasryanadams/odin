@@ -1,9 +1,15 @@
 {% extends "_base.html" %}
-{% block title %}{{ query }} — Odin{% endblock %}
-{% block meta_description %}
-  Odin's profile of {{ query }}: facts and citations drawn from public web sources.
+{% set profile_title = query ~ " — Odin" %}
+{% set profile_description = "Odin's profile of " ~ query ~ ": facts and citations drawn from public web sources." %}
+{% block title %}{{ profile_title }}{% endblock %}
+{% block meta_description %}{{ profile_description }}{% endblock %}
+{% block og_type %}article{% endblock %}
+{% block json_ld %}
+  {{ super() }}
+  <script type="application/ld+json">
+    {{ {"@context": "https://schema.org", "@type": "WebPage", "name": profile_title, "description": profile_description, "url": app_url ~ request.url.path} | tojson }}
+  </script>
 {% endblock %}
-{% block social_meta %}{% endblock %}
 {% block body_class %}page-profile{% endblock %}
 {% block head_extra %}
   <meta name="odin-query" content="{{ query }}" />
@@ -41,6 +47,13 @@
       <a href="/login">sign in</a> for {{ auth_limit }}/day
     </span>
   {% endif %}
+  <a class="header-nav__link header-nav__link--github"
+     href="https://github.com/douglasryanadams/odin"
+     target="_blank"
+     rel="noopener noreferrer"
+     aria-label="Odin on GitHub">
+    <i class="fa-brands fa-github" aria-hidden="true"></i>
+  </a>
 {% endblock %}
 {% block content %}
   <div class="profile">
