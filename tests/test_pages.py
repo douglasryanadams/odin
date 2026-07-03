@@ -36,6 +36,24 @@ def test_health(client: TestClient) -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_health_backends_endpoint_returns_metrics_per_backend(client: TestClient) -> None:
+    """Verify /health/backends returns one metrics entry per configured backend."""
+    response = client.get("/health/backends")
+    assert response.status_code == 200
+    body = response.json()
+    names = {entry["name"] for entry in body}
+    assert "wikipedia" in names
+    for entry in body:
+        assert entry.keys() >= {
+            "calls",
+            "errors",
+            "timeouts",
+            "error_rate",
+            "avg_latency_ms",
+            "avg_result_count",
+        }
+
+
 # ---------------------------------------------------------------------------
 # Index route
 # ---------------------------------------------------------------------------

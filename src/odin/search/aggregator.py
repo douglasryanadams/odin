@@ -12,13 +12,32 @@ layers.
 """
 
 import asyncio
-from collections.abc import Iterable
+import time
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
+from typing import Literal
 
 from loguru import logger
 
 from odin.search.base import SearchBackend
 from odin.search.models import SearchResult
+
+
+@dataclass(frozen=True)
+class BackendOutcome:
+    """What happened when one backend was queried: outcome, timing, and yield."""
+
+    name: str
+    elapsed_seconds: float
+    outcome: Literal["success", "timeout", "error"]
+    result_count: int
+
+
+MetricsRecorder = Callable[[BackendOutcome], Awaitable[None]]
+
+
+async def _no_op_recorder(outcome: BackendOutcome) -> None:
+    """Discard the outcome, so callers that don't care about metrics need not pass one."""
 
 
 def merge_results(batches: Iterable[Iterable[SearchResult]]) -> list[SearchResult]:
@@ -49,24 +68,60 @@ def merge_results(batches: Iterable[Iterable[SearchResult]]) -> list[SearchResul
     return list(merged.values())
 
 
-async def _guarded(backend: SearchBackend, query: str) -> list[SearchResult]:
-    """Run one backend under its timeout, returning [] on timeout or error."""
+async def _guarded(
+    backend: SearchBackend, query: str, record_outcome: MetricsRecorder
+) -> list[SearchResult]:
+    """Run one backend under its timeout, returning [] on timeout or error.
+
+    Always reports what happened to ``record_outcome``, win or lose, so
+    per-backend metrics stay complete rather than only covering failures.
+    """
+    start = time.monotonic()
     try:
         async with asyncio.timeout(backend.timeout_seconds):
-            return await backend.search(query)
+            results = await backend.search(query)
     except TimeoutError:
         logger.warning(
             "search backend timed out name={} timeout={}",
             backend.name,
             backend.timeout_seconds,
         )
+        await record_outcome(
+            BackendOutcome(
+                name=backend.name,
+                elapsed_seconds=time.monotonic() - start,
+                outcome="timeout",
+                result_count=0,
+            )
+        )
         return []
     except Exception as exc:  # noqa: BLE001 — one backend must not sink the query
         logger.warning("search backend failed name={} error={}", backend.name, exc)
+        await record_outcome(
+            BackendOutcome(
+                name=backend.name,
+                elapsed_seconds=time.monotonic() - start,
+                outcome="error",
+                result_count=0,
+            )
+        )
         return []
+    await record_outcome(
+        BackendOutcome(
+            name=backend.name,
+            elapsed_seconds=time.monotonic() - start,
+            outcome="success",
+            result_count=len(results),
+        )
+    )
+    return results
 
 
-async def gather_results(backends: tuple[SearchBackend, ...], query: str) -> list[SearchResult]:
+async def gather_results(
+    backends: tuple[SearchBackend, ...],
+    query: str,
+    record_outcome: MetricsRecorder = _no_op_recorder,
+) -> list[SearchResult]:
     """Query every backend concurrently under per-backend timeouts and merge.
 
     A backend that times out or raises contributes no results rather than
@@ -75,7 +130,9 @@ async def gather_results(backends: tuple[SearchBackend, ...], query: str) -> lis
     """
     if not backends:
         return []
-    batches = await asyncio.gather(*[_guarded(backend, query) for backend in backends])
+    batches = await asyncio.gather(
+        *[_guarded(backend, query, record_outcome) for backend in backends]
+    )
     return merge_results(batches)
 
 
@@ -91,7 +148,8 @@ class SearchAggregator:
     backends: tuple[SearchBackend, ...]
     name: str = "aggregator"
     timeout_seconds: float = 30.0
+    record_outcome: MetricsRecorder = _no_op_recorder
 
     async def search(self, query: str) -> list[SearchResult]:
         """Query all backends concurrently and return their merged results."""
-        return await gather_results(self.backends, query)
+        return await gather_results(self.backends, query, self.record_outcome)

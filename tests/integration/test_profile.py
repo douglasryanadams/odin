@@ -20,6 +20,7 @@ from odin import routes  # noqa: F401  # pyright: ignore[reportUnusedImport]
 from odin.app import app, get_anthropic_client, get_search_aggregator
 from odin.config import settings
 from odin.search import build_aggregator
+from odin.search.aggregator import BackendOutcome
 
 _MOCK_PROFILE_DATA: Mapping[str, object] = {
     "name": "Python",
@@ -85,6 +86,10 @@ def mock_anthropic() -> Iterator[MagicMock]:
     app.dependency_overrides.pop(get_anthropic_client, None)
 
 
+async def _discard_outcome(outcome: BackendOutcome) -> None:
+    """Discard the outcome: this test exercises pipeline integration, not metrics."""
+
+
 @pytest.fixture
 def client() -> Iterator[TestClient]:
     """Return a TestClient pointed at the real first-party search aggregator.
@@ -92,7 +97,9 @@ def client() -> Iterator[TestClient]:
     Used as a context manager so FastAPI's lifespan runs and launches the
     Playwright Browser stored on ``app.state.browser``.
     """
-    app.dependency_overrides[get_search_aggregator] = lambda: build_aggregator(settings)
+    app.dependency_overrides[get_search_aggregator] = lambda: build_aggregator(
+        settings, _discard_outcome
+    )
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.pop(get_search_aggregator, None)
