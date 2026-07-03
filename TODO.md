@@ -8,8 +8,7 @@ The current product direction is an opt-in deep research mode, layered on top of
 
 Browser SERP backends (Google/Bing via Playwright, or a paid SERP API) remain deferred in the backlog; revisit only if Brave plus Wikipedia coverage falls short.
 
-1. **Wire Google Search Console and Bing Webmaster verification meta tags.** Once `odinseye.info` is registered in both consoles, drive the verification tokens off optional env vars (`GOOGLE_SITE_VERIFICATION`, `BING_SITE_VERIFICATION`) so the values stay out of the repo, render them in `_base.html` only when present, and submit `sitemap.xml` from each console. Bing Webmaster can import the GSC verification directly. Registering first matters because it surfaces indexing gaps — without it there is no visibility into whether reach problems exist.
-2. **Delete account: friendly error when email does not match.** Submitting an email that is not the logged-in user's to the delete account form returns a raw JSON body in the browser instead of a formatted, useful error message. Render the error inline on the account page (or equivalent) the same way other validation errors are shown.
+1. **Delete account: friendly error when email does not match.** Submitting an email that is not the logged-in user's to the delete account form returns a raw JSON body in the browser instead of a formatted, useful error message. Render the error inline on the account page (or equivalent) the same way other validation errors are shown.
 
 ## Low priority / backlog
 
