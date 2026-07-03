@@ -6,10 +6,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
-from conftest import TEST_SECRET, FakeSearchBackend
+from conftest import STATIC_DIR, TEST_SECRET, FakeSearchBackend
 from fastapi.testclient import TestClient
 
-from helpers import api_response, tool_block
+from helpers import api_response, json_ld_blocks, tool_block
 from odin import auth as _auth
 from odin import cache as _cache
 from odin.app import app, get_anthropic_client, get_page_fetcher
@@ -198,16 +198,91 @@ def test_profile_page_anonymous_first_visit_links_to_login(client: TestClient) -
     assert 'href="/login"' in response.text
 
 
-def test_profile_has_meta_description_no_og(client: TestClient) -> None:
-    """Profile keeps its dynamic title + description but does not expose OG tags."""
+def test_profile_has_dynamic_og_and_twitter_tags(client: TestClient) -> None:
+    """Profile pages carry OG/Twitter tags built from the query, so shared links unfurl.
+
+    A blank social_meta block used to make every shared profile link unfurl
+    with no title or description on Slack/iMessage/Twitter.
+    """
     response = client.get("/profile?q=Ada%20Lovelace")
     assert response.status_code == 200
     body = response.text
     assert '<meta name="description"' in body
+    assert '<meta property="og:type" content="article"' in body
+    assert '<meta property="og:title" content="Ada Lovelace' in body
+    assert '<meta property="og:description"' in body
     assert "Ada Lovelace" in body
-    assert "<title>" in body
-    assert "og:title" not in body
-    assert "twitter:card" not in body
+    assert '<meta name="twitter:card" content="summary_large_image"' in body
+    assert '<meta name="twitter:title" content="Ada Lovelace' in body
+    assert "/static/og-image.png" in body
+
+
+def test_profile_json_ld_has_webpage_alongside_organization(client: TestClient) -> None:
+    """Profile pages emit a query-specific WebPage block plus the sitewide Organization one.
+
+    The subject's category (person/place/event) is only known once the SSE
+    stream categorizes it, so the initial render uses the generic WebPage
+    type rather than trying to guess a more specific schema.org type.
+    """
+    response = client.get("/profile?q=Ada%20Lovelace")
+    assert response.status_code == 200
+    blocks = json_ld_blocks(response.text)
+
+    org = next((b for b in blocks if b.get("@type") == "Organization"), None)
+    assert org is not None, "Organization JSON-LD should still be present"
+
+    page = next((b for b in blocks if b.get("@type") == "WebPage"), None)
+    assert page is not None, "no WebPage JSON-LD on the profile page"
+    assert "Ada Lovelace" in page["name"]
+    assert "Ada Lovelace" in page["description"]
+    assert page["url"].startswith("http")
+
+
+def test_profile_json_ld_escapes_special_characters_in_query(client: TestClient) -> None:
+    """A query with quotes and angle brackets still produces parseable JSON-LD.
+
+    Guards the tojson filter usage: naive string interpolation of a raw query
+    into the JSON-LD <script> body would either emit invalid JSON (an
+    unescaped quote) or, worse, HTML-escape the quote into a literal
+    "&quot;" that a JSON parser can't decode (script/style are HTML "raw
+    text" elements, so entities inside them are never decoded by the
+    browser).
+    """
+    response = client.get("/profile?q=O%27Brien%20%22Big%22%20%3Cb%3EMike%3C%2Fb%3E")
+    assert response.status_code == 200
+    blocks = json_ld_blocks(response.text)
+
+    page = next((b for b in blocks if b.get("@type") == "WebPage"), None)
+    assert page is not None
+    assert 'O\'Brien "Big" <b>Mike</b>' in page["name"]
+
+
+def test_profile_page_links_to_github(client: TestClient) -> None:
+    """Profile header exposes a small GitHub link so visitors can find the source."""
+    response = client.get("/profile?q=foo")
+    assert response.status_code == 200
+    body = response.text
+    assert 'href="https://github.com/douglasryanadams/odin"' in body
+    assert "fa-brands fa-github" in body
+
+
+def test_profile_print_stylesheet_hides_chrome_and_keeps_citations_visible() -> None:
+    """The profile stylesheet's print rules drop site chrome but keep citation URLs.
+
+    A regression guard, not a rendering test: confirms the @media print block
+    survives future edits to _profile.css without asserting on browser layout,
+    which isn't observable from a plain-text read of the file.
+    """
+    css = (STATIC_DIR / "css" / "odin" / "pages" / "_profile.css").read_text()
+    print_start = css.index("@media print")
+    print_block = css[print_start:]
+
+    assert ".page-profile .site-header" in print_block
+    assert ".page-profile .site-footer" in print_block
+    assert ".page-profile .status-bar" in print_block
+    assert "display: none !important" in print_block
+    # Citations keep their href visible as printed text rather than being hidden.
+    assert ".citations__link[href]::after" in print_block
 
 
 def test_profile_has_single_h1(client: TestClient) -> None:

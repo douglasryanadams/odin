@@ -126,6 +126,22 @@
   color: var(--accent);
 }
 
+/* Small, unobtrusive GitHub link in the header's far corner — a trust
+   signal and discoverability path for contributors, not a primary action. */
+.header-nav__link--github {
+  display: inline-flex;
+  align-items: center;
+  font-size: 1.0625rem;
+  color: var(--text-muted);
+  opacity: 0.75;
+  transition: color var(--t-fast), opacity var(--t-fast);
+}
+
+.header-nav__link--github:hover {
+  color: var(--accent);
+  opacity: 1;
+}
+
 @media (max-width: 519px) {
   .header-search {
     max-width: none;
@@ -1066,5 +1082,57 @@
 @media (min-width: 720px) {
   .mention-item__headline {
     grid-column: 3 / 4;
+  }
+}
+
+/* ----- Print stylesheet ----------------------------------------------
+   Printing (or "Save as PDF") drops the site chrome and the phosphor
+   theme in favor of plain black-on-white — the CRT palette wastes ink
+   and the sticky header/status bar have no meaning on paper. Citations
+   are the reason anyone prints this page, so their href is appended as
+   visible text (links aren't clickable on paper) and collapsed findings
+   / connections / caveats are forced open so their detail isn't lost. */
+@media print {
+  .page-profile .site-header,
+  .page-profile .disclosure-banner,
+  .page-profile .status-bar,
+  .page-profile .site-footer,
+  .page-profile .progress-bar,
+  .page-profile .research-log {
+    display: none !important;
+  }
+
+  .page-profile,
+  .page-profile * {
+    background: #fff !important;
+    color: #000 !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+    filter: none !important;
+  }
+
+  .page-profile .site-main {
+    padding: 0 !important;
+  }
+
+  .page-profile .profile__sidebar {
+    position: static !important;
+  }
+
+  .page-profile a {
+    color: #000 !important;
+    text-decoration: underline !important;
+  }
+
+  /* Details elements (findings, connections, caveats) default to closed;
+     printing should show every detail, not just the summary line. */
+  .page-profile details > *:not(summary) {
+    display: block !important;
+  }
+
+  .page-profile .citations__link[href]::after {
+    content: " (" attr(href) ")";
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
   }
 }
