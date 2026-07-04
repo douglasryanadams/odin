@@ -42,11 +42,21 @@ async def profile_page(
     q: Annotated[str, Query(max_length=MAX_QUERY_LEN)],
     valkey_client: Annotated[Valkey, Depends(get_valkey_client)],
     deep: Annotated[bool, Query()] = False,  # noqa: FBT002 — HTTP query param, not a behavior switch
+    website: Annotated[str, Query()] = "",
 ) -> HTMLResponse:
-    """Render the profile page; assign anonymous cookie on first visit."""
+    """Render the profile page; assign anonymous cookie on first visit.
+
+    `website` is an unlabeled honeypot field on the search form: a human never
+    populates it, so a filled value counts as a bot-detection trigger. Unlike
+    the sign-in form, this page has no timing check — direct and crawled hits
+    to a shared `/profile?q=...` link legitimately carry no form metadata at
+    all, so an "absent" signal can't be treated as suspicious here.
+    """
     user = auth.get_current_user(request)
     cookie_id = anon_cookie_id(request)
     requester = Requester(user_email(user), cookie_id, request_ip(request))
+    if website:
+        await store.record_bot_trigger(valkey_client, requester.ip_address)
     used = await store.get_daily_count(valkey_client, requester)
     limit = settings.auth_daily_limit if user else settings.anon_daily_limit
     csrf = csrf_token_value(request)
@@ -92,6 +102,13 @@ async def profile_stream(  # noqa: PLR0913, C901
     requester = Requester(
         user_email(user), request.cookies.get(ANON_COOKIE, ""), request_ip(request)
     )
+
+    if await store.is_ip_denied(valkey_client, requester.ip_address):
+
+        async def _blocked() -> AsyncGenerator[str, None]:
+            yield f"data: {json.dumps({'type': 'blocked'})}\n\n"
+
+        return StreamingResponse(_blocked(), media_type="text/event-stream")
 
     if await store.is_rate_limited(
         valkey_client,

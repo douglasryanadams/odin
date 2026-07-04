@@ -235,6 +235,28 @@ def test_send_link_tampered_form_ts_silently_rejects(
 
 
 @patch("odin.routes.auth.send_magic_link")
+def test_send_link_honeypot_denies_ip_after_three_triggers(
+    mock_send: MagicMock, client: TestClient, mock_valkey: MagicMock
+) -> None:
+    """Three honeypot triggers from the same IP add it to the denylist."""
+    mock_send.return_value = None
+    _stateful_incr(mock_valkey)
+    csrf = _seed_csrf(client)
+    for _ in range(3):
+        client.post(
+            "/auth/send-link",
+            data={
+                "email": "victim@example.com",
+                "website": "http://spam.example.com",
+                "form_ts": _valid_form_ts(),
+                **csrf,
+            },
+            headers={"X-Forwarded-For": "198.51.100.9"},
+        )
+    mock_valkey.sadd.assert_called_once_with("denylist:ips", "198.51.100.9")
+
+
+@patch("odin.routes.auth.send_magic_link")
 def test_send_link_too_fast_silently_rejects(mock_send: MagicMock, client: TestClient) -> None:
     """form_ts submitted less than 2 seconds after issue → silently rejects."""
     mock_send.return_value = None

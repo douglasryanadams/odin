@@ -175,6 +175,26 @@ def test_profile_page_sets_anon_cookie_on_first_visit(client: TestClient) -> Non
     assert "odin_anon" in response.cookies
 
 
+def test_profile_page_honeypot_filled_denies_ip_after_three_triggers(
+    client: TestClient, mock_valkey: MagicMock
+) -> None:
+    """Filling the hidden 'website' field three times from one IP denies that IP."""
+    mock_valkey.incr.return_value = 3
+    client.get(
+        "/profile?q=foo&website=http://spam.example.com",
+        headers={"X-Forwarded-For": "198.51.100.11"},
+    )
+    mock_valkey.sadd.assert_called_once_with("denylist:ips", "198.51.100.11")
+
+
+def test_profile_page_empty_website_does_not_trigger_bot_check(
+    client: TestClient, mock_valkey: MagicMock
+) -> None:
+    """A normal request (no honeypot value) never touches the bot-trigger counter."""
+    client.get("/profile?q=foo")
+    mock_valkey.incr.assert_not_called()
+
+
 def test_profile_page_signed_in_links_to_dashboard(client: TestClient) -> None:
     """Profile header exposes a Dashboard link for signed-in users."""
     session = _auth.create_session_value("user@example.com", TEST_SECRET)
@@ -502,6 +522,19 @@ def test_profile_stream_rate_limited_emits_rate_limited_event(
     events = _parse_sse_events(response.text)
     assert events[0]["type"] == "rate_limited"
     assert "redirect" in events[0]
+
+
+def test_profile_stream_denied_ip_emits_blocked_event_and_skips_pipeline(
+    client: TestClient, mock_valkey: MagicMock, mock_anthropic: MagicMock
+) -> None:
+    """A denylisted IP gets a blocked event and never reaches the search/LLM pipeline."""
+    _setup_page_fetcher()
+    mock_valkey.sismember.return_value = True
+    response = client.get("/profile/stream?q=foo", cookies={"odin_anon": "test-cookie"})
+    assert response.status_code == 200
+    events = _parse_sse_events(response.text)
+    assert events[0]["type"] == "blocked"
+    mock_anthropic.messages.create.assert_not_called()
 
 
 def test_profile_stream_citations_only_include_urls_synthesizer_cited(
