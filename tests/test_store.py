@@ -72,7 +72,6 @@ async def test_is_rate_limited_triggers_on_ip_even_if_cookie_is_under(valkey: As
 
 async def test_is_ip_denied_returns_false_when_not_denied(valkey: AsyncMock) -> None:
     valkey.sismember.return_value = False
-    valkey.smembers.return_value = set()
     assert await store.is_ip_denied(valkey, "1.2.3.4") is False
 
 
@@ -81,51 +80,46 @@ async def test_is_ip_denied_returns_true_for_exact_match(valkey: AsyncMock) -> N
     assert await store.is_ip_denied(valkey, "1.2.3.4") is True
 
 
-async def test_is_ip_denied_returns_true_for_ip_inside_denied_cidr(valkey: AsyncMock) -> None:
-    valkey.sismember.return_value = False
-    valkey.smembers.return_value = {b"203.0.113.0/24"}
-    assert await store.is_ip_denied(valkey, "203.0.113.5") is True
-
-
-async def test_is_ip_denied_returns_false_for_ip_outside_denied_cidr(valkey: AsyncMock) -> None:
-    valkey.sismember.return_value = False
-    valkey.smembers.return_value = {b"203.0.113.0/24"}
-    assert await store.is_ip_denied(valkey, "198.51.100.5") is False
-
-
-async def test_deny_ip_adds_exact_ip_to_the_ip_set(valkey: AsyncMock) -> None:
+async def test_deny_ip_adds_to_the_denylist_set(valkey: AsyncMock) -> None:
     await store.deny_ip(valkey, "1.2.3.4")
     valkey.sadd.assert_called_once_with("denylist:ips", "1.2.3.4")
 
 
-async def test_deny_ip_adds_cidr_to_the_cidr_set(valkey: AsyncMock) -> None:
-    await store.deny_ip(valkey, "203.0.113.0/24")
-    valkey.sadd.assert_called_once_with("denylist:cidrs", "203.0.113.0/24")
-
-
-async def test_deny_ip_rejects_input_that_is_not_an_ip_or_cidr(valkey: AsyncMock) -> None:
+async def test_deny_ip_rejects_input_that_is_not_an_ip(valkey: AsyncMock) -> None:
     with pytest.raises(ValueError, match="does not appear to be"):
         await store.deny_ip(valkey, "not-an-ip")
     valkey.sadd.assert_not_called()
 
 
-async def test_deny_ip_rejects_cidr_with_host_bits_set(valkey: AsyncMock) -> None:
-    with pytest.raises(ValueError, match="host bits set"):
-        await store.deny_ip(valkey, "203.0.113.5/24")
-    valkey.sadd.assert_not_called()
-
-
-async def test_allow_ip_removes_exact_ip_from_the_ip_set(valkey: AsyncMock) -> None:
+async def test_allow_ip_removes_from_the_denylist_set(valkey: AsyncMock) -> None:
     await store.allow_ip(valkey, "1.2.3.4")
     valkey.srem.assert_called_once_with("denylist:ips", "1.2.3.4")
 
 
-async def test_allow_ip_removes_cidr_from_the_cidr_set(valkey: AsyncMock) -> None:
-    await store.allow_ip(valkey, "203.0.113.0/24")
-    valkey.srem.assert_called_once_with("denylist:cidrs", "203.0.113.0/24")
-
-
-async def test_list_denied_returns_sorted_combined_entries(valkey: AsyncMock) -> None:
-    valkey.smembers.side_effect = [{b"1.2.3.4"}, {b"203.0.113.0/24"}]
+async def test_list_denied_returns_sorted_entries(valkey: AsyncMock) -> None:
+    valkey.smembers.return_value = {b"203.0.113.5", b"1.2.3.4"}
     result = await store.list_denied(valkey)
-    assert result == ["1.2.3.4", "203.0.113.0/24"]
+    assert result == ["1.2.3.4", "203.0.113.5"]
+
+
+async def test_record_bot_trigger_sets_ttl_on_first_trigger(valkey: AsyncMock) -> None:
+    valkey.incr.return_value = 1
+    await store.record_bot_trigger(valkey, "1.2.3.4")
+    valkey.expire.assert_called_once_with("botcheck:1.2.3.4", 3600)
+
+
+async def test_record_bot_trigger_does_not_deny_below_threshold(valkey: AsyncMock) -> None:
+    valkey.incr.return_value = 2
+    await store.record_bot_trigger(valkey, "1.2.3.4")
+    valkey.sadd.assert_not_called()
+
+
+async def test_record_bot_trigger_denies_at_threshold(valkey: AsyncMock) -> None:
+    valkey.incr.return_value = 3
+    await store.record_bot_trigger(valkey, "1.2.3.4")
+    valkey.sadd.assert_called_once_with("denylist:ips", "1.2.3.4")
+
+
+async def test_record_bot_trigger_ignores_empty_ip(valkey: AsyncMock) -> None:
+    await store.record_bot_trigger(valkey, "")
+    valkey.incr.assert_not_called()

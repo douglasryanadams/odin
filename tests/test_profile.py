@@ -175,6 +175,26 @@ def test_profile_page_sets_anon_cookie_on_first_visit(client: TestClient) -> Non
     assert "odin_anon" in response.cookies
 
 
+def test_profile_page_honeypot_filled_denies_ip_after_three_triggers(
+    client: TestClient, mock_valkey: MagicMock
+) -> None:
+    """Filling the hidden 'website' field three times from one IP denies that IP."""
+    mock_valkey.incr.return_value = 3
+    client.get(
+        "/profile?q=foo&website=http://spam.example.com",
+        headers={"X-Forwarded-For": "198.51.100.11"},
+    )
+    mock_valkey.sadd.assert_called_once_with("denylist:ips", "198.51.100.11")
+
+
+def test_profile_page_empty_website_does_not_trigger_bot_check(
+    client: TestClient, mock_valkey: MagicMock
+) -> None:
+    """A normal request (no honeypot value) never touches the bot-trigger counter."""
+    client.get("/profile?q=foo")
+    mock_valkey.incr.assert_not_called()
+
+
 def test_profile_page_signed_in_links_to_dashboard(client: TestClient) -> None:
     """Profile header exposes a Dashboard link for signed-in users."""
     session = _auth.create_session_value("user@example.com", TEST_SECRET)

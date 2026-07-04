@@ -1,12 +1,12 @@
-"""Curate the abuse denylist: block or unblock IPs and CIDR ranges.
+"""Inspect and unblock the abuse denylist.
 
-Run inside the web container so it picks up the app's Valkey connection
-settings from the environment:
+IPs are added automatically after repeated bot-detection triggers (see
+store.record_bot_trigger); this script only offers visibility and a way to
+undo a false-positive block. Run inside the web container so it picks up the
+app's Valkey connection settings from the environment:
 
-    docker compose exec web python scripts/denylist.py deny 203.0.113.7
-    docker compose exec web python scripts/denylist.py deny 203.0.113.0/24
-    docker compose exec web python scripts/denylist.py allow 203.0.113.7
     docker compose exec web python scripts/denylist.py list
+    docker compose exec web python scripts/denylist.py allow 203.0.113.7
 """
 
 import argparse
@@ -16,11 +16,6 @@ from valkey.asyncio import Valkey
 
 from odin import store
 from odin.config import settings
-
-
-async def _deny(client: Valkey, value: str) -> None:
-    await store.deny_ip(client, value)
-    print(f"Denied {value}")
 
 
 async def _allow(client: Valkey, value: str) -> None:
@@ -40,9 +35,7 @@ async def _list(client: Valkey) -> None:
 async def _run(args: argparse.Namespace) -> None:
     client = Valkey.from_url(settings.odin_valkey_url)
     try:
-        if args.command == "deny":
-            await _deny(client, args.value)
-        elif args.command == "allow":
+        if args.command == "allow":
             await _allow(client, args.value)
         else:
             await _list(client)
@@ -55,13 +48,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    deny = subparsers.add_parser("deny", help="Add an IP or CIDR range to the denylist")
-    deny.add_argument("value", help="An IP address (1.2.3.4) or CIDR range (1.2.3.0/24)")
+    allow = subparsers.add_parser("allow", help="Remove an IP address from the denylist")
+    allow.add_argument("value", help="The IP address to unblock")
 
-    allow = subparsers.add_parser("allow", help="Remove an IP or CIDR range from the denylist")
-    allow.add_argument("value", help="An IP address (1.2.3.4) or CIDR range (1.2.3.0/24)")
-
-    subparsers.add_parser("list", help="List every denied IP and CIDR range")
+    subparsers.add_parser("list", help="List every denied IP address")
 
     args = parser.parse_args()
     asyncio.run(_run(args))

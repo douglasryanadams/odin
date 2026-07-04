@@ -56,6 +56,7 @@ async def send_link(
         request, "login.html", {"sent": True, "sent_email": email}
     )
     if bot.website or not _auth.verify_form_timestamp(bot.form_ts, request.app.state.secret_key):
+        await store.record_bot_trigger(valkey_client, request_ip(request))
         return sent_template
     if not await store.claim_email_link_send(valkey_client, email, request_ip(request)):
         return sent_template

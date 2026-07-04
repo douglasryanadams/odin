@@ -9,7 +9,8 @@ from odin.identity import Requester
 from odin.identity import hash_email as _hash_email
 
 _DENYLIST_IPS_KEY = "denylist:ips"
-_DENYLIST_CIDRS_KEY = "denylist:cidrs"
+_BOT_TRIGGER_TTL = 3600  # 1 hour
+_BOT_TRIGGER_THRESHOLD = 3
 
 
 def _today_utc() -> str:
@@ -117,37 +118,37 @@ def _decode(value: str | bytes) -> str:
 
 
 async def is_ip_denied(client: Valkey, ip_address: str) -> bool:
-    """Return True if ip_address is an exact denylist entry or falls in a denied CIDR range."""
-    if await client.sismember(_DENYLIST_IPS_KEY, ip_address):
-        return True
-    cidrs = await client.smembers(_DENYLIST_CIDRS_KEY)
-    if not cidrs:
-        return False
-    ip = ipaddress.ip_address(ip_address)
-    return any(ip in ipaddress.ip_network(_decode(cidr)) for cidr in cidrs)
+    """Return True if ip_address is on the denylist."""
+    return bool(await client.sismember(_DENYLIST_IPS_KEY, ip_address))
 
 
-async def deny_ip(client: Valkey, ip_or_cidr: str) -> None:
-    """Add an exact IP or CIDR range to the denylist.
-
-    Raises ValueError if ip_or_cidr is not a valid address or network.
-    """
-    if "/" in ip_or_cidr:
-        ipaddress.ip_network(ip_or_cidr)
-        await client.sadd(_DENYLIST_CIDRS_KEY, ip_or_cidr)
-    else:
-        ipaddress.ip_address(ip_or_cidr)
-        await client.sadd(_DENYLIST_IPS_KEY, ip_or_cidr)
+async def deny_ip(client: Valkey, ip_address: str) -> None:
+    """Add an IP address to the denylist. Raises ValueError if it is not a valid address."""
+    ipaddress.ip_address(ip_address)
+    await client.sadd(_DENYLIST_IPS_KEY, ip_address)
 
 
-async def allow_ip(client: Valkey, ip_or_cidr: str) -> None:
-    """Remove an exact IP or CIDR range from the denylist."""
-    key = _DENYLIST_CIDRS_KEY if "/" in ip_or_cidr else _DENYLIST_IPS_KEY
-    await client.srem(key, ip_or_cidr)
+async def allow_ip(client: Valkey, ip_address: str) -> None:
+    """Remove an IP address from the denylist."""
+    await client.srem(_DENYLIST_IPS_KEY, ip_address)
 
 
 async def list_denied(client: Valkey) -> list[str]:
-    """Return every denied exact IP and CIDR range, sorted."""
+    """Return every denied IP address, sorted."""
     ips = await client.smembers(_DENYLIST_IPS_KEY)
-    cidrs = await client.smembers(_DENYLIST_CIDRS_KEY)
-    return sorted(_decode(entry) for entry in (*ips, *cidrs))
+    return sorted(_decode(entry) for entry in ips)
+
+
+async def record_bot_trigger(client: Valkey, ip_address: str) -> None:
+    """Count a bot-detection trigger for ip_address; deny it once it crosses the threshold.
+
+    Counts within a rolling hour, mirroring claim_email_link_send's incr-then-expire pattern.
+    """
+    if not ip_address:
+        return
+    key = f"botcheck:{ip_address}"
+    count = await client.incr(key)
+    if count == 1:
+        await client.expire(key, _BOT_TRIGGER_TTL)
+    if count >= _BOT_TRIGGER_THRESHOLD:
+        await deny_ip(client, ip_address)
