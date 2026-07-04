@@ -1,11 +1,15 @@
 """Valkey-backed rate limiting counters and magic-link nonces."""
 
 import datetime
+import ipaddress
 
 from valkey.asyncio import Valkey
 
 from odin.identity import Requester
 from odin.identity import hash_email as _hash_email
+
+_DENYLIST_IPS_KEY = "denylist:ips"
+_DENYLIST_CIDRS_KEY = "denylist:cidrs"
 
 
 def _today_utc() -> str:
@@ -106,3 +110,44 @@ async def delete_user(client: Valkey, email: str) -> None:
     keys.extend([key.decode() async for key in client.scan_iter(match=f"rate:user:{user_hash}:*")])
     if keys:
         await client.delete(*keys)
+
+
+def _decode(value: str | bytes) -> str:
+    return value.decode() if isinstance(value, bytes) else value
+
+
+async def is_ip_denied(client: Valkey, ip_address: str) -> bool:
+    """Return True if ip_address is an exact denylist entry or falls in a denied CIDR range."""
+    if await client.sismember(_DENYLIST_IPS_KEY, ip_address):
+        return True
+    cidrs = await client.smembers(_DENYLIST_CIDRS_KEY)
+    if not cidrs:
+        return False
+    ip = ipaddress.ip_address(ip_address)
+    return any(ip in ipaddress.ip_network(_decode(cidr)) for cidr in cidrs)
+
+
+async def deny_ip(client: Valkey, ip_or_cidr: str) -> None:
+    """Add an exact IP or CIDR range to the denylist.
+
+    Raises ValueError if ip_or_cidr is not a valid address or network.
+    """
+    if "/" in ip_or_cidr:
+        ipaddress.ip_network(ip_or_cidr)
+        await client.sadd(_DENYLIST_CIDRS_KEY, ip_or_cidr)
+    else:
+        ipaddress.ip_address(ip_or_cidr)
+        await client.sadd(_DENYLIST_IPS_KEY, ip_or_cidr)
+
+
+async def allow_ip(client: Valkey, ip_or_cidr: str) -> None:
+    """Remove an exact IP or CIDR range from the denylist."""
+    key = _DENYLIST_CIDRS_KEY if "/" in ip_or_cidr else _DENYLIST_IPS_KEY
+    await client.srem(key, ip_or_cidr)
+
+
+async def list_denied(client: Valkey) -> list[str]:
+    """Return every denied exact IP and CIDR range, sorted."""
+    ips = await client.smembers(_DENYLIST_IPS_KEY)
+    cidrs = await client.smembers(_DENYLIST_CIDRS_KEY)
+    return sorted(_decode(entry) for entry in (*ips, *cidrs))

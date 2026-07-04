@@ -504,6 +504,19 @@ def test_profile_stream_rate_limited_emits_rate_limited_event(
     assert "redirect" in events[0]
 
 
+def test_profile_stream_denied_ip_emits_blocked_event_and_skips_pipeline(
+    client: TestClient, mock_valkey: MagicMock, mock_anthropic: MagicMock
+) -> None:
+    """A denylisted IP gets a blocked event and never reaches the search/LLM pipeline."""
+    _setup_page_fetcher()
+    mock_valkey.sismember.return_value = True
+    response = client.get("/profile/stream?q=foo", cookies={"odin_anon": "test-cookie"})
+    assert response.status_code == 200
+    events = _parse_sse_events(response.text)
+    assert events[0]["type"] == "blocked"
+    mock_anthropic.messages.create.assert_not_called()
+
+
 def test_profile_stream_citations_only_include_urls_synthesizer_cited(
     client: TestClient,
     mock_anthropic: MagicMock,

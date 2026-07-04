@@ -93,6 +93,13 @@ async def profile_stream(  # noqa: PLR0913, C901
         user_email(user), request.cookies.get(ANON_COOKIE, ""), request_ip(request)
     )
 
+    if await store.is_ip_denied(valkey_client, requester.ip_address):
+
+        async def _blocked() -> AsyncGenerator[str, None]:
+            yield f"data: {json.dumps({'type': 'blocked'})}\n\n"
+
+        return StreamingResponse(_blocked(), media_type="text/event-stream")
+
     if await store.is_rate_limited(
         valkey_client,
         requester,
