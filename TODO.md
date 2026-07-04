@@ -6,6 +6,8 @@ The deep research initiative has shipped: bounded iterative search, the groundin
 
 With deep research shipped, this pass re-ranks the backlog: several cheap, high-value reach items had drifted into the Low tier below bigger, more speculative work. Abuse protection for the now-live agentic mode is in place: `store.py` holds an IP denylist (`is_ip_denied`/`deny_ip`), checked in `routes/profile.py`'s stream endpoint ahead of the daily-quota check. Entries are added automatically, not curated by hand: a honeypot field on the sign-in and search forms increments a per-IP counter (`record_bot_trigger`), and three triggers in an hour denies the IP. See `docs/vision.md` for the product direction behind these priorities.
 
+**Next up:** build entity surfing (Low tier, item 1 below) before the SSE→HTTP hybrid endpoint (Medium tier, item 1 below), even though it ranks lower. Both touch `routes/profile.py`, `profile.js`, and `profile.html`, so they're built one after the other, not in parallel — and the hybrid endpoint's cache-shape redesign should land against a settled set of SSE events, which entity surfing's new `related_entities` field will change. As with any feature here, propose a test plan and confirm it before writing code, per `CLAUDE.md`.
+
 ## Medium priority
 
 Browser SERP backends (Google/Bing via Playwright, or a paid SERP API) remain deferred in the backlog; revisit only if Brave plus Wikipedia coverage falls short.
