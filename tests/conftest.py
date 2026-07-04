@@ -83,9 +83,7 @@ def mock_valkey() -> MagicMock:
     m.expire = AsyncMock()
     m.set = AsyncMock(return_value=True)
     m.sismember = AsyncMock(return_value=False)
-    m.smembers = AsyncMock(return_value=set())
     m.sadd = AsyncMock()
-    m.srem = AsyncMock()
     return m
 
 

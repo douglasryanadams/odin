@@ -113,10 +113,6 @@ async def delete_user(client: Valkey, email: str) -> None:
         await client.delete(*keys)
 
 
-def _decode(value: str | bytes) -> str:
-    return value.decode() if isinstance(value, bytes) else value
-
-
 async def is_ip_denied(client: Valkey, ip_address: str) -> bool:
     """Return True if ip_address is on the denylist."""
     return bool(await client.sismember(_DENYLIST_IPS_KEY, ip_address))
@@ -126,17 +122,6 @@ async def deny_ip(client: Valkey, ip_address: str) -> None:
     """Add an IP address to the denylist. Raises ValueError if it is not a valid address."""
     ipaddress.ip_address(ip_address)
     await client.sadd(_DENYLIST_IPS_KEY, ip_address)
-
-
-async def allow_ip(client: Valkey, ip_address: str) -> None:
-    """Remove an IP address from the denylist."""
-    await client.srem(_DENYLIST_IPS_KEY, ip_address)
-
-
-async def list_denied(client: Valkey) -> list[str]:
-    """Return every denied IP address, sorted."""
-    ips = await client.smembers(_DENYLIST_IPS_KEY)
-    return sorted(_decode(entry) for entry in ips)
 
 
 async def record_bot_trigger(client: Valkey, ip_address: str) -> None:
