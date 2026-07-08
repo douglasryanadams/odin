@@ -68,6 +68,21 @@ class Location(BaseModel):
     caption: str
 
 
+class RelatedEntity(BaseModel):
+    """A named person, organization, or event central to the profile.
+
+    Rendered as an "Explore further" link that opens a new ODIN search, kept
+    out of the summary prose to preserve citation clarity. `citations` names
+    the fetched source page(s) that mention this entity — grounding it the
+    same way `Connection.citations` grounds a cross-source claim, so a
+    hallucinated name (which would burn a real search-engine query against
+    the user's daily quota) never ships.
+    """
+
+    name: str
+    citations: list[Citation]
+
+
 class Profile(BaseModel):
     """A structured profile for a search subject."""
 
@@ -79,6 +94,7 @@ class Profile(BaseModel):
     timeline: list[TimelineEntry]
     citations: list[Citation] = []
     locations: list[Location] = []
+    related_entities: list[RelatedEntity] = []
 
 
 ConnectionKind = Literal["corroboration", "contradiction", "link"]

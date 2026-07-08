@@ -26,6 +26,7 @@ from odin.models import (
     Location,
     Profile,
     ProfileHighlight,
+    RelatedEntity,
     TimelineEntry,
 )
 from odin.search import SearchResult
@@ -111,6 +112,7 @@ class _SynthesizeOutput:
     timeline: list[TimelineEntry]
     citations: list[str]
     locations: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
+    related_entities: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
 
 
 @dataclass(frozen=True)
@@ -252,6 +254,13 @@ _PROFILE_GUIDANCE = (
     "  just one). If the subject is a private individual rather than a public figure,\n"
     "  omit any location that would reveal a private residence — return an empty list if\n"
     "  no location is appropriate to share.\n"
+    "- related_entities: 5-8 named people, organizations, and key events central to the\n"
+    "  subject, for a reader to explore next. Each has:\n"
+    "    name       — the entity's name, in a form that works as a search query on its own\n"
+    "                  (e.g. 'Pierre Curie', not 'her husband').\n"
+    "    citations  — URLs of the provided source pages that mention this entity. Only name\n"
+    "                 an entity you can point to in the source content; never invent one.\n"
+    "  Keep entity names out of the summary prose's citation flow — this is a separate list.\n"
     "Be factual and cite specific details from the provided content.\n"
 )
 
@@ -459,6 +468,27 @@ _CREATE_PROFILE_TOOL: dict[str, Any] = {
                 "description": (
                     "3-15 key places tied to the subject, for a map. Empty if none are "
                     "appropriate to share."
+                ),
+            },
+            "related_entities": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "citations": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "minItems": 1,
+                            "description": ("URLs of the source pages that mention this entity."),
+                        },
+                    },
+                    "required": ["name", "citations"],
+                },
+                "maxItems": 8,
+                "description": (
+                    "5-8 named people, organizations, and key events central to the "
+                    "subject, for a reader to explore next."
                 ),
             },
         },
@@ -876,7 +906,34 @@ def _build_profile(
         timeline=parsed.timeline,
         citations=citations,
         locations=_parse_locations(parsed.locations),
+        related_entities=_parse_related_entities(parsed.related_entities, lookup),
     )
+
+
+def _parse_related_entities(
+    raw_entities: list[dict[str, Any]], lookup: dict[str, SearchResult]
+) -> list[RelatedEntity]:
+    """Ground each candidate entity in at least one fetched source, deduping by name.
+
+    A hallucinated entity name is a real search-engine-shaped attack surface —
+    it burns a query slot against the user's daily quota on a garbled search —
+    so this reuses the same citation-resolution discipline
+    `_resolve_connection_citations` applies to cross-source connections. An
+    entity whose citations don't resolve to any fetched page is dropped
+    entirely rather than shipped uncited.
+    """
+    seen: dict[str, RelatedEntity] = {}
+    for raw in raw_entities:
+        name = raw.get("name", "").strip()
+        if not name:
+            continue
+        citations = _resolve_connection_citations(raw.get("citations") or [], lookup)
+        if not citations:
+            continue
+        key = name.casefold()
+        if key not in seen:
+            seen[key] = RelatedEntity(name=name, citations=citations)
+    return list(seen.values())
 
 
 def _parse_locations(raw_locations: list[dict[str, Any]]) -> list[Location]:
