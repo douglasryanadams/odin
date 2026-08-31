@@ -1036,6 +1036,37 @@
   color: var(--text-muted);
 }
 
+/* ----- Related entities ("Explore further") --------------------------- */
+
+.related-entities {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  padding: 0;
+  margin: 0;
+}
+
+.related-entities__link {
+  display: inline-block;
+  padding: var(--sp-2) var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+
+.related-entities__link:hover {
+  color: var(--glow);
+  border-color: var(--accent);
+}
+
+.related-entities__empty {
+  padding: var(--sp-3) 0;
+  color: var(--text-muted);
+}
+
 /* ----- Mentions list (stub) ----------------------------------------- */
 
 .mentions-list {

@@ -425,6 +425,26 @@ function loadBasemap() {
   return _basemapPromise;
 }
 
+// Each related entity opens a new ODIN search in a new tab — kept as plain
+// links, not inline in prose, to preserve citation clarity (see TODO.md
+// entity-surfing item).
+function renderRelatedEntities(listEl, items) {
+  listEl.replaceChildren();
+  if (!items || !items.length) {
+    listEl.appendChild(el("li", "related-entities__empty muted", listEl.dataset.empty || ""));
+    return;
+  }
+  items.forEach((item) => {
+    const li = el("li", "related-entities__item");
+    const link = el("a", "related-entities__link", item.name || "");
+    link.href = "/profile?q=" + encodeURIComponent(item.name || "");
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    li.appendChild(link);
+    listEl.appendChild(li);
+  });
+}
+
 function renderProfile(data) {
   const name = data.name || "";
   const sidebarName = $("sidebar-name");
@@ -476,6 +496,14 @@ function renderProfile(data) {
   if (sources) renderCitations(sources, data.citations || []);
   const bylineSources = $("byline-sources");
   if (bylineSources) bylineSources.textContent = String((data.citations || []).length);
+
+  const relatedEntitiesSection = $("section-related-entities");
+  if (relatedEntitiesSection) {
+    const relatedEntities = data.related_entities || [];
+    relatedEntitiesSection.hidden = relatedEntities.length === 0;
+    const list = relatedEntitiesSection.querySelector(".related-entities");
+    if (list) renderRelatedEntities(list, relatedEntities);
+  }
 
   const highlightsHint = $("highlights-hint");
   if (highlightsHint && data.highlights && data.highlights.length) {

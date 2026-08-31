@@ -327,6 +327,17 @@ def test_create_profile_tool_schema_locations_are_optional_and_bounded() -> None
     assert item["properties"]["longitude"]["maximum"] == 180
 
 
+def test_create_profile_tool_schema_related_entities_require_name_and_citations() -> None:
+    """The related_entities field is optional, capped at 8, and each item needs citations."""
+    schema = claude._CREATE_PROFILE_TOOL["input_schema"]  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    assert "related_entities" not in schema["required"]
+    related_entities = schema["properties"]["related_entities"]
+    assert related_entities["maxItems"] == 8
+    item = related_entities["items"]
+    assert set(item["required"]) == {"name", "citations"}
+    assert item["properties"]["citations"]["minItems"] == 1
+
+
 @pytest.mark.asyncio
 async def test_synthesize_parses_locations_into_profile(mock_client: MagicMock) -> None:
     """synthesize() parses Claude's locations array into Profile.locations."""
@@ -398,6 +409,123 @@ async def test_synthesize_drops_locations_with_out_of_range_coordinates(
 
     assert len(result.locations) == 1
     assert result.locations[0].name == "Warsaw, Poland"
+
+
+@pytest.mark.asyncio
+async def test_synthesize_parses_related_entities_with_resolved_citation(
+    mock_client: MagicMock,
+) -> None:
+    """A related entity whose citation resolves to a fetched source survives."""
+    profile_data = {
+        **_PROFILE_DATA,
+        "related_entities": [
+            {"name": "Pierre Curie", "citations": ["https://example.com"]},
+        ],
+    }
+    mock_client.messages.create.return_value = api_response(
+        [tool_block("create_profile", profile_data)]
+    )
+    content = {"https://example.com": "Marie Curie married Pierre Curie."}
+    sources = [SearchResult(url="https://example.com", title="Example", content="snippet")]
+
+    result = await claude.synthesize(mock_client, "Marie Curie", "person", content, sources)
+
+    assert len(result.related_entities) == 1
+    entity = result.related_entities[0]
+    assert entity.name == "Pierre Curie"
+    assert entity.citations[0].url == "https://example.com"
+
+
+@pytest.mark.asyncio
+async def test_synthesize_drops_related_entity_whose_citation_does_not_resolve(
+    mock_client: MagicMock,
+) -> None:
+    """A related entity with no citation resolving to a fetched source is dropped.
+
+    A hallucinated entity name burns a real search-engine query against the
+    user's daily quota, so an entity that can't be grounded in a fetched page
+    is dropped the same way an ungrounded connection never ships.
+    """
+    profile_data = {
+        **_PROFILE_DATA,
+        "related_entities": [
+            {"name": "Invented Person", "citations": ["https://never-fetched.com"]},
+        ],
+    }
+    mock_client.messages.create.return_value = api_response(
+        [tool_block("create_profile", profile_data)]
+    )
+    content = {"https://example.com": "Marie Curie was a physicist."}
+    sources = [SearchResult(url="https://example.com", title="Example", content="snippet")]
+
+    result = await claude.synthesize(mock_client, "Marie Curie", "person", content, sources)
+
+    assert result.related_entities == []
+
+
+@pytest.mark.asyncio
+async def test_synthesize_dedupes_related_entities_by_name_case_insensitively(
+    mock_client: MagicMock,
+) -> None:
+    """Two candidates differing only in case collapse to one entity."""
+    profile_data = {
+        **_PROFILE_DATA,
+        "related_entities": [
+            {"name": "Pierre Curie", "citations": ["https://example.com"]},
+            {"name": "pierre curie", "citations": ["https://example.com"]},
+        ],
+    }
+    mock_client.messages.create.return_value = api_response(
+        [tool_block("create_profile", profile_data)]
+    )
+    content = {"https://example.com": "Marie Curie married Pierre Curie."}
+    sources = [SearchResult(url="https://example.com", title="Example", content="snippet")]
+
+    result = await claude.synthesize(mock_client, "Marie Curie", "person", content, sources)
+
+    assert len(result.related_entities) == 1
+
+
+@pytest.mark.asyncio
+async def test_synthesize_defaults_related_entities_to_empty_when_absent(
+    mock_client: MagicMock,
+) -> None:
+    """A response with no related_entities key (the field is optional) yields an empty list."""
+    mock_client.messages.create.return_value = api_response(
+        [tool_block("create_profile", _PROFILE_DATA)]
+    )
+    content = {"https://example.com": "text"}
+    sources = [SearchResult(url="https://example.com", title="Example", content="snippet")]
+
+    result = await claude.synthesize(mock_client, "Marie Curie", "person", content, sources)
+
+    assert result.related_entities == []
+
+
+@pytest.mark.asyncio
+async def test_synthesize_and_assess_includes_related_entities(mock_client: MagicMock) -> None:
+    """synthesize_and_assess's shared _build_profile path also grounds related_entities."""
+    profile_data = {
+        **_PROFILE_DATA,
+        "related_entities": [
+            {"name": "Pierre Curie", "citations": ["https://example.com"]},
+        ],
+    }
+    mock_client.messages.create.return_value = api_response(
+        [
+            tool_block("create_profile", profile_data),
+            tool_block("assess_profile", _ASSESS_DATA),
+        ]
+    )
+    content = {"https://example.com": "Marie Curie married Pierre Curie."}
+    sources = [SearchResult(url="https://example.com", title="Example", content="snippet")]
+
+    profile, _ = await claude.synthesize_and_assess(
+        mock_client, "Marie Curie", "person", content, sources
+    )
+
+    assert len(profile.related_entities) == 1
+    assert profile.related_entities[0].name == "Pierre Curie"
 
 
 @pytest.mark.asyncio

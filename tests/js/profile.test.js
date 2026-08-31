@@ -28,6 +28,7 @@ function buildProfileDom() {
     <section id="section-highlights"><span id="highlights-hint"></span><ul class="findings" data-empty="none"></ul></section>
     <section id="section-lowlights"><span id="lowlights-hint"></span><ul class="findings" data-empty="none"></ul></section>
     <section id="section-sources"><span id="sources-count"></span><ol class="citations" data-empty="none"></ol></section>
+    <section id="section-related-entities" hidden><ul class="related-entities" data-empty="none"></ul></section>
     <ol id="research-log" hidden></ol>
     <div id="subject-compass"><div class="assessment-gauges"></div></div>
     <div id="source-audit">
@@ -339,6 +340,46 @@ describe("renderProfile locations", () => {
     const container = document.getElementById("locations-map");
     expect(container.querySelector("svg.locations-map__svg")).not.toBeNull();
     expect(container.querySelectorAll(".locations-map__list-item")).toHaveLength(1);
+  });
+});
+
+describe("renderProfile related entities", () => {
+  beforeEach(() => {
+    profile.resetProgress();
+    buildProfileDom();
+  });
+
+  const base = {
+    name: "x",
+    category: "person",
+    summary: "",
+    highlights: [],
+    lowlights: [],
+    timeline: [],
+    citations: [],
+  };
+
+  test("section stays hidden and shows the empty state when there are no related entities", () => {
+    profile.renderProfile({ ...base, related_entities: [] });
+    const section = document.getElementById("section-related-entities");
+    expect(section.hidden).toBe(true);
+    expect(section.querySelector(".related-entities__empty")).not.toBeNull();
+  });
+
+  test("section reveals and renders each entity as a link opening a new ODIN search", () => {
+    profile.renderProfile({
+      ...base,
+      related_entities: [
+        { name: "Pierre Curie", citations: [{ url: "https://example.com", title: "Example" }] },
+      ],
+    });
+    const section = document.getElementById("section-related-entities");
+    expect(section.hidden).toBe(false);
+    const link = section.querySelector(".related-entities__link");
+    expect(link.textContent).toBe("Pierre Curie");
+    expect(link.getAttribute("href")).toBe("/profile?q=Pierre%20Curie");
+    expect(link.target).toBe("_blank");
+    expect(link.rel).toBe("noopener noreferrer");
   });
 });
 
